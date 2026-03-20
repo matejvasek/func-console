@@ -100,7 +100,7 @@ flowchart LR
 
 ## Project Structure
 
-```
+```txt
 func-console/
 ├── console-extensions.json       # declares nav items + page routes
 ├── package.json                  # plugin metadata, exposedModules, deps
@@ -130,7 +130,8 @@ func-console/
 │   ├── components/               # reusable UI pieces
 │   │   ├── FunctionTable.tsx     # PatternFly Data view
 │   │   ├── CreateForm.tsx        # form fields
-│   │   └── EmptyState.tsx        # no functions state
+│   │   ├── EmptyState.tsx        # no functions state
+│   │   └── ErrorProvider.tsx     # ErrorContext + AlertGroup wrapper
 │   │
 │   └── utils/
 │       └── constants.ts          # route paths, labels, defaults
@@ -138,6 +139,18 @@ func-console/
 ├── locales/                      # i18n translations
 └── charts/                       # Helm chart for OCP deployment
 ```
+
+---
+
+## Error Handling
+
+`ErrorProvider` component wraps each view. It provides `ErrorContext` with `addError(message)` available via `useErrorContext()` anywhere in the component tree. It renders a PatternFly `AlertGroup` at the top showing dismissable alerts. SDK `ErrorBoundaryFallbackPage` wraps each view for unexpected render crashes.
+
+| Error type | How to report |
+|---|---|
+| Async errors (event handlers) | `try/catch` → `addError(err.message)` |
+| Hook errors (returned error field) | `useEffect` inside hook → `addError()` with ref dedup |
+| Render crashes | ErrorBoundary catches → fallback page |
 
 ---
 
@@ -175,6 +188,10 @@ interface FunctionService {
 - `generateFunction` → func.yaml, handler code, package files, .gitignore, tests
 - `generateWorkflow` → .github/workflows/func-deploy.yaml
 - Output consumed by TreeView+CodeEditor (display) and Octokit (push)
+
+#### Error Handling
+
+Pure synchronous — throws on invalid config at runtime.
 
 ### SourceControlService
 
@@ -218,6 +235,10 @@ interface SourceControlService {
 - `createSecret` requires encrypting the value with the repo's public key using `tweetnacl` or `libsodium.js`
 - `fetch` retrieves the full repo tree and all file contents for display in the editor
 
+#### Error Handling
+
+All methods reject with Octokit errors. Callers use try/catch → `addError()`. Invalid/expired PAT (401) → clear sessionStorage, prompt re-entry.
+
 ### ClusterService
 
 Queries deployed function status from K8s. Consumed as a React hook.
@@ -259,6 +280,10 @@ interface ClusterService {
 - `boson.dev/function: "true"` — legacy marker
 - `function.knative.dev/name: <name>` — function name
 - `function.knative.dev/runtime: <runtime>` — runtime (node, python, go)
+
+#### Error Handling
+
+Hook errors reported internally via `useEffect` → `addError()` with ref dedup. `deleteFunction` rejection handled by caller via try/catch → `addError()`.
 
 **SDK hooks used:**
 
@@ -321,6 +346,10 @@ Mirrors func CLI behavior (undeploy only, source code unaffected).
 3. On confirm: `clusterService.deleteFunction(name, namespace)`
 4. List refreshes automatically via `useK8sWatchResource` reactivity
 
+#### Error Handling
+
+GitHub API errors and cluster errors surface via `addError()` in AlertGroup. View remains visible.
+
 **SDK components used:**
 
 | Component | Purpose |
@@ -350,6 +379,10 @@ What the UI Generates:
 |-----------|---------|
 | `ErrorBoundaryFallbackPage` | Catch unexpected errors during create flow |
 
+#### Error Handling
+
+Form validation errors shown inline. Repo creation and push failures surface via `addError()`.
+
 ### Functions Edit Page
 
 PatternFly TreeView sidebar + SDK CodeEditor. Tree built from `GeneratedFiles` map keys split on `/`. Shows full repo contents.
@@ -361,6 +394,10 @@ PatternFly TreeView sidebar + SDK CodeEditor. Tree built from `GeneratedFiles` m
 | `CodeEditor` | Monaco-based code editor (lazy loaded) |
 | PatternFly TreeView | File tree sidebar built from `GeneratedFiles` map keys |
 | `ErrorBoundaryFallbackPage` | Catch unexpected errors |
+
+#### Error Handling
+
+Fetch and push failures surface via `addError()`. View remains visible with last known content.
 
 ---
 
@@ -408,9 +445,13 @@ PatternFly TreeView sidebar + SDK CodeEditor. Tree built from `GeneratedFiles` m
 
 ## Next Steps
 
-- [ ] Design delete flow (what gets deleted: repo, cluster resources, or both?)
-- [ ] Design error handling (GitHub API failures, invalid PAT, push failures)
+- [x] Design delete flow — undeploy only, mirrors func CLI
+- [x] Design error handling — ErrorProvider + addError pattern
 - [ ] Clarify editor routing (how to identify function: by repo name? function name?)
+- [ ] Define testing strategy => TDD, unit test, e2e tests, mirage.js for API mocking
+- [ ] Create AGENTS.md and .claude/CLAUDE.md for this project
+- [ ] Create project setup using the dynamic plugin template
+- [ ] Create and setup sandbox environment for Roo/Claude to work autonomously on selected features
 - [ ] Spike: WASM compilation of func CLI Go packages
 - [ ] Begin implementation
 
