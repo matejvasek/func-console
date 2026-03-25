@@ -30,7 +30,19 @@ Every session, before doing any work:
 4. Read `docs/features.json` — pick first `"passes": false` entry
 5. Run `./init.sh` — start dev env
 6. Run tests — verify app is healthy
-7. If broken → fix first. If clean → start next feature.
+7. If broken → fix first. If clean → start [Feature Development Sequence](#feature-development-sequence).
+
+## Feature Development Sequence
+
+After [Startup Sequence](#startup-sequence), work through the picked feature:
+
+1. **Plan** — create implementation plan → `docs/plans/active/<incremeted-number>-feature-<short-name>.md`
+2. **Implement** — using `/executing-plans` skill
+3. **Review** — code review using `/requesting-code-review` skill, fix found issues
+4. **Manual Test** — use browser automation and validate it works in the browser
+5. **Complete** — flip `passes` to `true` in `docs/features.json`, update `docs/claude-progress.txt`, commit
+6. Move plan to `docs/plans/completed/`
+7. Stop, wait for user command
 
 ## Session Rules
 
