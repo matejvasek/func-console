@@ -2,6 +2,19 @@
 # Newest entries first. Agents: append your entry at the top after the header.
 
 ---
+## 2026-03-25 | Session: Design finalization — user flow revision
+Worked on: Completed remaining design items and revised user flow
+Completed:
+- Editor routing — by function name, RepoInfo passed via React Router navigation state
+- Revised user flow — create redirects to list, background deploy with progressive status
+- Edit flow — two buttons: Save (stay in editor) and Save & Deploy (redirect to list)
+- DeployedFunction type updated with url field and new statuses (CreatingRepo, Pushing, PushedToGitHub)
+- Updated all affected design doc sections for new flow
+- Oriented to new harness engineering setup (AGENTS.md, ARCHITECTURE.md, features.json)
+Left off: Testing strategy definition (TDD, vitest, Cypress, MSW). Then final spec review, populate features.json.
+Blockers: None
+
+---
 ## 2026-03-25 | Session: Harness engineering setup
 Worked on: Designed and implemented harness engineering setup for func-console
 Completed:

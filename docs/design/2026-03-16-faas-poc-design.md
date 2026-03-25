@@ -1,7 +1,7 @@
 # FaaS PoC — Design Plan
 
-**Updated:** 2026-03-18
-**Status:** Design in progress — service interfaces defined, spec review done. Delete flow, error handling, and editor routing pending.
+**Updated:** 2026-03-25
+**Status:** Design complete — ready for final review.
 
 ---
 
@@ -67,7 +67,7 @@ flowchart TB
 | 8 | **3 service hooks** as stable API consumed by all views | ✅ |
 | 9 | **FunctionService strategy** = spike WASM first, fallback to backend or TS | ✅ |
 | 10 | **ClusterService** = OCP SDK hooks, upstream TBD | ✅ |
-| 11 | **Create flow** = form → editor → deploy | ✅ |
+| 11 | **Create flow** = form → list (background: generate + push + deploy) | ✅ |
 | 12 | **Extension types** = `console.page/route` + `console.navigation/section` + `console.navigation/href` | ✅ |
 | 13 | **Table component** = PatternFly Data view (not deprecated VirtualizedTable) | ✅ |
 | 14 | **Project structure** = views/, components/, services/ | ✅ |
@@ -80,21 +80,29 @@ flowchart TB
 ```mermaid
 flowchart LR
     A[Functions List] -->|Create function| B[Create Form]
-    B -->|name, runtime, repo, registry| C[Editor View]
-    C -->|review/edit generated code| C
-    C -->|Deploy| D[Push to GitHub]
-    D --> E[GH Actions: build + deploy]
-    E --> F[Function running on cluster]
-    F -->|status updates| A
-    A -->|click function name| C
+    B -->|Submit| A
+    A -.->|background: generate + push| GH[GitHub]
+    GH -->|GH Actions| K8S[Cluster]
+    A -->|Edit| C[Editor View]
+    C -->|Save| C
+    C -->|Save and Deploy| A
 ```
 
-1. User fills in **Create Form** — name, runtime, GitHub repo, registry, namespace
-2. `useFunctionService` generates func.yaml, boilerplate code, GitHub Workflow YAML
-3. User lands in **Editor** — can review/edit the generated code
-4. User clicks **Deploy** — files pushed to GitHub via `useSourceControl`
-5. GitHub Actions picks up the push, runs `func deploy`, deploys to cluster
-6. User returns to **List** — function appears with live status from `useClusterService`
+### Create Flow
+
+1. User fills in **Create Form** — name, runtime, repo, registry, namespace
+2. User clicks **Create** → immediately redirects to **List**
+3. **Background:** FunctionService generates files → SourceControlService creates repo, pushes files, sets secrets/variables
+4. Function appears in list with progressive status: Creating repo → Pushing → Pushed to GitHub → Deploying → Running
+5. Once **Running** → list shows function URL (clickable/copyable)
+6. If any step fails → status shows error, `addError()` surfaces details
+
+### Edit Flow
+
+1. User clicks **Edit** on a function → Editor Page loads files from GitHub
+2. User edits code in TreeView + CodeEditor
+3. **Save** — commit/push to GitHub, stay in Editor
+4. **Save & Deploy** — commit/push to GitHub, redirect to List which shows progressive status (CI starts) Testing → Building → Deploying → Running
 
 ---
 
@@ -254,7 +262,8 @@ interface DeployedFunction {
   name: string;
   namespace: string;
   runtime: string;
-  status: 'Running' | 'ScaledToZero' | 'Deploying' | 'Error' | 'Unknown';
+  status: 'CreatingRepo' | 'Pushing' | 'PushedToGitHub' | 'Deploying' | 'Running' | 'ScaledToZero' | 'Error' | 'Unknown';
+  url?: string;
   lastDeployed?: string;
   replicas: number;
 }
@@ -324,6 +333,18 @@ Swapping implementations = change what the hook returns. Zero component changes.
 
 Implementation details and decisions about the three views we will implement.
 
+### Routing
+
+| Route | View | Navigation trigger |
+|---|---|---|
+| `/functions` | List Page | Nav click or plugin load |
+| `/functions/create` | Create Page | List → "Create function" button |
+| `/functions/edit/:name` | Editor Page | List → click function name or kebab "Edit" |
+
+**Editor Page data loading:**
+
+- RepoInfo available in list row context, passed via navigation state → `sourceControl.fetch(repo)` loads files
+
 ### Functions List Page
 
 The function list merges data from **both** GitHub and the cluster:
@@ -362,7 +383,9 @@ GitHub API errors and cluster errors surface via `addError()` in AlertGroup. Vie
 
 ### Functions Create Page
 
-What the UI Generates:
+Form-only page. On submit, redirects to List and triggers background processing.
+
+**What gets generated and pushed (in background):**
 
 | Artifact | Source | Content |
 |----------|--------|---------|
@@ -373,19 +396,18 @@ What the UI Generates:
 | **GH Secrets** | SourceControlService | KUBECONFIG, REGISTRY_PASSWORD |
 | **GH Variables** | SourceControlService | REGISTRY_URL, REGISTRY_USERNAME, REGISTRY_LOGIN_URL |
 
-**SDK components used:**
-
-| Component | Purpose |
-|-----------|---------|
-| `ErrorBoundaryFallbackPage` | Catch unexpected errors during create flow |
-
 #### Error Handling
 
-Form validation errors shown inline. Repo creation and push failures surface via `addError()`.
+Form validation errors shown inline. Background errors (repo creation, push) surface via `addError()` on the List page.
 
 ### Functions Edit Page
 
 PatternFly TreeView sidebar + SDK CodeEditor. Tree built from `GeneratedFiles` map keys split on `/`. Shows full repo contents.
+
+**Actions:**
+
+- **Save** — commit/push to GitHub, stay in Editor
+- **Save & Deploy** — commit/push to GitHub, redirect to List, CI triggers, status updates shown
 
 **SDK components used:**
 
@@ -447,9 +469,10 @@ Fetch and push failures surface via `addError()`. View remains visible with last
 
 - [x] Design delete flow — undeploy only, mirrors func CLI
 - [x] Design error handling — ErrorProvider + addError pattern
-- [ ] Clarify editor routing (how to identify function: by repo name? function name?)
-- [ ] Define testing strategy => TDD, unit test, e2e tests, mirage.js for API mocking
-- [ ] Create AGENTS.md and .claude/CLAUDE.md for this project
+- [x] Clarify editor routing — by function name, RepoInfo passed via navigation state
+- [x] Create AGENTS.md and CLAUDE.md — done during harness setup
+- [ ] Define testing strategy — TDD, unit, e2e, API mocking
+- [ ] Populate features.json with PoC feature list
 - [ ] Create project setup using the dynamic plugin template
 - [ ] Create and setup sandbox environment for Roo/Claude to work autonomously on selected features
 - [ ] Spike: WASM compilation of func CLI Go packages
