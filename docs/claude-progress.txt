@@ -1,0 +1,21 @@
+# Claude Progress Log
+# Newest entries first. Agents: append your entry at the top after the header.
+
+---
+## 2026-03-25 | Session: Harness engineering setup
+Worked on: Designed and implemented harness engineering setup for func-console
+Completed:
+- Harness design doc (docs/design/2026-03-25-harness-engineering-design.md)
+- AGENTS.md at repo root (project map)
+- docs/ARCHITECTURE.md (layered architecture, code style, dependency rules)
+- .claude/CLAUDE.md (project-level override pointing to AGENTS.md)
+- docs/features.json (empty, to populate together)
+- docs/claude-progress.txt (this file)
+- docs/agent-struggles.json (empty)
+- docs/references/agent-struggles-readme.md
+- Moved .claude/plans/ content to docs/design/ and docs/references/
+- Created docs/plans/active/ and docs/plans/completed/
+Left off: Need to populate features.json with PoC feature list.
+  Need to update Roo mode-specific instructions for plan directory.
+  Need to adapt slash commands for project-level use.
+Blockers: None
