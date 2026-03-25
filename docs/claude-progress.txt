@@ -6,16 +6,16 @@
 Worked on: Designed and implemented harness engineering setup for func-console
 Completed:
 - Harness design doc (docs/design/2026-03-25-harness-engineering-design.md)
-- AGENTS.md at repo root (project map)
+- AGENTS.md at repo root with startup sequence, feature development sequence, session rules
+- CLAUDE.md at repo root pointing to AGENTS.md
 - docs/ARCHITECTURE.md (layered architecture, code style, dependency rules)
-- .claude/CLAUDE.md (project-level override pointing to AGENTS.md)
 - docs/features.json (empty, to populate together)
 - docs/claude-progress.txt (this file)
-- docs/agent-struggles.json (empty)
-- docs/references/agent-struggles-readme.md
+- docs/agent-struggles.json (empty) + docs/references/agent-struggles-readme.md
+- docs/references/commit-message-agent-readme.md (agent commit guide)
+- .claude/commands/commit-user.md (interactive commit slash command)
 - Moved .claude/plans/ content to docs/design/ and docs/references/
 - Created docs/plans/active/ and docs/plans/completed/
-Left off: Need to populate features.json with PoC feature list.
-  Need to update Roo mode-specific instructions for plan directory.
-  Need to adapt slash commands for project-level use.
+- Feature development sequence: plan → implement → review → manual test → complete → stop
+Left off: Need to populate features.json with PoC feature list (25-50 features).
 Blockers: None
