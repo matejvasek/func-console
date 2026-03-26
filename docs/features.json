@@ -1,1 +1,47 @@
-[]
+[
+  {
+    "category": "technical",
+    "description": "Plugin scaffolding: project builds, dev server starts, Functions nav item renders in sidebar",
+    "steps": [
+      "Scaffold project from OCP dynamic plugin template",
+      "Configure console-extensions.json with nav section + href",
+      "Dev server starts without errors",
+      "Functions nav item visible in sidebar"
+    ],
+    "passes": false
+  },
+  {
+    "category": "technical",
+    "description": "Claude Code sandbox: isolated VM environment for autonomous agent development",
+    "steps": [
+      "Vagrant VM with Fedora (matching host OS) provisioned",
+      "Project directory mounted into VM",
+      "Full write permissions enabled for agent",
+      "Git worktree creation works inside VM",
+      "Agent can run full startup sequence autonomously in VM",
+      "VM isolation ensures no leakage to host workstation"
+    ],
+    "passes": false
+  },
+  {
+    "category": "functional",
+    "description": "Function List Page renders empty state when no functions exist",
+    "steps": [
+      "Navigate to /functions route",
+      "Empty state component renders with Create function button",
+      "Create function button links to /functions/create"
+    ],
+    "passes": false
+  },
+  {
+    "category": "functional",
+    "description": "Function Create Page renders form with all fields",
+    "steps": [
+      "Navigate to /functions/create",
+      "Form renders with name, runtime, registry, namespace, repo name fields",
+      "Runtime field offers node, python, go options",
+      "Create and Cancel buttons are visible"
+    ],
+    "passes": false
+  }
+]

@@ -93,4 +93,3 @@ Here is a good example from a [commit to the Bitcoin core](https://github.com/bi
 3. Draft a commit message following all seven rules
 4. Use conventional commits spec
 5. If $ARGUMENTS is provided, add "Issue $ARGUMENTS" at the bottom
-6. Show me the final message including the terminal command - DO NOT commit it

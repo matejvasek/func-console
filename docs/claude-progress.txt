@@ -2,6 +2,20 @@
 # Newest entries first. Agents: append your entry at the top after the header.
 
 ---
+## 2026-03-26 | Session: Docs restructure and feature list
+Worked on: Split docs into dedicated files, populated features.json, updated design doc, added slash commands
+Completed:
+- Extracted code style from ARCHITECTURE.md into new docs/STYLEGUIDE.md
+- Created docs/TESTING.md with testing strategy and conventions
+- Populated features.json with 4 initial features (2 technical, 2 functional)
+- Updated AGENTS.md — added STYLEGUIDE/TESTING references, expanded Plan step, fixed typo
+- Updated design doc — WASM section reflects completed spike, checked off design TODOs
+- Updated commit-user.md to also perform the commit
+- Created session-commit.md slash command for end-of-session cleanup
+Left off: First feature implementation (plugin scaffolding)
+Blockers: None
+
+---
 ## 2026-03-25 | Session: Design finalization — user flow revision
 Worked on: Completed remaining design items and revised user flow
 Completed:

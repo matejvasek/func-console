@@ -11,11 +11,13 @@ See `docs/design/` for full design specs.
 
 | File | Purpose |
 |------|---------|
-| `docs/ARCHITECTURE.md` | Layered architecture, code style, dependency rules |
 | `docs/design/` | Design specs — "what to build" |
 | `docs/plans/active/` | Implementation plans in progress |
 | `docs/plans/completed/` | Finished plans |
 | `docs/references/` | LLM-friendly reference material |
+| `docs/ARCHITECTURE.md` | Layered architecture, dependency rules |
+| `docs/STYLEGUIDE.md` | Code style, naming conventions |
+| `docs/TESTING.md` | Testing strategy, tools, conventions, mock patterns |
 | `docs/features.json` | Inviolable feature list — ground truth |
 | `docs/claude-progress.txt` | Session handoff log |
 | `docs/agent-struggles.json` | Struggle log — see `docs/references/agent-struggles-readme.md` |
@@ -36,7 +38,7 @@ Every session, before doing any work:
 
 After [Startup Sequence](#startup-sequence), work through the picked feature:
 
-1. **Plan** — create implementation plan → `docs/plans/active/<incremeted-number>-feature-<short-name>.md`
+1. **Plan** — read `docs/ARCHITECTURE.md` + `docs/STYLEGUIDE.md` + `docs/TESTING.md`, then create implementation plan → `docs/plans/active/<incremented-number>-feature-<short-name>.md`
 2. **Implement** — using `/executing-plans` skill
 3. **Review** — code review using `/requesting-code-review` skill, fix found issues
 4. **Manual Test** — use browser automation and validate it works in the browser
@@ -53,7 +55,7 @@ After [Startup Sequence](#startup-sequence), work through the picked feature:
 
 ## features.json
 
-Inviolable. You may only change the `passes` field to `true` — and only after:
+Inviolable. The categories are `functional` or `technical`. You may only change the `passes` field to `true` — and only after:
 
 1. The corresponding e2e test passes
 2. You have validated the feature in a real browser via browser automation

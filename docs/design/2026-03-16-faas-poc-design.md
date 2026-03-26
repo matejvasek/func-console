@@ -452,16 +452,11 @@ Fetch and push failures surface via `addError()`. View remains visible with last
 
 ---
 
-## WASM Feasibility Summary
+## WASM — Decided
 
-| Component | WASM-friendly? | Notes |
-|-----------|---------------|-------|
-| Workflow YAML generation | ✅ Yes | stdlib + yaml.v3 only, ~210 lines |
-| Code templates | ✅ Trivial | Static files, embeddable |
-| func.yaml generation | ⚠️ Moderate | Needs refactor to remove OS/viper deps |
-| Full client.Init | ⚠️ Moderate | Filesystem writes need abstraction |
+TinyGo compilation of func CLI packages confirmed viable by spike. Output ~500kB, shippable with the browser plugin. WASM module will be called from the Create flow to generate function artifacts (func.yaml, handler code, etc.).
 
-**Plan:** Refactor func CLI (`cmd/ci/*` → `pkg/ci/github/*`, remove viper), then spike a WASM compilation test.
+Integration is part of the Create view implementation — tracked in `docs/features.json`.
 
 ---
 
@@ -471,12 +466,10 @@ Fetch and push failures surface via `addError()`. View remains visible with last
 - [x] Design error handling — ErrorProvider + addError pattern
 - [x] Clarify editor routing — by function name, RepoInfo passed via navigation state
 - [x] Create AGENTS.md and CLAUDE.md — done during harness setup
-- [ ] Define testing strategy — TDD, unit, e2e, API mocking
-- [ ] Populate features.json with PoC feature list
-- [ ] Create project setup using the dynamic plugin template
-- [ ] Create and setup sandbox environment for Roo/Claude to work autonomously on selected features
-- [ ] Spike: WASM compilation of func CLI Go packages
-- [ ] Begin implementation
+- [x] Define testing strategy — see `docs/TESTING.md`
+- [x] Populate features.json with initial PoC feature list
+- [x] Create project setup — tracked in `docs/features.json`
+- [x] Spike: WASM compilation — done (TinyGo, ~500kB, viable for browser-side function generation)
 
 ---
 
