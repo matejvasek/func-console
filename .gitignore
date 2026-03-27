@@ -9,6 +9,12 @@
 
 # JS
 node_modules
+**/node_modules
+**/dist
+**/.DS_Store
+.devcontainer/dev.env
+integration-tests/videos
+integration-tests/screenshots
 
 # AI
 AGENTS.override.md
@@ -28,3 +34,11 @@ AGENTS.override.md
 # Local development configuration
 .dev
 
+# Yarn v4 (Berry)
+.yarn/*
+install-state.gz
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions

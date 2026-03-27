@@ -20,6 +20,7 @@ See `docs/design/` for full design specs.
 | `docs/TESTING.md` | Testing strategy, tools, conventions, mock patterns |
 | `docs/features.json` | Inviolable feature list — ground truth |
 | `docs/claude-progress.txt` | Session handoff log |
+| `docs/references/ocp-plugin-guide.md` | OCP dynamic plugin mechanics, i18n, extension points |
 | `docs/agent-struggles.json` | Struggle log — see `docs/references/agent-struggles-readme.md` |
 
 ## Startup Sequence

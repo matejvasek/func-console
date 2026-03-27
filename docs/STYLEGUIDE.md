@@ -17,3 +17,12 @@
 - **No `any` type**: Use proper TypeScript types.
 - **No `console.log`**: Use structured approach if logging needed.
 - **Naming**: `use*` for hooks, `*Service` for services, PascalCase for components/types.
+
+## OCP Plugin Styling Constraints
+
+The `.stylelintrc.yaml` enforces strict rules to prevent breaking the OpenShift Console:
+
+- **No hex colors** — use PatternFly CSS variables (e.g., `var(--pf-v6-global-palette--blue-500)`). Hex colors break dark mode.
+- **No naked element selectors** (like `table`, `div`) — prevents overwriting console styles.
+- **No `.pf-` or `.co-` prefixed classes** — these are reserved for PatternFly and console.
+- **Prefix all custom classes** with the plugin name (e.g., `func-console__my-component`).
