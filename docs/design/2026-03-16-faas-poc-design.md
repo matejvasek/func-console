@@ -478,6 +478,7 @@ Integration is part of the Create view implementation — tracked in `docs/featu
 | Resource | Link |
 |----------|------|
 | OCPSTRAT-2460 | <https://redhat.atlassian.net/browse/OCPSTRAT-2460> |
+| SRVOCF-810 | <https://redhat.atlassian.net/browse/SRVOCF-810> |
 | Plugin Template | <https://github.com/openshift/console-plugin-template> |
 | CronTab Plugin | <https://github.com/openshift/console-crontab-plugin> |
 | Dynamic Plugin SDK | <https://github.com/openshift/console/blob/main/frontend/packages/console-dynamic-plugin-sdk/README.md> |

@@ -4,7 +4,7 @@ This is the project map. Read this first, every session.
 
 ## Project
 
-FaaS PoC UI for OpenShift Console — React + TypeScript + PatternFly 6 + OCP Dynamic Plugin SDK.
+FaaS PoC UI for OpenShift Console — React + TypeScript + Webpack + PatternFly 6 + OCP Dynamic Plugin SDK.
 See `docs/design/` for full design specs.
 
 ## Knowledge Base

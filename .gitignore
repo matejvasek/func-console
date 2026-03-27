@@ -1,37 +1,21 @@
-
 # Project
-/func
-/func_*
-/cmd/func.yaml
 /coverage.out
 /coverage.txt
 /coverage-e2e.txt
 /.coverage
-/bin
 /target
-/hack/bin
 /.artifacts
 /test-full.log
 
-# Go
-/templates/go/cloudevents/go.sum
-
 # JS
 node_modules
-/templates/typescript/cloudevents/build
-/templates/typescript/http/build
-
-# Python
-__pycache__
-/templates/python/cloudevents/.venv
-/templates/python/http/.venv
 
 # AI
 AGENTS.override.md
 .claude/*.local.*
+.claude/settings*.json
 .claude/pr/*
 .mcp*
-
 
 # Editors
 *.code-workspace
@@ -41,4 +25,6 @@ AGENTS.override.md
 # Operating system temporary files
 .DS_Store
 
+# Local development configuration
+.dev
 
