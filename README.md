@@ -1,66 +1,16 @@
-# OpenShift console plugin template
+# Serverless Functions Console
 
-This project is a minimal template for writing a new OpenShift Console dynamic
-plugin.
+A Functions-as-a-Service PoC UI for the OpenShift Web Console. Developers create, edit, and deploy serverless functions without CLI knowledge.
 
-[Openshift console plugins](https://github.com/openshift/console/tree/main/frontend/packages/console-dynamic-plugin-sdk)
-allow you to extend the [OpenShift web console](https://github.com/openshift/console)
-at runtime, adding custom pages and other extensions. They are based on
-[webpack module federation](https://webpack.js.org/concepts/module-federation/).
-Plugins are registered with console using the `ConsolePlugin` custom resource
-and enabled in the console operator config by a cluster administrator.
+Built as an [OpenShift Console dynamic plugin](https://github.com/openshift/console/tree/main/frontend/packages/console-dynamic-plugin-sdk) using React, TypeScript, and PatternFly 6.
 
-The `main` branch of this repository contains an example plugin which works
-with the latest version. To see an example of a plugin which works with an older
-version, visit the appropriate `release-4.x` branch.
+## Prerequisites
 
-[Node.js](https://nodejs.org/en/) and [yarn](https://yarnpkg.com) are required
-to build and run the example. To run OpenShift console in a container, either
-[Docker](https://www.docker.com) or [podman 3.2.0+](https://podman.io) and
-[oc](https://console.redhat.com/openshift/downloads) are required.
-
-## Getting started
-
-> [!IMPORTANT]
-> To use this template, **DO NOT FORK THIS REPOSITORY**! Click **Use this template**, then select
-> [**Create a new repository**](https://github.com/new?template_name=console-plugin-template&template_owner=openshift)
-> to create a new repository.
->
-> ![A screenshot showing where the "Use this template" button is located](https://i.imgur.com/AhaySbU.png)
->
-> **Forking this repository** for purposes outside of contributing to this repository
-> **will cause issues**, as users cannot have more than one fork of a template repository
-> at a time. This could prevent future users from forking and contributing to your plugin.
->
-> Your fork would also behave like a template repository, which might be confusing for
-> contributiors, because it is not possible for repositories generated from a template
-> repository to contribute back to the template.
-
-After cloning your instantiated repository, you must update the plugin metadata, such as the
-plugin name in the `consolePlugin` declaration of [package.json](package.json).
-
-```json
-"consolePlugin": {
-  "name": "console-plugin-template",
-  "version": "0.0.1",
-  "displayName": "My Plugin",
-  "description": "Enjoy this shiny, new console plugin!",
-  "exposedModules": {
-    "ExamplePage": "./components/ExamplePage"
-  },
-  "dependencies": {
-    "@console/pluginAPI": "*"
-  }
-}
-```
-
-The template adds a single example page in the Home navigation section. The
-extension is declared in the [console-extensions.json](console-extensions.json)
-file and the React component is declared in
-[src/components/ExamplePage.tsx](src/components/ExamplePage.tsx).
-
-You can run the plugin using a local development environment or build an image
-to deploy it to a cluster.
+- [Node.js](https://nodejs.org/en/) (v18+)
+- [Yarn](https://yarnpkg.com) (v4)
+- [oc](https://console.redhat.com/openshift/downloads) CLI
+- [Docker](https://www.docker.com) or [podman 3.2.0+](https://podman.io)
+- An [OpenShift cluster](https://console.redhat.com/openshift/create)
 
 ## Development
 
@@ -106,7 +56,7 @@ cached containers will help you start developing in seconds.
 1. Create a `dev.env` file inside the `.devcontainer` folder with the correct values for your cluster:
 
 ```bash
-OC_PLUGIN_NAME=console-plugin-template
+OC_PLUGIN_NAME=console-functions-plugin
 OC_URL=https://api.example.com:6443
 OC_USER=kubeadmin
 OC_PASS=<password>
@@ -155,7 +105,7 @@ Additional parameters can be specified if desired. Consult the chart [values](ch
 
 ### Installing the Helm Chart
 
-Install the chart using the name of the plugin as the Helm release name into a new namespace or an existing namespace as specified by the `plugin_console-plugin-template` parameter and providing the location of the image within the `plugin.image` parameter by using the following command:
+Install the chart using the name of the plugin as the Helm release name into a new namespace or an existing namespace as specified by the `plugin.name` parameter and providing the location of the image within the `plugin.image` parameter by using the following command:
 
 ```shell
 helm upgrade -i  my-plugin charts/openshift-console-plugin -n my-namespace --create-namespace --set plugin.image=my-plugin-image-location
@@ -167,37 +117,36 @@ NOTE: When defining i18n namespace, adhere `plugin__<name-of-the-plugin>` format
 
 ## i18n
 
-The plugin template demonstrates how you can translate messages in with [react-i18next](https://react.i18next.com/). The i18n namespace must match
+The plugin uses [react-i18next](https://react.i18next.com/) for translations. The i18n namespace must match
 the name of the `ConsolePlugin` resource with the `plugin__` prefix to avoid
-naming conflicts. For example, the plugin template uses the
-`plugin__console-plugin-template` namespace. You can use the `useTranslation` hook
+naming conflicts. This plugin uses the
+`plugin__console-functions-plugin` namespace. You can use the `useTranslation` hook
 with this namespace as follows:
 
 ```tsx
 const Header: React.FC = () => {
-  const { t } = useTranslation('plugin__console-plugin-template');
+  const { t } = useTranslation('plugin__console-functions-plugin');
   return <h1>{t('Hello, World!')}</h1>;
 };
 ```
 
 For labels in `console-extensions.json`, you can use the format
-`%plugin__console-plugin-template~My Label%`. Console will replace the value with
-the message for the current language from the `plugin__console-plugin-template`
+`%plugin__console-functions-plugin~My Label%`. Console will replace the value with
+the message for the current language from the `plugin__console-functions-plugin`
 namespace. For example:
 
 ```json
   {
     "type": "console.navigation/section",
     "properties": {
-      "id": "admin-demo-section",
+      "id": "functions-section",
       "perspective": "admin",
-      "name": "%plugin__console-plugin-template~Plugin Template%"
+      "name": "%plugin__console-functions-plugin~Serverless Functions%"
     }
   }
 ```
 
-Running `yarn i18n` updates the JSON files in the `locales` folder of the
-plugin template when adding or changing messages.
+Running `yarn i18n` updates the JSON files in the `locales` folder when adding or changing messages.
 
 ## Linting
 

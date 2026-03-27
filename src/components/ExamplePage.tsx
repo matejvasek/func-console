@@ -14,9 +14,9 @@ export default function ExamplePage() {
       <PageSection>
         <Content component="p">
           <span className="console-plugin-template__nice">
-            <CheckCircleIcon /> {t('Success!')}
+            <CheckCircleIcon /> {t('Success! Awww yiss!')}
           </span>{' '}
-          {t('Your plugin is working.')}
+          {t('Your plugin is working. This is amazing.')}
         </Content>
         <Content component="p">
           <Trans t={t}>
