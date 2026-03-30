@@ -35,17 +35,23 @@ Every session, before doing any work:
 6. Run tests — verify app is healthy
 7. If broken → fix first. If clean → start [Feature Development Sequence](#feature-development-sequence).
 
+## Branching
+
+Create a feature branch per plan: `<NNN>-<type>-<short-name>` where `<NNN>` matches the plan number and `<type>` the
+conventional commit type as per our [Git Commit Guide](/docs/references/commit-message-agent-readme.md#conventional-commits). Example: `001-feat-function-list-empty-state`.
+
 ## Feature Development Sequence
 
 After [Startup Sequence](#startup-sequence), work through the picked feature:
 
 1. **Plan** — read `docs/ARCHITECTURE.md` + `docs/STYLEGUIDE.md` + `docs/TESTING.md`, then create implementation plan → `docs/plans/active/<incremented-number>-feature-<short-name>.md`
-2. **Implement** — using `/executing-plans` skill
-3. **Review** — code review using `/requesting-code-review` skill, fix found issues
-4. **Manual Test** — use browser automation and validate it works in the browser
-5. **Complete** — flip `passes` to `true` in `docs/features.json`, update `docs/claude-progress.txt`, commit
-6. Move plan to `docs/plans/completed/`
-7. Stop, wait for user command
+2. **Branch** — create feature branch per [Branching](#branching) convention
+3. **Implement** — using `/executing-plans` skill
+4. **Review** — code review using `/requesting-code-review` skill, fix found issues
+5. **Manual Test** — use browser automation and validate it works in the browser
+6. **Complete** — flip `passes` to `true` in `docs/features.json`, update `docs/claude-progress.txt`, commit
+7. Move plan to `docs/plans/completed/`
+8. Stop, wait for user command
 
 ## Session Rules
 

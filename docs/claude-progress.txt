@@ -2,6 +2,18 @@
 # Newest entries first. Agents: append your entry at the top after the header.
 
 ---
+## 2026-03-27 | Session: OCP console plugin scaffolding (user-driven)
+Worked on: User bootstrapped the OCP console plugin project
+Completed:
+- Merged OpenShift console plugin template as project foundation (6f10934)
+- Customized .gitignore, removed template AGENTS file, expanded style guide
+- Added OCP plugin reference doc and Claude commands (init-session, scrutinise)
+- Renamed plugin from "console-plugin-template" to "console-functions-plugin" (c9554fe)
+- Updated package.json, README, i18n namespace, and start-console.sh
+Left off: Second feature implementation
+Blockers: None
+
+---
 ## 2026-03-26 | Session: Docs restructure and feature list
 Worked on: Split docs into dedicated files, populated features.json, updated design doc, added slash commands
 Completed:

@@ -8,7 +8,7 @@
       "Dev server starts without errors",
       "Functions nav item visible in sidebar"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "technical",
