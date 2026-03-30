@@ -12,16 +12,14 @@
   },
   {
     "category": "technical",
-    "description": "Claude Code sandbox: isolated VM environment for autonomous agent development",
+    "description": "Dev environment: init.sh starts and stops plugin and console, docs restructured into WORKFLOW.md",
     "steps": [
-      "Vagrant VM with Fedora (matching host OS) provisioned",
-      "Project directory mounted into VM",
-      "Full write permissions enabled for agent",
-      "Git worktree creation works inside VM",
-      "Agent can run full startup sequence autonomously in VM",
-      "VM isolation ensures no leakage to host workstation"
+      "init.sh starts webpack dev server and OCP console container",
+      "init.sh waits for ports to be ready before exiting",
+      "init.sh --stop cleanly stops both processes",
+      "AGENTS.md slimmed to project overview, workflow extracted to docs/WORKFLOW.md"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "functional",
@@ -30,6 +28,17 @@
       "Navigate to /functions route",
       "Empty state component renders with Create function button",
       "Create function button links to /functions/create"
+    ],
+    "passes": true
+  },
+  {
+    "category": "functional",
+    "description": "Function List Page renders a table with function entries",
+    "steps": [
+      "Navigate to /functions route",
+      "Table renders with columns: name, runtime, status",
+      "Each row displays function data from mock data",
+      "Function name is a clickable link"
     ],
     "passes": false
   },
@@ -41,6 +50,19 @@
       "Form renders with name, runtime, registry, namespace, repo name fields",
       "Runtime field offers node, python, go options",
       "Create and Cancel buttons are visible"
+    ],
+    "passes": false
+  },
+  {
+    "category": "technical",
+    "description": "Claude Code sandbox: isolated VM environment for autonomous agent development",
+    "steps": [
+      "Vagrant VM with Fedora (matching host OS) provisioned",
+      "Project directory mounted into VM",
+      "Full write permissions enabled for agent",
+      "Git worktree creation works inside VM",
+      "Agent can run full startup sequence autonomously in VM",
+      "VM isolation ensures no leakage to host workstation"
     ],
     "passes": false
   }

@@ -2,6 +2,24 @@
 # Newest entries first. Agents: append your entry at the top after the header.
 
 ---
+## 2026-03-30 | Session: Empty state feature and docs restructure
+Worked on: Implemented function list empty state, restructured docs, added init.sh
+Completed:
+- FunctionsEmptyState component with PatternFly 6 (TDD)
+- FunctionsListPage view rendering empty state (TDD)
+- Wired /functions route and dev perspective nav item
+- Set up Jest + React Testing Library (v12 for React 17 compat)
+- Fixed route matching (removed exact:true) and i18n namespace
+- Added PR template and branching convention
+- Extracted workflow, session rules, branching, PRs into docs/WORKFLOW.md
+- Moved features.json and claude-progress.txt formats into docs/references/
+- Slimmed AGENTS.md to project overview + knowledge base
+- Created init.sh with start/stop and port readiness checks
+- Updated init-session command to cover startup steps 1-6
+Left off: List view with data entries
+Blockers: None
+
+---
 ## 2026-03-27 | Session: OCP console plugin scaffolding (user-driven)
 Worked on: User bootstrapped the OCP console plugin project
 Completed:
