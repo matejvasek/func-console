@@ -50,8 +50,9 @@ After [Startup Sequence](#startup-sequence), work through the picked feature:
 4. **Review** — code review using `/requesting-code-review` skill, fix found issues
 5. **Manual Test** — use browser automation and validate it works in the browser
 6. **Complete** — flip `passes` to `true` in `docs/features.json`, update `docs/claude-progress.txt`, commit
-7. Move plan to `docs/plans/completed/`
-8. Stop, wait for user command
+7. **PR** — push branch, open PR via `gh pr create` using `.github/pull_request_template.md`
+8. Move plan to `docs/plans/completed/`
+9. Stop, wait for user command
 
 ## Session Rules
 
