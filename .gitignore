@@ -33,6 +33,7 @@ AGENTS.override.md
 
 # Local development configuration
 .dev
+.dev-logs
 
 # Yarn v4 (Berry)
 .yarn/*
@@ -42,3 +43,6 @@ install-state.gz
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+# MCP
+.playwright-mcp
