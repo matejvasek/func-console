@@ -2,6 +2,17 @@
 # Newest entries first. Agents: append your entry at the top after the header.
 
 ---
+## 2026-03-30 | Session: Replace nginx with Go backend
+Worked on: Replaced nginx reverse proxy with custom Go backend server
+Completed:
+- Go backend serving static files with embed.FS
+- Multi-stage Dockerfile (Node build → Go build → ubi9-micro runtime)
+- TLS support with automatic fallback to HTTP-only
+- Removed nginx ConfigMap from Helm chart
+Left off: Function list page with data entries
+Blockers: None
+
+---
 ## 2026-03-30 | Session: Empty state feature and docs restructure
 Worked on: Implemented function list empty state, restructured docs, added init.sh
 Completed:

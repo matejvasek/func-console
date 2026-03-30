@@ -43,6 +43,17 @@
     "passes": false
   },
   {
+    "category": "technical",
+    "description": "Go backend: custom Go server replaces nginx for static file serving",
+    "steps": [
+      "Go server embeds and serves webpack-built static files",
+      "Multi-stage Dockerfile: Node build, Go build, ubi9-micro runtime",
+      "TLS support with automatic fallback to HTTP-only",
+      "Nginx ConfigMap removed from Helm chart"
+    ],
+    "passes": true
+  },
+  {
     "category": "functional",
     "description": "Function Create Page renders form with all fields",
     "steps": [

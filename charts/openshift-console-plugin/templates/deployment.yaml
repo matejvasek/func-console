@@ -26,6 +26,8 @@ spec:
           ports:
             - containerPort: {{ .Values.plugin.port }}
               protocol: TCP
+          args:
+            - "--https-port={{ .Values.plugin.port }}"
           imagePullPolicy: {{ .Values.plugin.imagePullPolicy }}
           {{- if and (.Values.plugin.securityContext.enabled) (.Values.plugin.containerSecurityContext) }}
           securityContext: {{ tpl (toYaml (omit .Values.plugin.containerSecurityContext "enabled")) $ | nindent 12 }}
@@ -36,18 +38,10 @@ spec:
             - name: {{ template "openshift-console-plugin.certificateSecret" . }}
               readOnly: true
               mountPath: /var/cert
-            - name: nginx-conf
-              readOnly: true
-              mountPath: /etc/nginx/nginx.conf
-              subPath: nginx.conf
       volumes:
         - name: {{ template "openshift-console-plugin.certificateSecret" . }}
           secret:
             secretName: {{ template "openshift-console-plugin.certificateSecret" . }}
-            defaultMode: 420
-        - name: nginx-conf
-          configMap:
-            name: {{ template "openshift-console-plugin.name" . }}
             defaultMode: 420
       restartPolicy: Always
       dnsPolicy: ClusterFirst
