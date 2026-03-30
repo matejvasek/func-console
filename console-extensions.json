@@ -1,20 +1,28 @@
 [
   {
-    "type": "console.page/route",
+    "type": "console.navigation/section",
     "properties": {
-      "exact": true,
-      "path": "/example",
-      "component": { "$codeRef": "ExamplePage" }
+      "id": "functions-section",
+      "name": "%plugin__console-functions-plugin~Functions%",
+      "perspective": "dev"
     }
   },
   {
     "type": "console.navigation/href",
     "properties": {
-      "id": "example",
-      "name": "%plugin__console-plugin-template~Plugin example%",
-      "href": "/example",
-      "perspective": "admin",
-      "section": "home"
+      "id": "functions-list",
+      "name": "%plugin__console-functions-plugin~Functions%",
+      "href": "/functions",
+      "section": "functions-section",
+      "perspective": "dev"
+    }
+  },
+  {
+    "type": "console.page/route",
+    "properties": {
+      "path": "/functions",
+      "component": { "$codeRef": "FunctionsListPage" },
+      "exact": true
     }
   }
 ]
