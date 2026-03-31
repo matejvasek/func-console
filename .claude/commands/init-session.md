@@ -25,4 +25,4 @@ Execute the startup sequence from `docs/WORKFLOW.md`. AGENTS.md is always in con
 
 6. **Run tests** — run `yarn test` and verify app is healthy.
 
-7. **Wait** — tell the user you're oriented, report the picked feature, and ask what they'd like to work on. Do NOT start any work autonomously.
+7. **Wait** — tell the user you're oriented, report the picked feature and which step of the Feature Development Sequence you'd start at. When the user says to proceed, follow the Feature Development Sequence in `docs/WORKFLOW.md` step by step. Do NOT start any work autonomously.

@@ -20,25 +20,42 @@ Automate end-of-session cleanup: stage, log progress, commit.
    - Never stage files that likely contain secrets (.env, credentials, etc.)
    - Skip if everything is already staged
 
-3. **Update progress log** — read `docs/claude-progress.txt`, then prepend a new entry at the top (after the header line) following the format documented in `AGENTS.md` under `claude-progress.txt`.
+3. **Update progress log** — read `docs/claude-progress.txt`, then prepend a new entry at the top (after the header line) following the format in `docs/references/claude-progress-readme.md`.
    - Analyze the staged diff to determine what was done
    - Use today's actual date
    - Be concise but complete
    - Stage the updated file: `git add docs/claude-progress.txt`
 
-4. **Draft and commit** — follow all commit message rules from `.claude/commands/commit-user.md`. Use a HEREDOC and append a Co-Authored-By trailer:
+4. **Migrate blockers** — if the progress entry you just wrote has a `Blockers:` line that is NOT `None`:
+   - Read `docs/agent-struggles.json`
+   - For each blocker, append an entry:
+
+     ```json
+     {
+       "date": "<today>",
+       "description": "<blocker text from progress entry>",
+       "cause": "<your best short assessment>",
+       "suggestion": "<what would fix or prevent this>",
+       "resolved": false
+     }
+     ```
+
+   - Stage: `git add docs/agent-struggles.json`
+
+5. **Draft and commit** — follow all rules from `docs/references/commit-message-guide.md`. Determine authorship mode (tandem vs autonomous) from the guide. Use a HEREDOC:
+
    ```bash
    git commit -m "$(cat <<'EOF'
    <type>: <subject>
 
    <body>
 
-   Co-Authored-By: Claude <noreply@anthropic.com>
+   <authorship trailer>
    EOF
    )"
    ```
 
-5. **Verify** — run `git status` and `git log --oneline -1` to confirm success.
+6. **Verify** — run `git status` and `git log --oneline -1` to confirm success.
 
 ## Rules
 

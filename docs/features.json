@@ -36,9 +36,11 @@
     "description": "Function List Page renders a table with function entries",
     "steps": [
       "Navigate to /functions route",
-      "Table renders with columns: name, runtime, status",
-      "Each row displays function data from mock data",
-      "Function name is a clickable link"
+      "Table renders with columns: name, runtime, status, url, replicas, actions",
+      "Each row displays function data from hardcoded real API responses",
+      "URL column shows shortened clickable link",
+      "Clicking function row or edit action button redirects to /functions/edit/:name",
+      "Actions column has edit and delete icon buttons"
     ],
     "passes": false
   },

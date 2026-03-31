@@ -2,7 +2,14 @@
 
 ## Approach
 
-Red/green/refactor TDD. Write tests first, implement to pass, then refactor to improve code if applicable.
+Red/green/refactor TDD — **one test at a time**:
+
+1. Write one test case (red)
+2. Write the minimum implementation to make it pass (green)
+3. Refactor if needed
+4. Move to the next test case
+
+Do NOT write all test cases first and then implement everything at once.
 
 ## Test Layers
 

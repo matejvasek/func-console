@@ -290,6 +290,8 @@ interface ClusterService {
 - `function.knative.dev/name: <name>` — function name
 - `function.knative.dev/runtime: <runtime>` — runtime (node, python, go)
 
+**PoC note:** Cluster does not have Knative or KEDA installed. Functions are deployed with the `raw` deployer (plain K8s Deployment + Service). Labels are set identically by func CLI regardless of deployer type. URL is internal service DNS: `http://<name>.<namespace>.svc`.
+
 #### Error Handling
 
 Hook errors reported internally via `useEffect` → `addError()` with ref dedup. `deleteFunction` rejection handled by caller via try/catch → `addError()`.
@@ -326,6 +328,35 @@ const svc = useFunctionService();
 ```
 
 Swapping implementations = change what the hook returns. Zero component changes.
+
+### View-Level Merging Hook
+
+The Functions List Page needs data from **both** services. A dedicated merging hook (`useFunctionsList`) composes the two service hooks and produces a unified list:
+
+```tsx
+// useFunctionsList: merges GitHub repos (source of truth) with cluster status
+export function useFunctionsList(): { functions: FunctionListItem[]; loaded: boolean } {
+  const { repos, loaded: reposLoaded } = useSourceControl();
+  const { functions: deployments, loaded: deploymentsLoaded } = useClusterService();
+
+  const functions = mergeFunctionData(repos, deployments);
+  return { functions, loaded: reposLoaded && deploymentsLoaded };
+}
+```
+
+```typescript
+// FunctionListItem: merged view of repo + deployment
+interface FunctionListItem {
+  name: string;
+  namespace: string;
+  runtime: string;
+  status: DeployedFunction['status'] | 'NotDeployed';
+  url?: string;
+  replicas: number;
+}
+```
+
+Merge logic: iterate repos (source of truth), find matching deployment by name. Deployed functions get cluster status; undeployed functions get `status: 'NotDeployed'`. The merge function (`mergeFunctionData`) is pure and tested separately.
 
 ---
 
