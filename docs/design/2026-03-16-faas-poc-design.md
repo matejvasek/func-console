@@ -167,7 +167,14 @@ func-console/
 ### Types
 
 ```typescript
-type GeneratedFiles = Map<string, string>;  // filepath → content
+interface FileEntry {
+  path: string;
+  mode: '100644' | '100755' | '120000';
+  content: string;
+  type: 'blob';
+}
+
+type GeneratedFiles = Map<string, FileEntry>;  // filepath → content
 ```
 
 ### FunctionService
@@ -176,20 +183,15 @@ Generates function artifacts from form inputs. Pure data transformation, no I/O.
 
 ```typescript
 interface FunctionConfig {
-  name: string;                          // "my-function"
-  runtime: 'node' | 'python' | 'go';
-  registry: string;                      // "quay.io/sjakusch"
-  namespace: string;                     // K8s namespace to deploy into
-  repoName: string;                      // GitHub repo name
-}
-
-interface WorkflowConfig {
-  branch: string;                        // default: "main"
+  name: string;                          // Name of the function
+  runtime: 'node' | 'python' | 'go';     // Runtime/language of the function.
+  registry: string;                      // Registry where the function image will be pushed
+  namespace: string;                     // K8s namespace where the function will be deployed
+  branch: string;                        // Git branch where the function will be pushed (this is required for GH WF generation)
 }
 
 interface FunctionService {
-  generateFunction(config: FunctionConfig): GeneratedFiles;
-  generateWorkflow(config: FunctionConfig, workflow: WorkflowConfig): GeneratedFiles;
+  generateFunction(config: FunctionConfig): Promise<FileEntry[]>;
 }
 ```
 

@@ -2,6 +2,25 @@
 # Newest entries first. Agents: append your entry at the top after the header.
 
 ---
+## 2026-04-02 | Session: Function Create Page
+Worked on: Full-stack Function Create Page feature (plan 003)
+Completed:
+- Go backend `POST /api/function/create` endpoint using `knative.dev/func` + CI workflow generation via `knative.dev/func/cmd/ci`
+- Input validation: name (DNS-label regex), runtime (whitelist), branch (git-ref regex), namespace (k8s regex), 1 MB body limit
+- FunctionService interface + BackendFunctionService using `consoleFetchJSON` through OCP console proxy
+- GitHubService interface + OctokitGitHubService creating single initial commit (no parents, no base_tree)
+- CreateFunctionForm PF6 component with GitHub settings + Function settings sections
+- FunctionCreatePage view orchestrating generate → push → navigate
+- Dev environment: `start_backend`/`stop_backend` in init.sh, `BRIDGE_PLUGIN_PROXY` in start-console.sh
+- In-cluster proxy in consoleplugin.yaml
+- 17 tests across 6 suites, all passing
+- Security review: fixed path traversal, added input validation, body size limit
+- Code review: fixed singleton hooks, runtime typing, form onSubmit, exact route, json.Encode error handling
+- Design doc updated: FileEntry mirrors Octokit git tree entry structure
+Left off: PR
+Blockers: None
+
+---
 ## 2026-03-30 | Session: Replace nginx with Go backend
 Worked on: Replaced nginx reverse proxy with custom Go backend server
 Completed:

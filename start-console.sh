@@ -11,6 +11,7 @@ PLUGIN_NAME="console-functions-plugin"
 
 echo "Starting local OpenShift console..."
 
+set -a
 BRIDGE_USER_AUTH="disabled"
 BRIDGE_K8S_MODE="off-cluster"
 BRIDGE_K8S_AUTH="bearer-token"
@@ -40,15 +41,25 @@ echo "Console Platform: $CONSOLE_IMAGE_PLATFORM"
 
 # Prefer podman if installed. Otherwise, fall back to docker.
 if [ -x "$(command -v podman)" ]; then
+    CONTAINER_CMD="podman"
     if [ "$(uname -s)" = "Linux" ]; then
         # Use host networking on Linux since host.containers.internal is unreachable in some environments.
-        BRIDGE_PLUGINS="${PLUGIN_NAME}=http://localhost:9001"
-        podman run --pull always --platform $CONSOLE_IMAGE_PLATFORM --rm --network=host --env-file <(set | grep BRIDGE) $CONSOLE_IMAGE
+        PLUGIN_HOST="localhost"
+        CONTAINER_NETWORK_OPTS="--network=host"
     else
-        BRIDGE_PLUGINS="${PLUGIN_NAME}=http://host.containers.internal:9001"
-        podman run --pull always --platform $CONSOLE_IMAGE_PLATFORM --rm -p "$CONSOLE_PORT":9000 --env-file <(set | grep BRIDGE) $CONSOLE_IMAGE
+        PLUGIN_HOST="host.containers.internal"
+        CONTAINER_NETWORK_OPTS="-p ${CONSOLE_PORT}:9000"
     fi
 else
-    BRIDGE_PLUGINS="${PLUGIN_NAME}=http://host.docker.internal:9001"
-    docker run --pull always --platform $CONSOLE_IMAGE_PLATFORM --rm -p "$CONSOLE_PORT":9000 --env-file <(set | grep BRIDGE) $CONSOLE_IMAGE
+    CONTAINER_CMD="docker"
+    PLUGIN_HOST="host.docker.internal"
+    CONTAINER_NETWORK_OPTS="-p ${CONSOLE_PORT}:9000"
 fi
+
+BRIDGE_PLUGINS="${PLUGIN_NAME}=http://${PLUGIN_HOST}:9001"
+BRIDGE_PLUGIN_PROXY='{"services":[{"consoleAPIPath":"/api/proxy/plugin/'"${PLUGIN_NAME}"'/backend/","endpoint":"http://'"${PLUGIN_HOST}"':8080","authorize":false}]}'
+
+echo "BRIDGE_PLUGINS=$BRIDGE_PLUGINS"
+echo "BRIDGE_PLUGIN_PROXY=$BRIDGE_PLUGIN_PROXY"
+
+$CONTAINER_CMD run --pull always --platform $CONSOLE_IMAGE_PLATFORM --rm $CONTAINER_NETWORK_OPTS --env-file <(env | grep ^BRIDGE) $CONSOLE_IMAGE

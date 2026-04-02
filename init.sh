@@ -4,6 +4,7 @@ set -euo pipefail
 
 LOG_DIR=".dev-logs"
 CONSOLE_IMAGE="${CONSOLE_IMAGE:="quay.io/openshift/origin-console:latest"}"
+BACKEND_PORT=8080
 PLUGIN_PORT=9001
 CONSOLE_PORT=9000
 TIMEOUT=60
@@ -24,6 +25,19 @@ wait_for_port() {
   done
 }
 
+start_backend() {
+  echo "Building Go backend..."
+  (cd backend && go build -buildvcs=false -o ../bin/backend .)
+  echo "Starting Go backend..."
+  ./bin/backend --http-port "$BACKEND_PORT" >"$LOG_DIR/backend.log" 2>&1 &
+}
+
+stop_backend() {
+  if pgrep -f "bin/backend" >/dev/null 2>&1; then
+    pkill -f "bin/backend" && echo "Stopped Go backend."
+  fi
+}
+
 stop_plugin() {
   if pgrep -f "webpack serve" >/dev/null 2>&1; then
     pkill -f "webpack serve" && echo "Stopped plugin dev server."
@@ -39,6 +53,7 @@ stop_console() {
 }
 
 stop_dev() {
+  stop_backend
   stop_plugin
   stop_console
 }
@@ -75,17 +90,20 @@ start_console() {
 print_status() {
   echo ""
   echo "Dev environment started:"
-  echo "  Console: http://localhost:9000"
+  echo "  Backend: http://localhost:$BACKEND_PORT"
+  echo "  Console: http://localhost:$CONSOLE_PORT"
   echo "  Logs:    $LOG_DIR/"
   echo ""
   echo "To stop: ./init.sh --stop"
 }
 
 main() {
-  mkdir -p "$LOG_DIR"
+  mkdir -p "$LOG_DIR" bin
   check_prerequisites
   install_dependencies
   stop_dev
+  start_backend
+  wait_for_port "$BACKEND_PORT" "Go backend"
   start_plugin
   wait_for_port "$PLUGIN_PORT" "Plugin dev server"
   start_console

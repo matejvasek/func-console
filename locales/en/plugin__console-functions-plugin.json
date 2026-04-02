@@ -1,6 +1,19 @@
 {
-  "Functions": "Functions",
-  "No functions found": "No functions found",
+  "Branch": "Branch",
+  "Cancel": "Cancel",
+  "Create": "Create",
   "Create a serverless function to get started.": "Create a serverless function to get started.",
-  "Create function": "Create function"
+  "Create function": "Create function",
+  "Error creating function": "Error creating function",
+  "Function Settings": "Function Settings",
+  "Functions": "Functions",
+  "GitHub Settings": "GitHub Settings",
+  "Language": "Language",
+  "Name": "Name",
+  "Namespace": "Namespace",
+  "No functions found": "No functions found",
+  "Owner": "Owner",
+  "Personal Access Token": "Personal Access Token",
+  "Registry": "Registry",
+  "Repository": "Repository"
 }

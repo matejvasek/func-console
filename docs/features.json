@@ -62,7 +62,7 @@
       "Runtime field offers node, python, go options",
       "Create and Cancel buttons are visible"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "technical",
