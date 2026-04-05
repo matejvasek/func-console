@@ -2,5 +2,17 @@
   "Functions": "Functions",
   "No functions found": "No functions found",
   "Create a serverless function to get started.": "Create a serverless function to get started.",
-  "Create function": "Create function"
+  "Create new function": "Create new function",
+  "Serverless functions in your repository and deployed to your cluster. Manage lifecycle, monitor status, and scale on demand.": "Serverless functions in your repository and deployed to your cluster. Manage lifecycle, monitor status, and scale on demand.",
+  "Loading": "Loading",
+  "Name": "Name",
+  "Namespace": "Namespace",
+  "Runtime": "Runtime",
+  "Status": "Status",
+  "URL": "URL",
+  "Replicas": "Replicas",
+  "Actions": "Actions",
+  "Edit": "Edit",
+  "Delete": "Delete",
+  "Undeploy": "Undeploy"
 }

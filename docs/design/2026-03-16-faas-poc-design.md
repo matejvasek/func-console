@@ -356,7 +356,7 @@ interface FunctionListItem {
 }
 ```
 
-Merge logic: iterate repos (source of truth), find matching deployment by name. Deployed functions get cluster status; undeployed functions get `status: 'NotDeployed'`. The merge function (`mergeFunctionData`) is pure and tested separately.
+Merge logic: iterate repos (source of truth), find matching deployment by name. Deployed functions get cluster status; undeployed functions get `status: 'NotDeployed'`. The merge function (`mergeFunctionData`) is pure, an implementation detail and tested via unit tests for `useFunctionsList` hook or the calling view.
 
 ---
 

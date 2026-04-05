@@ -23,5 +23,19 @@
       "path": "/functions",
       "component": { "$codeRef": "FunctionsListPage" }
     }
+  },
+  {
+    "type": "console.page/route",
+    "properties": {
+      "path": "/functions/create",
+      "component": { "$codeRef": "FunctionCreatePage" }
+    }
+  },
+  {
+    "type": "console.page/route",
+    "properties": {
+      "path": "/functions/edit/:name",
+      "component": { "$codeRef": "FunctionEditPage" }
+    }
   }
 ]

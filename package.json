@@ -90,11 +90,16 @@
     "displayName": "Serverless Functions",
     "description": "A Functions-as-a-Service PoC UI for the OpenShift Web Console. Developers create, edit, and deploy serverless functions without CLI knowledge.",
     "exposedModules": {
-      "FunctionsListPage": "./views/FunctionsListPage"
+      "FunctionsListPage": "./views/FunctionsListPage",
+      "FunctionCreatePage": "./views/FunctionCreatePage",
+      "FunctionEditPage": "./views/FunctionEditPage"
     },
     "dependencies": {
       "@console/pluginAPI": "^4.21.0"
     }
   },
-  "packageManager": "yarn@4.13.0"
+  "packageManager": "yarn@4.13.0",
+  "dependencies": {
+    "@octokit/rest": "^22.0.1"
+  }
 }

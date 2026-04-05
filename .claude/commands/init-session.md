@@ -10,7 +10,6 @@ Execute the startup sequence from `docs/WORKFLOW.md`. AGENTS.md is always in con
 ## Steps
 
 1. **Confirm working directory** — run `pwd`.
-
 2. **Orient** — read `docs/claude-progress.txt` (only the last 3 days of entries matter) and run:
 
    ```bash
@@ -18,11 +17,7 @@ Execute the startup sequence from `docs/WORKFLOW.md`. AGENTS.md is always in con
    ```
 
 3. **Check struggles** — read `docs/agent-struggles.json`. If unresolved entries exist, present to user.
-
 4. **Pick feature** — read `docs/features.json`, find first `"passes": false` entry.
-
 5. **Start dev env** — run `./init.sh`.
-
 6. **Run tests** — run `yarn test` and verify app is healthy.
-
 7. **Wait** — tell the user you're oriented, report the picked feature and which step of the Feature Development Sequence you'd start at. When the user says to proceed, follow the Feature Development Sequence in `docs/WORKFLOW.md` step by step. Do NOT start any work autonomously.
