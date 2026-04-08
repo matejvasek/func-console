@@ -22,4 +22,4 @@ See `docs/design/` for full design specs.
 | `docs/claude-progress.txt` | Session handoff log — see [`references/claude-progress-readme.md`](docs/references/claude-progress-readme.md) |
 | `docs/agent-struggles.json` | Struggle log — see [`references/agent-struggles-readme.md`](docs/references/agent-struggles-readme.md) |
 | `docs/references/ocp-plugin-guide.md` | OCP dynamic plugin mechanics, i18n, extension points |
-| `docs/references/commit-message-agent-readme.md` | Git commit conventions |
+| `docs/references/commit-message-guide.md` | Git commit conventions and authorship rules |

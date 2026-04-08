@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router-dom-v5-compat';
 import { FunctionsEmptyState } from './EmptyState';
 
 jest.mock('react-i18next', () => ({
@@ -18,9 +18,7 @@ describe('FunctionsEmptyState', () => {
       </MemoryRouter>,
     );
 
-    expect(
-      screen.getByRole('heading', { name: 'No functions found' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'No functions found' })).toBeInTheDocument();
   });
 
   it('renders a "Create function" link pointing to /functions/create', () => {

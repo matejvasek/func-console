@@ -16,7 +16,7 @@ Every session, before doing any work:
 
 After [Startup Sequence](#startup-sequence), work through the picked feature:
 
-1. **Plan** — read `docs/ARCHITECTURE.md` + `docs/STYLEGUIDE.md` + `docs/TESTING.md`, then create implementation plan → `docs/plans/active/<incremented-number>-feature-<short-name>.md`
+1. **Plan** — read `docs/ARCHITECTURE.md` + `docs/STYLEGUIDE.md` + `docs/TESTING.md`, then use `/brainstorming` to design the chosen feature from `docs/features.json`, then use `/writing-plans` to create implementation plan → `docs/plans/active/<NNN>-<type>-<short-name>.md`
 2. **Branch** — create feature branch per [Branching](#branching) convention
 3. **Implement** — using `/executing-plans` skill
 4. **Review** — code review using `/requesting-code-review` skill, fix found issues
@@ -28,7 +28,7 @@ After [Startup Sequence](#startup-sequence), work through the picked feature:
 
 ## Branching
 
-Create a feature branch per plan: `<NNN>-<type>-<short-name>` where `<NNN>` matches the plan number and `<type>` the conventional commit type as per our [Git Commit Guide](references/commit-message-agent-readme.md#conventional-commits). Example: `001-feat-function-list-empty-state`.
+Create a feature branch per plan: `<NNN>-<type>-<short-name>` where `<NNN>` matches the plan number and `<type>` the conventional commit type as per our [Git Commit Guide](references/commit-message-guide.md#conventional-commits). Example: `001-feat-function-list-empty-state`. If we're on a feature branch already do nothing.
 
 ## Pull Requests
 
@@ -36,14 +36,14 @@ Open PRs via `gh pr create` using the template at `.github/pull_request_template
 
 **Title format:** `<Type>: <Sentence ending with a period.>` — capitalize the type and the first word, end with a period. Example: `Feat: Add function list page with empty state.`
 
-Types are the same as [conventional commits](references/commit-message-agent-readme.md#conventional-commits) but capitalized.
+Types are the same as [conventional commits](references/commit-message-guide.md#conventional-commits) but capitalized.
 
 ## Session Rules
 
 - One feature at a time
 - Clean state at end (code suitable for merging to main)
 - Update [`docs/claude-progress.txt`](references/claude-progress-readme.md) before session ends
-- Commit work to git before ending — follow [`docs/references/commit-message-agent-readme.md`](references/commit-message-agent-readme.md) strictly
+- Commit work to git before ending — follow [`docs/references/commit-message-guide.md`](references/commit-message-guide.md) strictly
 
 ## Continuous Improvement
 

@@ -22,6 +22,7 @@ AGENTS.override.md
 .claude/settings*.json
 .claude/pr/*
 .mcp*
+.tmp
 
 # Editors
 *.code-workspace

@@ -20,3 +20,10 @@ export interface RepoInfo {
   repo: string;
   branch: string;
 }
+
+export interface SourceRepo {
+  owner: string;
+  name: string;
+  url: string;
+  defaultBranch: string;
+}

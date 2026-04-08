@@ -31,5 +31,12 @@
       "component": { "$codeRef": "FunctionCreatePage" },
       "exact": true
     }
+  },
+  {
+    "type": "console.page/route",
+    "properties": {
+      "path": "/functions/edit/:name",
+      "component": { "$codeRef": "FunctionEditPage" }
+    }
   }
 ]
