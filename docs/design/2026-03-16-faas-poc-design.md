@@ -20,7 +20,7 @@ flowchart TB
     subgraph UI [Browser - React + PatternFly 6]
         VIEWS[Views: List / Create / Editor]
         FS[useFunctionService hook]
-        SCS[useSourceControl hook]
+        SCS[useSourceControlService hook]
         CS[useClusterService hook]
     end
 
@@ -117,15 +117,15 @@ func-console/
 │
 ├── src/
 │   ├── services/                 # interfaces + implementations
-│   │   ├── types.ts              # FunctionConfig, GeneratedFiles, etc.
+│   │   ├── types.ts              # FunctionConfig, FileEntry, RepoInfo, etc.
 │   │   ├── function/
 │   │   │   ├── FunctionService.ts          # TypeScript interface
 │   │   │   ├── useFunctionService.ts       # hook returning singleton
-│   │   │   └── FunctionService.github.ts   # PoC implementation
+│   │   │   └── FunctionBackendService.ts    # backend proxy implementation
 │   │   ├── source-control/
 │   │   │   ├── SourceControlService.ts     # TypeScript interface
-│   │   │   ├── useSourceControl.ts         # hook returning singleton
-│   │   │   └── SourceControlService.github.ts
+│   │   │   ├── useSourceControlService.ts  # hook returning singleton
+│   │   │   └── GithubService.ts            # Octokit implementation (list, fetch, push)
 │   │   └── cluster/
 │   │       ├── ClusterService.ts           # TypeScript interface
 │   │       └── useClusterService.ts        # hook wrapping OCP SDK hooks
@@ -174,7 +174,6 @@ interface FileEntry {
   type: 'blob';
 }
 
-type GeneratedFiles = Map<string, FileEntry>;  // filepath → content
 ```
 
 ### FunctionService
@@ -195,8 +194,7 @@ interface FunctionService {
 }
 ```
 
-- `generateFunction` → func.yaml, handler code, package files, .gitignore, tests
-- `generateWorkflow` → .github/workflows/func-deploy.yaml
+- `generateFunction` → func.yaml, handler code, package files, .gitignore, tests, github workflow
 - Output consumed by TreeView+CodeEditor (display) and Octokit (push)
 
 #### Error Handling
@@ -224,8 +222,8 @@ interface SourceControlService {
   isAuthenticated(): boolean;
   createRepo(name: string): Promise<RepoInfo>;
   listFunctionRepos(): Promise<RepoInfo[]>;
-  push(repo: RepoInfo, files: GeneratedFiles, message: string): Promise<void>;
-  fetch(repo: RepoInfo): Promise<GeneratedFiles>;
+  push(repo: RepoInfo, files: FileEntry[], message: string): Promise<void>;
+  fetch(repo: RepoInfo): Promise<FileEntry[]>;
   createSecret(repo: RepoInfo, name: string, value: string): Promise<void>;
   createVariable(repo: RepoInfo, name: string, value: string): Promise<void>;
 }
@@ -338,7 +336,7 @@ The Functions List Page needs data from **both** services. A dedicated merging h
 ```tsx
 // useFunctionsList: merges GitHub repos (source of truth) with cluster status
 export function useFunctionsList(): { functions: FunctionListItem[]; loaded: boolean } {
-  const { repos, loaded: reposLoaded } = useSourceControl();
+  const { repos, loaded: reposLoaded } = useSourceControlService();
   const { functions: deployments, loaded: deploymentsLoaded } = useClusterService();
 
   const functions = mergeFunctionData(repos, deployments);
@@ -435,7 +433,7 @@ Form validation errors shown inline. Background errors (repo creation, push) sur
 
 ### Functions Edit Page
 
-PatternFly TreeView sidebar + SDK CodeEditor. Tree built from `GeneratedFiles` map keys split on `/`. Shows full repo contents.
+PatternFly TreeView sidebar + SDK CodeEditor. Tree built from `FileEntry[]` paths split on `/`. Shows full repo contents.
 
 **Actions:**
 
@@ -447,7 +445,7 @@ PatternFly TreeView sidebar + SDK CodeEditor. Tree built from `GeneratedFiles` m
 | Component | Purpose |
 |-----------|---------|
 | `CodeEditor` | Monaco-based code editor (lazy loaded) |
-| PatternFly TreeView | File tree sidebar built from `GeneratedFiles` map keys |
+| PatternFly TreeView | File tree sidebar built from `FileEntry[]` paths |
 | `ErrorBoundaryFallbackPage` | Catch unexpected errors |
 
 #### Error Handling

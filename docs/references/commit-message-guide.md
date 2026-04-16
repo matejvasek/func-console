@@ -20,6 +20,8 @@ Single source of truth for commit message rules. Referenced by slash commands an
 <Body - wrapped at 72 chars, explains what and why>
 ```
 
+No em dashes (`—`). Use commas, periods, or parentheses instead.
+
 ## Conventional Commits
 
 - Types: feat, fix, refactor, docs, test, chore, style, perf, ci, build

@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { useEffect, useState, useMemo } from 'react';
 import { FunctionsEmptyState } from '../components/EmptyState';
 import { FunctionStatus, FunctionTable, FunctionTableItem } from '../components/FunctionTable';
-import { useSourceControl } from '../services/source-control/useSourceControl';
+import { useSourceControlService } from '../services/source-control/useSourceControlService';
 import { useClusterService } from '../services/cluster/useClusterService';
 
 export default function FunctionsListPage() {
@@ -53,7 +53,7 @@ function useFunctionListPage(): {
   loaded: boolean;
   onEdit: (name: string) => void;
 } {
-  const sourceControl = useSourceControl();
+  const sourceControl = useSourceControlService();
   const { deployments, loaded: clusterLoaded } = useClusterService();
   const navigate = useNavigate();
 

@@ -2,6 +2,25 @@
 # Newest entries first. Agents: append your entry at the top after the header.
 
 ---
+## 2026-04-16 | Session: PR #5 review cleanup
+Worked on: Consolidate duplicate GitHub services, fix naming conventions, extract hooks per architecture guidelines
+Completed:
+- Merged src/services/github/ push logic into src/services/source-control/GithubService
+- Added push() method to SourceControlService interface
+- Deleted src/services/github/ directory entirely
+- Renamed BackendFunctionService → FunctionBackendService
+- Renamed useSourceControl → useSourceControlService
+- Extracted useCreateFunctionForm hook from CreateFunctionForm (single fields state object + setField helper)
+- Extracted useFunctionCreatePage hook from FunctionCreatePage (rendering-only component)
+- Removed duplicate @octokit/rest from devDependencies
+- Updated design doc with all renames and FileEntry[] signatures
+- Code review: added missing error alert test, fixed quote style, cleaned up GeneratedFiles refs
+- Added missing feature entries to features.json (PAT Avatar, namespace listing, PR #5 cleanup)
+- 10 suites, 41 tests, all passing
+Left off: Branch ready for PR. Manual browser test skipped (no browser in sandbox).
+Blockers: None
+
+---
 ## 2026-04-02 | Session: Function Create Page
 Worked on: Full-stack Function Create Page feature (plan 003)
 Completed:

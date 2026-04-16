@@ -18,6 +18,10 @@
 - **No `console.log`**: Use structured approach if logging needed.
 - **Naming**: `use*` for hooks, `*Service` for services, PascalCase for components/types.
 
+## Documentation
+
+- **No em dashes (`—`)**. Use commas, periods, or parentheses instead.
+
 ## OCP Plugin Styling Constraints
 
 The `.stylelintrc.yaml` enforces strict rules to prevent breaking the OpenShift Console:

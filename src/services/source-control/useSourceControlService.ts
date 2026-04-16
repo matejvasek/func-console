@@ -7,6 +7,6 @@ import { SourceControlService } from './SourceControlService';
 const pat = typeof __GITHUB_PAT__ !== 'undefined' ? __GITHUB_PAT__ : '';
 const instance = new GithubService(pat);
 
-export function useSourceControl(): SourceControlService {
+export function useSourceControlService(): SourceControlService {
   return instance;
 }

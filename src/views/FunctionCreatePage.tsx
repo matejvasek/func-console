@@ -5,48 +5,11 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom-v5-compat';
 import { CreateFunctionForm, CreateFunctionFormData } from '../components/CreateFunctionForm';
 import { useFunctionService } from '../services/function/useFunctionService';
-import { useGitHubService } from '../services/github/useGitHubService';
+import { useSourceControlService } from '../services/source-control/useSourceControlService';
 
 export default function FunctionCreatePage() {
   const { t } = useTranslation('plugin__console-functions-plugin');
-  const navigate = useNavigate();
-  const functionService = useFunctionService();
-  const gitHubService = useGitHubService();
-
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleSubmit = async (data: CreateFunctionFormData) => {
-    setIsSubmitting(true);
-    setError(null);
-
-    try {
-      const files = await functionService.generateFunction({
-        name: data.name,
-        runtime: data.runtime,
-        registry: data.registry,
-        namespace: data.namespace,
-        branch: data.branch,
-      });
-
-      await gitHubService.pushFiles(
-        { owner: data.owner, repo: data.repo, branch: data.branch },
-        data.pat,
-        files,
-        'Initialize Knative function project',
-      );
-
-      navigate('/functions');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleCancel = () => {
-    navigate('/functions');
-  };
+  const { isSubmitting, error, handleSubmit, handleCancel } = useFunctionCreatePage();
 
   return (
     <>
@@ -66,4 +29,46 @@ export default function FunctionCreatePage() {
       </PageSection>
     </>
   );
+}
+
+function useFunctionCreatePage() {
+  const navigate = useNavigate();
+  const functionService = useFunctionService();
+  const sourceControl = useSourceControlService();
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (data: CreateFunctionFormData) => {
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      const files = await functionService.generateFunction({
+        name: data.name,
+        runtime: data.runtime,
+        registry: data.registry,
+        namespace: data.namespace,
+        branch: data.branch,
+      });
+
+      await sourceControl.push(
+        { owner: data.owner, repo: data.repo, branch: data.branch },
+        files,
+        'Initialize Knative function project',
+      );
+
+      navigate('/functions');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCancel = () => {
+    navigate('/functions');
+  };
+
+  return { isSubmitting, error, handleSubmit, handleCancel };
 }

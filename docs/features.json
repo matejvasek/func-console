@@ -81,5 +81,49 @@
       "VM isolation ensures no leakage to host workstation"
     ],
     "passes": false
+  },
+  {
+    "category": "functional",
+    "description": "GitHub PAT Avatar: session-wide PAT entry via modal + avatar component showing authenticated GitHub user",
+    "steps": [
+      "PatModal opens automatically on first visit to Function List Page when no PAT is stored in session",
+      "PatModal is dismissable — user can close it without entering a PAT",
+      "PatModal validates the PAT against GitHub API and on success stores it in session and closes",
+      "SourceControlService interface extended with init(pat: string) and isInitialized(): boolean methods; GithubService implementation updated accordingly",
+      "UserAvatar component renders inside ListPageHeader at the top-right corner on every page (list, create, edit)",
+      "UserAvatar has two states: not initialized shows 'Connect to GitHub' with a key/lock icon (clickable, opens PatModal); initialized shows GitHub username with avatar icon",
+      "UserAvatar is clickable only on the Function List Page, clicking reopens PatModal to change the PAT and associated GitHub user",
+      "On Create and Edit pages, UserAvatar displays the GitHub user but is not clickable (PAT cannot be changed from those pages)",
+      "When PatModal is dismissed without a PAT, the Function List Page (both empty state and table view) shows a hint text directing the user to click 'Connect to GitHub' in the top-right corner to set a PAT",
+      "PAT change logic is encapsulated in a useUserAvatar custom hook following layered architecture (Hook imports Service, Component imports Hook)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "functional",
+    "description": "Function List Page shows deployed functions from all user-accessible namespaces without requiring a PAT",
+    "steps": [
+      "ClusterService refactored: remove ALL_NAMESPACES and useActiveNamespace logic, always watch across all user-accessible namespaces (functions in GitHub repos can target different namespaces via func.yaml, so single-namespace view is not useful; filtering deferred to a later feature)",
+      "ClusterService lists all namespaces/projects accessible to the logged-in user and watches Deployments with label function.knative.dev/name across all of them",
+      "Function List Page renders deployed functions even when no PAT has been entered (PatModal dismissed or not yet shown)",
+      "When PAT is later provided, repo data from SourceControlService is merged with already-visible deployed functions",
+      "Deployed functions without a matching repo still appear in the table with available cluster data (name, namespace, status, replicas, url)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "technical",
+    "description": "PR #5 review cleanup: consolidate duplicate GitHub services, fix naming conventions, extract hooks per architecture guidelines",
+    "steps": [
+      "Merge src/services/github/ into src/services/source-control/, combine OctokitGitHubService push logic into GithubService, remove src/services/github/ directory entirely",
+      "Rename GitHubService interface to SourceControlService and add push method to the existing SourceControlService interface (rename pushFiles to push per design doc)",
+      "Rename useGitHubService hook to useSourceControlService",
+      "Rename BackendFunctionService.ts to FunctionBackendService.ts",
+      "Remove duplicate @octokit/rest from devDependencies in package.json (keep only the entry under dependencies)",
+      "Extract useFunctionCreatePage hook from FunctionCreatePage — move service calls into useEffect (both FunctionService and SourceControlService call external APIs), keep the component rendering-only",
+      "Extract useCreateFunctionForm hook from CreateFunctionForm — consolidate individual useState calls into a single fields state object with a setField(key, value) helper, derive isValid from fields, remove handleSubmit (call onSubmit(fields) directly)",
+      "Update design doc (2026-03-16-faas-poc-design.md) to reflect all renames and new method signatures"
+    ],
+    "passes": true
   }
 ]

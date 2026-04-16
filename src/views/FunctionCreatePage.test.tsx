@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import FunctionCreatePage from './FunctionCreatePage';
 
 const mockGenerateFunction = jest.fn();
-const mockPushFiles = jest.fn();
+const mockPush = jest.fn();
 const mockNavigate = jest.fn();
 
 jest.mock('react-i18next', () => ({
@@ -20,8 +20,12 @@ jest.mock('../services/function/useFunctionService', () => ({
   useFunctionService: () => ({ generateFunction: mockGenerateFunction }),
 }));
 
-jest.mock('../services/github/useGitHubService', () => ({
-  useGitHubService: () => ({ pushFiles: mockPushFiles }),
+jest.mock('../services/source-control/useSourceControlService', () => ({
+  useSourceControlService: () => ({
+    push: mockPush,
+    listFunctionRepos: jest.fn(),
+    fetchFileContent: jest.fn(),
+  }),
 }));
 
 jest.mock('react-router-dom-v5-compat', () => ({
@@ -36,7 +40,6 @@ const fillForm = async (user: ReturnType<typeof userEvent.setup>) => {
   await user.type(screen.getByRole('textbox', { name: /Owner/ }), 'testuser');
   await user.type(screen.getByRole('textbox', { name: /Repository/ }), 'my-repo');
   await user.type(screen.getByRole('textbox', { name: /Branch/ }), 'main');
-  await user.type(screen.getByLabelText(/Personal Access Token/), 'ghp_token');
   await user.type(screen.getByRole('textbox', { name: /^Name$/ }), 'my-func');
   await user.type(screen.getByRole('textbox', { name: /Registry/ }), 'quay.io/test');
   await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'default');
@@ -54,11 +57,11 @@ describe('FunctionCreatePage', () => {
     expect(screen.getByRole('button', { name: /Create/ })).toBeInTheDocument();
   });
 
-  it('calls generateFunction then pushFiles on submit, and navigates on success', async () => {
+  it('calls generateFunction then push on submit, and navigates on success', async () => {
     const user = userEvent.setup();
     const files = [{ path: 'func.yaml', mode: '100644', content: 'name: f', type: 'blob' }];
     mockGenerateFunction.mockResolvedValue(files);
-    mockPushFiles.mockResolvedValue(undefined);
+    mockPush.mockResolvedValue(undefined);
 
     render(
       <MemoryRouter>
@@ -80,9 +83,8 @@ describe('FunctionCreatePage', () => {
     });
 
     await waitFor(() => {
-      expect(mockPushFiles).toHaveBeenCalledWith(
+      expect(mockPush).toHaveBeenCalledWith(
         { owner: 'testuser', repo: 'my-repo', branch: 'main' },
-        'ghp_token',
         files,
         'Initialize Knative function project',
       );

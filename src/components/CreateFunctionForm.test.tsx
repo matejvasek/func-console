@@ -27,7 +27,6 @@ describe('CreateFunctionForm', () => {
     expect(screen.getByRole('textbox', { name: /Owner/ })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: /Repository/ })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: /Branch/ })).toBeInTheDocument();
-    expect(screen.getByLabelText(/Personal Access Token/)).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: /^Name$/ })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: /Language/ })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: /Registry/ })).toBeInTheDocument();
@@ -80,7 +79,6 @@ describe('CreateFunctionForm', () => {
     await user.type(screen.getByRole('textbox', { name: /Owner/ }), 'testuser');
     await user.type(screen.getByRole('textbox', { name: /Repository/ }), 'my-repo');
     await user.type(screen.getByRole('textbox', { name: /Branch/ }), 'main');
-    await user.type(screen.getByLabelText(/Personal Access Token/), 'ghp_token');
     await user.type(screen.getByRole('textbox', { name: /^Name$/ }), 'my-func');
     await user.type(screen.getByRole('textbox', { name: /Registry/ }), 'quay.io/test');
     await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'default');
@@ -91,7 +89,6 @@ describe('CreateFunctionForm', () => {
       owner: 'testuser',
       repo: 'my-repo',
       branch: 'main',
-      pat: 'ghp_token',
       name: 'my-func',
       runtime: 'node',
       registry: 'quay.io/test',
