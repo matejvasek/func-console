@@ -45,7 +45,7 @@
       "Delete action uses SDK useDeleteModal with custom message and Undeploy button text",
       "Empty state renders when no functions exist, spinner while loading"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "technical",
@@ -71,16 +71,30 @@
   },
   {
     "category": "technical",
-    "description": "Claude Code sandbox: isolated VM environment for autonomous agent development",
+    "description": "PR #5 review cleanup: consolidate duplicate GitHub services, fix naming conventions, extract hooks per architecture guidelines",
     "steps": [
-      "Vagrant VM with Fedora (matching host OS) provisioned",
-      "Project directory mounted into VM",
-      "Full write permissions enabled for agent",
-      "Git worktree creation works inside VM",
-      "Agent can run full startup sequence autonomously in VM",
-      "VM isolation ensures no leakage to host workstation"
+      "Merge src/services/github/ into src/services/source-control/, combine OctokitGitHubService push logic into GithubService, remove src/services/github/ directory entirely",
+      "Rename GitHubService interface to SourceControlService and add push method to the existing SourceControlService interface (rename pushFiles to push per design doc)",
+      "Rename useGitHubService hook to useSourceControlService",
+      "Rename BackendFunctionService.ts to FunctionBackendService.ts",
+      "Remove duplicate @octokit/rest from devDependencies in package.json (keep only the entry under dependencies)",
+      "Extract useFunctionCreatePage hook from FunctionCreatePage — move service calls into useEffect (both FunctionService and SourceControlService call external APIs), keep the component rendering-only",
+      "Extract useCreateFunctionForm hook from CreateFunctionForm — consolidate individual useState calls into a single fields state object with a setField(key, value) helper, derive isValid from fields, remove handleSubmit (call onSubmit(fields) directly)",
+      "Update design doc (2026-03-16-faas-poc-design.md) to reflect all renames and new method signatures"
     ],
-    "passes": false
+    "passes": true
+  },
+  {
+    "category": "functional",
+    "description": "Route rename and nav restructure: change /functions to /faas, flatten dev nav, add admin nav under Workloads",
+    "steps": [
+      "Rename all routes from /functions/* to /faas/* (list, create, edit)",
+      "Developer perspective: replace section+href with a single top-level console.navigation/href 'FaaS' pointing to /faas",
+      "Admin perspective: add console.navigation/separator and console.navigation/href 'FaaS' under section 'workloads' at the bottom (using insertAfter)",
+      "Update all internal links and navigation calls (e.g., Create button href, form cancel, post-create redirect)",
+      "Update tests to use /faas routes"
+    ],
+    "passes": true
   },
   {
     "category": "functional",
@@ -110,20 +124,5 @@
       "Deployed functions without a matching repo still appear in the table with available cluster data (name, namespace, status, replicas, url)"
     ],
     "passes": false
-  },
-  {
-    "category": "technical",
-    "description": "PR #5 review cleanup: consolidate duplicate GitHub services, fix naming conventions, extract hooks per architecture guidelines",
-    "steps": [
-      "Merge src/services/github/ into src/services/source-control/, combine OctokitGitHubService push logic into GithubService, remove src/services/github/ directory entirely",
-      "Rename GitHubService interface to SourceControlService and add push method to the existing SourceControlService interface (rename pushFiles to push per design doc)",
-      "Rename useGitHubService hook to useSourceControlService",
-      "Rename BackendFunctionService.ts to FunctionBackendService.ts",
-      "Remove duplicate @octokit/rest from devDependencies in package.json (keep only the entry under dependencies)",
-      "Extract useFunctionCreatePage hook from FunctionCreatePage — move service calls into useEffect (both FunctionService and SourceControlService call external APIs), keep the component rendering-only",
-      "Extract useCreateFunctionForm hook from CreateFunctionForm — consolidate individual useState calls into a single fields state object with a setField(key, value) helper, derive isValid from fields, remove handleSubmit (call onSubmit(fields) directly)",
-      "Update design doc (2026-03-16-faas-poc-design.md) to reflect all renames and new method signatures"
-    ],
-    "passes": true
   }
 ]

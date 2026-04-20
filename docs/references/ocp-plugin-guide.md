@@ -69,7 +69,7 @@ return <h1>{t('Hello, World!')}</h1>;
 
 ## Extension Points
 
-See [Console Plugin SDK](https://github.com/openshift/console/tree/master/frontend/packages/console-dynamic-plugin-sdk) for all available types:
+See [OpenShift Console Extension Types](https://github.com/openshift/console/blob/main/frontend/packages/console-dynamic-plugin-sdk/docs/console-extensions.md) for all available types:
 
 - `console.page/route` — add new pages
 - `console.navigation/href` — add nav items

@@ -19,6 +19,7 @@ See `docs/design/` for full design specs.
 | `docs/plans/active/` | Implementation plans in progress |
 | `docs/plans/completed/` | Finished plans |
 | `docs/features.json` | Inviolable feature list — see [`references/features-json-readme.md`](docs/references/features-json-readme.md) |
+| `docs/potential-features.json` | Candidate features for future implementation |
 | `docs/claude-progress.txt` | Session handoff log — see [`references/claude-progress-readme.md`](docs/references/claude-progress-readme.md) |
 | `docs/agent-struggles.json` | Struggle log — see [`references/agent-struggles-readme.md`](docs/references/agent-struggles-readme.md) |
 | `docs/references/ocp-plugin-guide.md` | OCP dynamic plugin mechanics, i18n, extension points |

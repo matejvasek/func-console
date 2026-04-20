@@ -58,7 +58,7 @@ function useFunctionCreatePage() {
         'Initialize Knative function project',
       );
 
-      navigate('/functions');
+      navigate('/faas');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -67,7 +67,7 @@ function useFunctionCreatePage() {
   };
 
   const handleCancel = () => {
-    navigate('/functions');
+    navigate('/faas');
   };
 
   return { isSubmitting, error, handleSubmit, handleCancel };

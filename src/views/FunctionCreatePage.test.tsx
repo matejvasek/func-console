@@ -91,7 +91,7 @@ describe('FunctionCreatePage', () => {
     });
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/functions');
+      expect(mockNavigate).toHaveBeenCalledWith('/faas');
     });
   });
 

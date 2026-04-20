@@ -1,33 +1,44 @@
 [
   {
-    "type": "console.navigation/section",
+    "type": "console.navigation/href",
     "properties": {
-      "id": "functions-section",
-      "name": "%plugin__console-functions-plugin~Functions%",
+      "id": "faas-list",
+      "name": "%plugin__console-functions-plugin~FaaS%",
+      "href": "/faas",
       "perspective": "dev"
+    }
+  },
+  {
+    "type": "console.navigation/separator",
+    "properties": {
+      "id": "faas-separator",
+      "perspective": "admin",
+      "section": "workloads",
+      "insertAfter": "poddisruptionbudgets"
     }
   },
   {
     "type": "console.navigation/href",
     "properties": {
-      "id": "functions-list",
-      "name": "%plugin__console-functions-plugin~Functions%",
-      "href": "/functions",
-      "section": "functions-section",
-      "perspective": "dev"
+      "id": "faas-list-admin",
+      "name": "%plugin__console-functions-plugin~FaaS%",
+      "href": "/faas",
+      "perspective": "admin",
+      "section": "workloads",
+      "insertAfter": "faas-separator"
     }
   },
   {
     "type": "console.page/route",
     "properties": {
-      "path": "/functions",
+      "path": "/faas",
       "component": { "$codeRef": "FunctionsListPage" }
     }
   },
   {
     "type": "console.page/route",
     "properties": {
-      "path": "/functions/create",
+      "path": "/faas/create",
       "component": { "$codeRef": "FunctionCreatePage" },
       "exact": true
     }
@@ -35,7 +46,7 @@
   {
     "type": "console.page/route",
     "properties": {
-      "path": "/functions/edit/:name",
+      "path": "/faas/edit/:name",
       "component": { "$codeRef": "FunctionEditPage" }
     }
   }

@@ -2,6 +2,23 @@
 # Newest entries first. Agents: append your entry at the top after the header.
 
 ---
+## 2026-04-17 | Session: FaaS route rename and nav restructure
+Worked on: Rename routes from /functions to /faas, restructure nav for both perspectives
+Completed:
+- Renamed all routes from /functions/* to /faas/* (list, create, edit)
+- Updated all internal links and navigation calls (5 locations)
+- Updated tests to use /faas routes (2 test files)
+- Dev perspective: flattened section+href into single top-level FaaS nav item
+- Admin perspective: added separator + FaaS nav item under Workloads section
+- Added FaaS i18n key
+- Created potential-features.json, referenced in AGENTS.md
+- Added perspective-aware namespace scoping as a potential feature
+- Moved 002 plan to completed
+- 8 suites, 34 tests, all passing
+Left off: Branch ready for PR. Manual browser test skipped (sandboxed).
+Blockers: None
+
+---
 ## 2026-04-16 | Session: PR #5 review cleanup
 Worked on: Consolidate duplicate GitHub services, fix naming conventions, extract hooks per architecture guidelines
 Completed:

@@ -35,7 +35,7 @@ export default function FunctionsListPage() {
             <Content component={ContentVariants.p}>
               <Button
                 variant="primary"
-                component={(props) => <Link {...props} to="/functions/create" />}
+                component={(props) => <Link {...props} to="/faas/create" />}
               >
                 {t('Create new function')}
               </Button>
@@ -101,7 +101,7 @@ function useFunctionListPage(): {
 
   const loaded = reposLoaded && clusterLoaded;
 
-  const onEdit = (name: string) => navigate(`/functions/edit/${name}`);
+  const onEdit = (name: string) => navigate(`/faas/edit/${name}`);
   return { functions, loaded, onEdit };
 }
 

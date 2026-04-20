@@ -19,7 +19,7 @@ export function FunctionsEmptyState() {
         <EmptyStateActions>
           <Button
             variant="primary"
-            component={(props) => <Link {...props} to="/functions/create" />}
+            component={(props) => <Link {...props} to="/faas/create" />}
           >
             {t('Create function')}
           </Button>
