@@ -47,7 +47,7 @@ jobs:
           <h1>Func Console Plugin Deployment</h1>
           <pre>
             <code>
-              oc create
+              oc new-project console-functions-plugin
               oc apply -f https://matejvasek.github.io/func-console/plugin.yaml
             </code>
               </pre>
