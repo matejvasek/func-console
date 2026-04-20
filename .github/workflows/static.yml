@@ -38,6 +38,22 @@ jobs:
       - name: Build deployment yaml
         run: |
           mkdir public
+          cat <<EOF > public/index.html
+          <html lang="en">
+          <head>
+            <title>Func Console Plugin Deployment</title>
+          </head>
+          <body>
+          <h1>Func Console Plugin Deployment</h1>
+          <pre>
+            <code>
+              oc create
+              oc apply -f https://matejvasek.github.io/func-console/plugin.yaml
+            </code>
+              </pre>
+          </body>
+          </html>
+          EOF
           helm template  console-functions-plugin charts/openshift-console-plugin -n console-functions-plugin \
             --set "plugin.image=ghcr.io/twogiants/console-functions-plugin:latest" >> public/plugin.yaml
       - name: Setup Pages
