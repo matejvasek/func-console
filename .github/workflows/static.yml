@@ -38,12 +38,6 @@ jobs:
       - name: Build deployment yaml
         run: |
           mkdir public
-          cat << EOF > public/plugin.yaml
-          apiVersion: project.openshift.io/v1
-          kind: Project
-          metadata:
-            name: console-functions-plugin
-          EOF
           helm template  console-functions-plugin charts/openshift-console-plugin -n console-functions-plugin \
             --set "plugin.image=ghcr.io/twogiants/console-functions-plugin:latest" >> public/plugin.yaml
       - name: Setup Pages
