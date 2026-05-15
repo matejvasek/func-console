@@ -27,6 +27,7 @@ import { useClusterService } from '../services/cluster/useClusterService';
 import { useSourceControlService } from '../services/source-control/useSourceControlService';
 import { RepoMetadata } from '../services/types';
 import { errorMessage, parseNamespaceAndRuntime } from '../utils/utils';
+import './FunctionsListPage.css';
 
 export default function FunctionsListPage() {
   return (
@@ -38,7 +39,8 @@ export default function FunctionsListPage() {
 
 function FunctionsListPageContent() {
   const { t } = useTranslation('plugin__console-functions-plugin');
-  const { functions, loaded, onEdit, onRefresh, isConnectedToForge, error } = useFunctionListPage();
+  const { functions, loaded, refreshing, onEdit, onRefresh, isConnectedToForge, error } =
+    useFunctionListPage();
 
   return (
     <>
@@ -46,7 +48,7 @@ function FunctionsListPageContent() {
       <ListPageHeader title={t('Functions')}>
         <Tooltip content={t('Refresh')}>
           <Button variant="plain" aria-label={t('Refresh')} onClick={onRefresh}>
-            <SyncAltIcon />
+            <SyncAltIcon className={refreshing ? 'func-console__refresh-spin' : undefined} />
           </Button>
         </Tooltip>
         <UserAvatar enableReconnect />
@@ -95,6 +97,7 @@ function FunctionsListPageContent() {
 function useFunctionListPage(): {
   functions: FunctionTableItem[];
   loaded: boolean;
+  refreshing: boolean;
   onEdit: (name: string) => void;
   onRefresh: () => void;
   isConnectedToForge: boolean;
@@ -110,7 +113,12 @@ function useFunctionListPage(): {
 
   const [error, setError] = useState<string>('');
   const [refreshKey, setRefreshKey] = useState(0);
-  const onRefresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    if (!isConnectedToForge) return;
+    setRefreshing(true);
+    setRefreshKey((k) => k + 1);
+  }, [isConnectedToForge]);
 
   // Reset state when connection changes (initial connect or user switch)
   if (connectionId !== prevConnectionId) {
@@ -140,6 +148,7 @@ function useFunctionListPage(): {
       } catch (err) {
         if (!ignore) {
           setReposLoaded(true);
+          setRefreshing(false);
           setError(errorMessage(err));
         }
         return;
@@ -148,6 +157,7 @@ function useFunctionListPage(): {
 
       setFunctionItems(items);
       setReposLoaded(true);
+      setRefreshing(false);
       setError('');
     }
 
@@ -183,7 +193,15 @@ function useFunctionListPage(): {
   const loaded = reposLoaded && clusterLoaded;
 
   const onEdit = (name: string) => navigate(`/faas/edit/${name}`);
-  return { functions, loaded, onEdit, onRefresh, isConnectedToForge, error };
+  return {
+    functions,
+    loaded,
+    refreshing,
+    onEdit,
+    onRefresh,
+    isConnectedToForge,
+    error,
+  };
 }
 
 function newItem(repoName: string, namespace: string, runtime: string): FunctionTableItem {
