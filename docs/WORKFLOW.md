@@ -21,7 +21,7 @@ After [Startup Sequence](#startup-sequence), work through the picked feature:
 2. **Branch** — create feature branch per [Branching](#branching) convention. Immediately push and open a **draft PR** (`gh pr create --draft`) to reserve the PR number for other contributors' branch numbering.
 3. **Implement** — using `/executing-plans` skill
 4. **Review** — code review using `/requesting-code-review` skill, fix found issues
-5. **Manual Test** — use browser automation and validate it works in the browser
+5. **Manual Test** — use Playwright to visually verify the feature works in a real browser (see [Visual Verification with Playwright](TESTING.md#visual-verification-with-playwright))
 6. **Complete** — flip `passes` to `true` in [`docs/features.json`](references/features-json-readme.md), update [`docs/claude-progress.txt`](references/claude-progress-readme.md), move plan to `docs/plans/completed/`, commit
 7. **PR** — push branch, open PR per [Pull Requests](#pull-requests) convention
 8. Stop — wait for PR review. Rework per [Received PR Reviews](#received-pr-reviews) when asked.

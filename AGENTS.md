@@ -36,3 +36,7 @@ No em dashes (`—`). Use commas, periods, or parentheses instead.
 | `.dev-logs/` | Dev server log files (backend.log, webpack.log, console.log) |
 | `docs/references/ocp-plugin-guide.md` | OCP dynamic plugin mechanics, i18n, extension points |
 | `docs/references/commit-message-guide.md` | Git commit conventions and authorship rules |
+
+## Visual Verification
+
+Playwright is installed in the project. Use it to visually verify UI changes in a real browser during development, especially after implementing or modifying UI components. Read `.dev-env.json` for the `consolePort`, then navigate to `http://localhost:<consolePort>/<route>`. See [Visual Verification with Playwright](docs/TESTING.md#visual-verification-with-playwright) for a ready-to-copy recipe.

@@ -5578,6 +5578,7 @@ __metadata:
     mochawesome: "npm:^7.1.4"
     mochawesome-merge: "npm:^5.1.1"
     msw: "npm:^2.13.6"
+    playwright: "npm:^1.60.0"
     pluralize: "npm:^8.0.0"
     prettier: "npm:^3.8.1"
     prettier-stylelint: "npm:^0.4.2"
@@ -8125,7 +8126,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"fsevents@npm:~2.3.2":
+"fsevents@npm:2.3.2, fsevents@npm:~2.3.2":
   version: 2.3.2
   resolution: "fsevents@npm:2.3.2"
   dependencies:
@@ -8145,7 +8146,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"fsevents@patch:fsevents@npm%3A~2.3.2#optional!builtin<compat/fsevents>":
+"fsevents@patch:fsevents@npm%3A2.3.2#optional!builtin<compat/fsevents>, fsevents@patch:fsevents@npm%3A~2.3.2#optional!builtin<compat/fsevents>":
   version: 2.3.2
   resolution: "fsevents@patch:fsevents@npm%3A2.3.2#optional!builtin<compat/fsevents>::version=2.3.2&hash=df0bf1"
   dependencies:
@@ -12347,6 +12348,30 @@ __metadata:
     pvutils: "npm:^1.1.3"
     tslib: "npm:^2.8.1"
   checksum: 10c0/7b60f3398c35538ce05b613b5ff86c0df6b7e236e2ba6063fec2f89a80eb214d45c175e19cf13e20bed0c474000f1d3653a5234efc42e9528d1912d2edae5914
+  languageName: node
+  linkType: hard
+
+"playwright-core@npm:1.60.0":
+  version: 1.60.0
+  resolution: "playwright-core@npm:1.60.0"
+  bin:
+    playwright-core: cli.js
+  checksum: 10c0/99ccd43923b6e9355e0723b7fe221e6326efd4687f8dafff951313662aea11db51f542a9c2122c704c445fb9baae1c9ec9fa6f895126bbddd9fe92313f6942c9
+  languageName: node
+  linkType: hard
+
+"playwright@npm:^1.60.0":
+  version: 1.60.0
+  resolution: "playwright@npm:1.60.0"
+  dependencies:
+    fsevents: "npm:2.3.2"
+    playwright-core: "npm:1.60.0"
+  dependenciesMeta:
+    fsevents:
+      optional: true
+  bin:
+    playwright: cli.js
+  checksum: 10c0/714ad76d85b4865d7e43c0012f9039800c1485373388973ed39d79339cee5ad467052d1e2f1eaeca107a1cb6e65342186a8578a4c3504853d84c3a691250d5db
   languageName: node
   linkType: hard
 

@@ -108,6 +108,74 @@ afterEach(() => {
 });
 ```
 
+## Visual Verification with Playwright
+
+Playwright is installed in the project and available for ad-hoc visual checks during development. Use it to verify UI changes render correctly in a real browser, especially during the Manual Test step of the [Feature Development Sequence](WORKFLOW.md#feature-development-sequence).
+
+**When to use:**
+
+- After implementing or modifying UI components
+- To verify empty states, error states, modals, and layout
+- To check that navigation routes render the expected page
+- To debug visual issues that unit/component tests cannot catch
+
+**Setup:**
+
+Read `.dev-env.json` to get the console port. The dev servers must be running (`./init.sh`).
+
+**Ready-to-copy recipe:**
+
+```typescript
+// Run with: node -e "$(cat <<'SCRIPT' ... SCRIPT)"
+// Or save to a temp file and run with: node /tmp/check-ui.js
+
+const { chromium } = require('playwright');
+const { readFileSync } = require('fs');
+
+(async () => {
+  // Read console port from dev environment config
+  const devEnv = JSON.parse(readFileSync('.dev-env.json', 'utf-8'));
+  const baseUrl = `http://localhost:${devEnv.consolePort}`;
+
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+
+  // Navigate to the route you want to verify
+  const url = `${baseUrl}/faas`;
+  console.log('Navigating to:', url);
+
+  const response = await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+  console.log('Status:', response.status());
+  console.log('URL:', page.url());
+
+  // Wait for dynamic content to settle
+  await page.waitForTimeout(2000);
+
+  // Take a screenshot for visual inspection
+  await page.screenshot({ path: '/tmp/playwright-check.png', fullPage: true });
+  console.log('Screenshot saved to /tmp/playwright-check.png');
+
+  // Print page title and visible text
+  console.log('Title:', await page.title());
+  const text = await page.evaluate(() => document.body.innerText.substring(0, 3000));
+  console.log('--- Visible text ---');
+  console.log(text);
+
+  await browser.close();
+})().catch(err => {
+  console.error(err.message);
+  process.exit(1);
+});
+```
+
+**Tips:**
+
+- Use `page.screenshot()` and then read the PNG with the `Read` tool to visually inspect the result.
+- Use `page.waitForSelector()` to wait for specific elements before taking a screenshot.
+- Use `page.click()`, `page.fill()`, and other Playwright actions to interact with the UI before capturing state.
+- Adjust the `viewport` size to test responsive layouts.
+- The recipe above uses `networkidle` which waits until no network requests are in flight for 500ms. For pages with long-polling or WebSocket connections, use `domcontentloaded` or `load` instead.
+
 ## E2e Conventions
 
 - **Selectors:** Prefer `data-test` attributes (`cy.get('[data-test="create-function"]')`) over CSS/ARIA selectors
