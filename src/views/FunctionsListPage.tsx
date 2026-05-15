@@ -10,8 +10,10 @@ import {
   ContentVariants,
   PageSection,
   Spinner,
+  Tooltip,
 } from '@patternfly/react-core';
-import { useContext, useEffect, useMemo, useState } from 'react';
+import { SyncAltIcon } from '@patternfly/react-icons';
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom-v5-compat';
 import { FunctionsEmptyState } from '../components/EmptyState';
@@ -36,12 +38,17 @@ export default function FunctionsListPage() {
 
 function FunctionsListPageContent() {
   const { t } = useTranslation('plugin__console-functions-plugin');
-  const { functions, loaded, onEdit, isConnectedToForge, error } = useFunctionListPage();
+  const { functions, loaded, onEdit, onRefresh, isConnectedToForge, error } = useFunctionListPage();
 
   return (
     <>
       <DocumentTitle>{t('Functions')}</DocumentTitle>
       <ListPageHeader title={t('Functions')}>
+        <Tooltip content={t('Refresh')}>
+          <Button variant="plain" aria-label={t('Refresh')} onClick={onRefresh}>
+            <SyncAltIcon />
+          </Button>
+        </Tooltip>
         <UserAvatar enableReconnect />
       </ListPageHeader>
       <PageSection>
@@ -89,6 +96,7 @@ function useFunctionListPage(): {
   functions: FunctionTableItem[];
   loaded: boolean;
   onEdit: (name: string) => void;
+  onRefresh: () => void;
   isConnectedToForge: boolean;
   error: string;
 } {
@@ -101,6 +109,8 @@ function useFunctionListPage(): {
   const [prevConnectionId, setPrevConnectionId] = useState(connectionId);
 
   const [error, setError] = useState<string>('');
+  const [refreshKey, setRefreshKey] = useState(0);
+  const onRefresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   // Reset state when connection changes (initial connect or user switch)
   if (connectionId !== prevConnectionId) {
@@ -145,7 +155,7 @@ function useFunctionListPage(): {
     return () => {
       ignore = true;
     };
-  }, [sourceControl, isConnectedToForge, connectionId]);
+  }, [sourceControl, isConnectedToForge, connectionId, refreshKey]);
 
   const functionNames = useMemo(() => functionItems.map((item) => item.name), [functionItems]);
 
@@ -173,7 +183,7 @@ function useFunctionListPage(): {
   const loaded = reposLoaded && clusterLoaded;
 
   const onEdit = (name: string) => navigate(`/faas/edit/${name}`);
-  return { functions, loaded, onEdit, isConnectedToForge, error };
+  return { functions, loaded, onEdit, onRefresh, isConnectedToForge, error };
 }
 
 function newItem(repoName: string, namespace: string, runtime: string): FunctionTableItem {

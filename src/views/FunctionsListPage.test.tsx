@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom-v5-compat';
 import FunctionsListPage from './FunctionsListPage';
 import { PAT_KEY } from '../services/types';
@@ -434,5 +435,30 @@ describe('FunctionsListPage', () => {
     await screen.findByTestId('fn-name');
 
     expect(mockUseClusterService).toHaveBeenLastCalledWith(['fn-a']);
+  });
+
+  it('re-fetches repos when refresh button is clicked', async () => {
+    renderAuthenticated();
+    const mockListRepos = vi.fn().mockResolvedValue([repoFixture('fn-a')]);
+    mockUseSourceControl.mockReturnValue({
+      listFunctionRepos: mockListRepos,
+      fetchFileContent: vi.fn().mockResolvedValue('name: fn-a\nruntime: go\nnamespace: demo\n'),
+    });
+    mockUseClusterService.mockReturnValue(clusterData());
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByTestId('fn-name');
+    expect(mockListRepos).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+
+    await waitFor(() => {
+      expect(mockListRepos).toHaveBeenCalledTimes(2);
+    });
   });
 });
