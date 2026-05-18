@@ -7,7 +7,7 @@ export class GithubService implements SourceControlService {
   #cachedOctokit: Octokit | null = null;
   #cachedToken: string = '';
   #lastCommitSha = new Map<string, string>();
-  #cachedFunctionRepos: RepoMetadata[] = [];
+  #pendingRepos: RepoMetadata[] = [];
 
   constructor(getToken: () => string) {
     this.#getToken = getToken;
@@ -18,7 +18,7 @@ export class GithubService implements SourceControlService {
     if (token !== this.#cachedToken) {
       this.#cachedToken = token;
       this.#cachedOctokit = new Octokit({ auth: token });
-      this.#cachedFunctionRepos = [];
+      this.#pendingRepos = [];
       this.#lastCommitSha.clear();
     }
     return this.#cachedOctokit!;
@@ -44,9 +44,8 @@ export class GithubService implements SourceControlService {
       defaultBranch: item.default_branch,
     }));
     const fetchedNames = new Set(fetchedFunctionRepos.map((r) => r.name));
-    const unfetched = this.#cachedFunctionRepos.filter((r) => !fetchedNames.has(r.name));
-    this.#cachedFunctionRepos = [...fetchedFunctionRepos, ...unfetched];
-    return this.#cachedFunctionRepos;
+    this.#pendingRepos = this.#pendingRepos.filter((r) => !fetchedNames.has(r.name));
+    return [...fetchedFunctionRepos, ...this.#pendingRepos];
   }
 
   async createRepoWithSecret(
@@ -132,7 +131,7 @@ export class GithubService implements SourceControlService {
       sha: commit.sha,
     });
 
-    this.#cachedFunctionRepos.push({
+    this.#pendingRepos.push({
       owner,
       name: repoName,
       url: `https://github.com/${owner}/${repoName}`,

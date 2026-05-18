@@ -116,6 +116,36 @@ describe('GithubService', () => {
       expect(repos).toEqual([expectedRepo1, expectedRepo2]);
     });
 
+    it('removes a deleted repo from the list on next fetch', async () => {
+      // GIVEN: initial search returns two repos
+      const repo1 = {
+        owner: 'twoGiants',
+        name: 'my-func',
+        url: 'https://github.com/twoGiants/my-func',
+        defaultBranch: 'main',
+      };
+      const repo2 = {
+        owner: 'twoGiants',
+        name: 'my-func-2',
+        url: 'https://github.com/twoGiants/my-func-2',
+        defaultBranch: 'main',
+      };
+      setupGithubSearchReposResponse({ secondItem: repo2 });
+
+      const svc = new GithubService(() => 'pat');
+      let repos = await svc.listFunctionRepos();
+      expect(repos).toEqual([repo1, repo2]);
+
+      // GIVEN: repo2 is deleted, search now returns only repo1
+      setupGithubSearchReposResponse();
+
+      // WHEN
+      repos = await svc.listFunctionRepos();
+
+      // THEN: deleted repo is gone
+      expect(repos).toEqual([repo1]);
+    });
+
     function setupGithubSearchReposResponse({
       secondItem,
     }: {

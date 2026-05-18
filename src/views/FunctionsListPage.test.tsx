@@ -534,10 +534,11 @@ describe('FunctionsListPage', () => {
       .fn()
       .mockResolvedValueOnce([repoFixture('fn-a'), repoFixture('fn-b')])
       .mockResolvedValueOnce([repoFixture('fn-a')]);
-    const mockFetchFile = vi.fn().mockImplementation(
-      (repo: { name: string }) =>
-        `name: ${repo.name}\nruntime: go\nnamespace: demo\n`,
-    );
+    const mockFetchFile = vi
+      .fn()
+      .mockImplementation(
+        (repo: { name: string }) => `name: ${repo.name}\nruntime: go\nnamespace: demo\n`,
+      );
     mockUseSourceControl.mockReturnValue({
       listFunctionRepos: mockListRepos,
       fetchFileContent: mockFetchFile,
