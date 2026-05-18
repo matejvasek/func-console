@@ -10,6 +10,10 @@ import {
   ContentVariants,
   PageSection,
   Spinner,
+  Toolbar,
+  ToolbarContent,
+  ToolbarGroup,
+  ToolbarItem,
   Tooltip,
 } from '@patternfly/react-core';
 import { SyncAltIcon } from '@patternfly/react-icons';
@@ -46,11 +50,6 @@ function FunctionsListPageContent() {
     <>
       <DocumentTitle>{t('Functions')}</DocumentTitle>
       <ListPageHeader title={t('Functions')}>
-        <Tooltip content={t('Refresh')}>
-          <Button variant="plain" aria-label={t('Refresh')} onClick={onRefresh}>
-            <SyncAltIcon className={refreshing ? 'func-console__refresh-spin' : undefined} />
-          </Button>
-        </Tooltip>
         <UserAvatar enableReconnect />
       </ListPageHeader>
       <PageSection>
@@ -72,20 +71,35 @@ function FunctionsListPageContent() {
                 'Serverless functions in your repository and deployed to your cluster. Manage lifecycle, monitor status, and scale on demand.',
               )}
             </Content>
-            <Content component={ContentVariants.p}>
-              {!isConnectedToForge ? (
-                <Button variant="primary" isDisabled>
-                  {t('Create new function')}
-                </Button>
-              ) : (
-                <Button
-                  variant="primary"
-                  component={(props) => <Link {...props} to="/faas/create" />}
-                >
-                  {t('Create new function')}
-                </Button>
-              )}
-            </Content>
+            <Toolbar>
+              <ToolbarContent>
+                <ToolbarItem>
+                  {!isConnectedToForge ? (
+                    <Button variant="primary" isDisabled>
+                      {t('Create new function')}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="primary"
+                      component={(props) => <Link {...props} to="/faas/create" />}
+                    >
+                      {t('Create new function')}
+                    </Button>
+                  )}
+                </ToolbarItem>
+                <ToolbarGroup align={{ default: 'alignEnd' }}>
+                  <ToolbarItem>
+                    <Tooltip content={t('Refresh')}>
+                      <Button variant="plain" aria-label={t('Refresh')} onClick={onRefresh}>
+                        <SyncAltIcon
+                          className={refreshing ? 'func-console__refresh-spin' : undefined}
+                        />
+                      </Button>
+                    </Tooltip>
+                  </ToolbarItem>
+                </ToolbarGroup>
+              </ToolbarContent>
+            </Toolbar>
             <FunctionTable functions={functions} onEdit={onEdit} />
           </>
         )}

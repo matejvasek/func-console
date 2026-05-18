@@ -464,15 +464,8 @@ describe('FunctionsListPage', () => {
 
   it('does not spin the refresh icon on initial page load', async () => {
     renderAuthenticated();
-    let resolveRepos: (value: unknown[]) => void;
-    const mockListRepos = vi.fn().mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveRepos = resolve;
-        }),
-    );
     mockUseSourceControl.mockReturnValue({
-      listFunctionRepos: mockListRepos,
+      listFunctionRepos: vi.fn().mockResolvedValue([repoFixture('fn-a')]),
       fetchFileContent: vi.fn().mockResolvedValue('name: fn-a\nruntime: go\nnamespace: demo\n'),
     });
     mockUseClusterService.mockReturnValue(clusterData());
@@ -483,11 +476,10 @@ describe('FunctionsListPage', () => {
       </MemoryRouter>,
     );
 
+    await screen.findByTestId('fn-name');
+
     const icon = screen.getByRole('button', { name: 'Refresh' }).querySelector('svg');
     expect(icon?.classList.contains('func-console__refresh-spin')).toBe(false);
-
-    resolveRepos!([repoFixture('fn-a')]);
-    await screen.findByTestId('fn-name');
   });
 
   it('spins the refresh icon only while a button-triggered refresh is in flight', async () => {
