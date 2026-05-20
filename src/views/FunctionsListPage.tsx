@@ -12,7 +12,6 @@ import {
   Spinner,
   Toolbar,
   ToolbarContent,
-  ToolbarGroup,
   ToolbarItem,
   Tooltip,
 } from '@patternfly/react-core';
@@ -31,7 +30,6 @@ import { useClusterService } from '../services/cluster/useClusterService';
 import { useSourceControlService } from '../services/source-control/useSourceControlService';
 import { RepoMetadata } from '../services/types';
 import { errorMessage, parseNamespaceAndRuntime } from '../utils/utils';
-import './FunctionsListPage.css';
 
 export default function FunctionsListPage() {
   return (
@@ -87,17 +85,20 @@ function FunctionsListPageContent() {
                     </Button>
                   )}
                 </ToolbarItem>
-                <ToolbarGroup align={{ default: 'alignEnd' }}>
-                  <ToolbarItem>
-                    <Tooltip content={t('Refresh')}>
-                      <Button variant="plain" aria-label={t('Refresh')} onClick={onRefresh}>
-                        <SyncAltIcon
-                          className={refreshing ? 'func-console__refresh-spin' : undefined}
-                        />
-                      </Button>
-                    </Tooltip>
-                  </ToolbarItem>
-                </ToolbarGroup>
+                <ToolbarItem variant="separator" />
+                <ToolbarItem>
+                  <Tooltip content={t('Refresh')}>
+                    <Button
+                      variant="plain"
+                      aria-label={t('Refresh')}
+                      onClick={onRefresh}
+                      isLoading={refreshing}
+                      spinnerAriaLabel={t('Refreshing')}
+                      isDisabled={refreshing}
+                      icon={<SyncAltIcon />}
+                    />
+                  </Tooltip>
+                </ToolbarItem>
               </ToolbarContent>
             </Toolbar>
             <FunctionTable functions={functions} onEdit={onEdit} />

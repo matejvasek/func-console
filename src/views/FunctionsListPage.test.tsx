@@ -462,7 +462,7 @@ describe('FunctionsListPage', () => {
     });
   });
 
-  it('does not spin the refresh icon on initial page load', async () => {
+  it('does not show spinner on refresh button during initial page load', async () => {
     renderAuthenticated();
     mockUseSourceControl.mockReturnValue({
       listFunctionRepos: vi.fn().mockResolvedValue([repoFixture('fn-a')]),
@@ -478,11 +478,11 @@ describe('FunctionsListPage', () => {
 
     await screen.findByTestId('fn-name');
 
-    const icon = screen.getByRole('button', { name: 'Refresh' }).querySelector('svg');
-    expect(icon?.classList.contains('func-console__refresh-spin')).toBe(false);
+    const refreshBtn = screen.getByRole('button', { name: 'Refresh' });
+    expect(refreshBtn.querySelector('[role="progressbar"]')).not.toBeInTheDocument();
   });
 
-  it('spins the refresh icon only while a button-triggered refresh is in flight', async () => {
+  it('shows spinner on refresh button only while a button-triggered refresh is in flight', async () => {
     renderAuthenticated();
     let resolveRepos: (value: unknown[]) => void;
     const mockListRepos = vi.fn().mockImplementation(
@@ -507,16 +507,16 @@ describe('FunctionsListPage', () => {
     resolveRepos!([repoFixture('fn-a')]);
     await screen.findByTestId('fn-name');
 
-    const icon = screen.getByRole('button', { name: 'Refresh' }).querySelector('svg');
+    const refreshBtn = screen.getByRole('button', { name: 'Refresh' });
 
-    // Click refresh -- icon should spin
-    await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
-    expect(icon?.classList.contains('func-console__refresh-spin')).toBe(true);
+    // Click refresh -- should show spinner
+    await userEvent.click(refreshBtn);
+    expect(refreshBtn.querySelector('[role="progressbar"]')).toBeInTheDocument();
 
-    // Resolve the refresh fetch -- icon should stop
+    // Resolve the refresh fetch -- spinner should disappear
     resolveRepos!([repoFixture('fn-a')]);
     await waitFor(() => {
-      expect(icon?.classList.contains('func-console__refresh-spin')).toBe(false);
+      expect(refreshBtn.querySelector('[role="progressbar"]')).not.toBeInTheDocument();
     });
   });
 
