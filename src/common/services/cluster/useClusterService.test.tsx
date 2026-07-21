@@ -13,10 +13,16 @@ const FUNCTION_NAME_LABEL = 'function.knative.dev/name';
 const fixtures = vi.hoisted(() => ({
   knSvcs: [] as unknown[],
   deps: [] as unknown[],
+  svcs: [] as unknown[],
+  hsos: [] as unknown[],
   knLoaded: true,
   depLoaded: true,
+  svcLoaded: true,
+  hsoLoaded: true,
   knError: null as unknown,
   depError: null as unknown,
+  svcError: null as unknown,
+  hsoError: null as unknown,
 }));
 
 function filterBySelector(items: unknown[], config: WatchConfig): unknown[] {
@@ -39,6 +45,10 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
       return [filterBySelector(fixtures.knSvcs, config), fixtures.knLoaded, fixtures.knError];
     if (group === 'apps' && kind === 'Deployment')
       return [filterBySelector(fixtures.deps, config), fixtures.depLoaded, fixtures.depError];
+    if (group === '' && kind === 'Service')
+      return [filterBySelector(fixtures.svcs, config), fixtures.svcLoaded, fixtures.svcError];
+    if (group === 'http.keda.sh' && kind === 'HTTPScaledObject')
+      return [filterBySelector(fixtures.hsos, config), fixtures.hsoLoaded, fixtures.hsoError];
     return [[], true, null];
   },
 }));
@@ -46,17 +56,29 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
 function setFixtures(opts: {
   knSvcs?: unknown[];
   deps?: unknown[];
+  svcs?: unknown[];
+  hsos?: unknown[];
   knLoaded?: boolean;
   depLoaded?: boolean;
+  svcLoaded?: boolean;
+  hsoLoaded?: boolean;
   knError?: unknown;
   depError?: unknown;
+  svcError?: unknown;
+  hsoError?: unknown;
 }) {
   fixtures.knSvcs = opts.knSvcs ?? [];
   fixtures.deps = opts.deps ?? [];
+  fixtures.svcs = opts.svcs ?? [];
+  fixtures.hsos = opts.hsos ?? [];
   fixtures.knLoaded = opts.knLoaded ?? true;
   fixtures.depLoaded = opts.depLoaded ?? true;
+  fixtures.svcLoaded = opts.svcLoaded ?? true;
+  fixtures.hsoLoaded = opts.hsoLoaded ?? true;
   fixtures.knError = opts.knError ?? null;
   fixtures.depError = opts.depError ?? null;
+  fixtures.svcError = opts.svcError ?? null;
+  fixtures.hsoError = opts.hsoError ?? null;
 }
 
 function TestConsumer({ functionNames = [] }: { functionNames?: string[] }) {
@@ -127,6 +149,49 @@ function deploymentFixture(
   };
 }
 
+function serviceFixture(name: string, deployer = 'keda') {
+  return {
+    apiVersion: 'v1',
+    kind: 'Service',
+    metadata: {
+      name,
+      namespace: 'demo',
+      labels: { [FUNCTION_NAME_LABEL]: name },
+      annotations: { 'function.knative.dev/deployer': deployer },
+    },
+  };
+}
+
+function hsoFixture(name: string, readyStatus: string, hosts = [`${name}.example.com`]) {
+  return {
+    apiVersion: 'http.keda.sh/v1alpha1',
+    kind: 'HTTPScaledObject',
+    metadata: {
+      name,
+      namespace: 'demo',
+      labels: { [FUNCTION_NAME_LABEL]: name },
+    },
+    spec: { hosts },
+    status: {
+      conditions: [{ type: 'Ready', status: readyStatus }],
+    },
+  };
+}
+
+function kedaDeploymentFixture(name: string, specReplicas: number, readyReplicas: number) {
+  return {
+    apiVersion: 'apps/v1',
+    kind: 'Deployment',
+    metadata: {
+      name: `${name}-deployment`,
+      namespace: 'demo',
+      labels: { [FUNCTION_NAME_LABEL]: name },
+    },
+    spec: { replicas: specReplicas },
+    status: { readyReplicas },
+  };
+}
+
 describe('useClusterService', () => {
   afterEach(() => {
     setFixtures({});
@@ -151,12 +216,46 @@ describe('useClusterService', () => {
   });
 
   describe('error', () => {
-    it('surfaces knative service watch error', () => {
-      setFixtures({ knError: 'ksvc watch failed' });
+    it('suppresses knative CRD-missing error (404)', () => {
+      setFixtures({ knError: { code: 404, message: 'not found' } });
 
       render(<TestConsumer functionNames={['my-func']} />);
 
-      expect(screen.getByTestId('error')).toHaveTextContent('ksvc watch failed');
+      expect(screen.getByTestId('error')).toHaveTextContent('');
+    });
+
+    it('suppresses knative CRD-missing error (NoModelError)', () => {
+      const err = new Error('Model does not exist');
+      err.name = 'NoModelError';
+      setFixtures({ knError: err });
+
+      render(<TestConsumer functionNames={['my-func']} />);
+
+      expect(screen.getByTestId('error')).toHaveTextContent('');
+    });
+
+    it('surfaces knative non-CRD error (403 RBAC)', () => {
+      setFixtures({ knError: { code: 403, message: 'forbidden' } });
+
+      render(<TestConsumer functionNames={['my-func']} />);
+
+      expect(screen.getByTestId('error')).not.toHaveTextContent('');
+    });
+
+    it('suppresses HSO CRD-missing error (404)', () => {
+      setFixtures({ hsoError: { code: 404, message: 'not found' } });
+
+      render(<TestConsumer functionNames={['my-func']} />);
+
+      expect(screen.getByTestId('error')).toHaveTextContent('');
+    });
+
+    it('surfaces HSO non-CRD error (403 RBAC)', () => {
+      setFixtures({ hsoError: { code: 403, message: 'forbidden' } });
+
+      render(<TestConsumer functionNames={['my-func']} />);
+
+      expect(screen.getByTestId('error')).not.toHaveTextContent('');
     });
 
     it('surfaces deployment watch error', () => {
@@ -165,6 +264,14 @@ describe('useClusterService', () => {
       render(<TestConsumer functionNames={['my-func']} />);
 
       expect(screen.getByTestId('error')).toHaveTextContent('deployment watch failed');
+    });
+
+    it('surfaces core service watch error', () => {
+      setFixtures({ svcError: 'service watch failed' });
+
+      render(<TestConsumer functionNames={['my-func']} />);
+
+      expect(screen.getByTestId('error')).toHaveTextContent('service watch failed');
     });
 
     it('reports no error when watches succeed', () => {
@@ -397,6 +504,278 @@ describe('useClusterService', () => {
       render(<TestConsumer functionNames={['my-func']} />);
 
       expect(fn('my-func').getByTestId('has-resource')).toHaveTextContent('true');
+    });
+  });
+
+  describe('keda', () => {
+    describe('annotation filtering', () => {
+      it('includes services with deployer=keda annotation', () => {
+        setFixtures({
+          svcs: [serviceFixture('my-func')],
+          hsos: [hsoFixture('my-func', 'True')],
+          deps: [kedaDeploymentFixture('my-func', 1, 1)],
+        });
+
+        render(<TestConsumer functionNames={['my-func']} />);
+
+        expect(screen.getByTestId('fn-count')).toHaveTextContent('1');
+        expect(fn('my-func').getByTestId('status')).toHaveTextContent('Running');
+      });
+
+      it('skips services with a non-keda deployer annotation', () => {
+        setFixtures({
+          svcs: [serviceFixture('my-func', 'knative')],
+          hsos: [hsoFixture('my-func', 'True')],
+          deps: [kedaDeploymentFixture('my-func', 1, 1)],
+        });
+
+        render(<TestConsumer functionNames={['my-func']} />);
+
+        expect(screen.getByTestId('fn-count')).toHaveTextContent('0');
+      });
+
+      it('skips services with no deployer annotation', () => {
+        const svc = {
+          apiVersion: 'v1',
+          kind: 'Service',
+          metadata: {
+            name: 'my-func',
+            namespace: 'demo',
+            labels: { [FUNCTION_NAME_LABEL]: 'my-func' },
+          },
+        };
+
+        setFixtures({
+          svcs: [svc],
+          hsos: [hsoFixture('my-func', 'True')],
+          deps: [kedaDeploymentFixture('my-func', 1, 1)],
+        });
+
+        render(<TestConsumer functionNames={['my-func']} />);
+
+        expect(screen.getByTestId('fn-count')).toHaveTextContent('0');
+      });
+    });
+
+    describe('status', () => {
+      it('returns Running when Ready=True and replicas > 0', () => {
+        setFixtures({
+          svcs: [serviceFixture('my-func')],
+          hsos: [hsoFixture('my-func', 'True')],
+          deps: [kedaDeploymentFixture('my-func', 1, 1)],
+        });
+
+        render(<TestConsumer functionNames={['my-func']} />);
+
+        expect(fn('my-func').getByTestId('status')).toHaveTextContent('Running');
+      });
+
+      it('returns ScaledToZero when Ready=True and replicas are 0', () => {
+        setFixtures({
+          svcs: [serviceFixture('my-func')],
+          hsos: [hsoFixture('my-func', 'True')],
+          deps: [kedaDeploymentFixture('my-func', 0, 0)],
+        });
+
+        render(<TestConsumer functionNames={['my-func']} />);
+
+        expect(fn('my-func').getByTestId('status')).toHaveTextContent('ScaledToZero');
+      });
+
+      it('returns Error when Ready=False', () => {
+        setFixtures({
+          svcs: [serviceFixture('my-func')],
+          hsos: [hsoFixture('my-func', 'False')],
+          deps: [kedaDeploymentFixture('my-func', 1, 1)],
+        });
+
+        render(<TestConsumer functionNames={['my-func']} />);
+
+        expect(fn('my-func').getByTestId('status')).toHaveTextContent('Error');
+      });
+
+      it('returns Deploying when Ready=Unknown', () => {
+        setFixtures({
+          svcs: [serviceFixture('my-func')],
+          hsos: [hsoFixture('my-func', 'Unknown')],
+          deps: [kedaDeploymentFixture('my-func', 1, 0)],
+        });
+
+        render(<TestConsumer functionNames={['my-func']} />);
+
+        expect(fn('my-func').getByTestId('status')).toHaveTextContent('Deploying');
+      });
+
+      it('returns Deploying when no HSO exists', () => {
+        setFixtures({
+          svcs: [serviceFixture('my-func')],
+          deps: [kedaDeploymentFixture('my-func', 1, 1)],
+        });
+
+        render(<TestConsumer functionNames={['my-func']} />);
+
+        expect(fn('my-func').getByTestId('status')).toHaveTextContent('Deploying');
+      });
+
+      it('returns Deploying when HSO has no Ready condition', () => {
+        const hso = {
+          ...hsoFixture('my-func', 'True'),
+          status: { conditions: [{ type: 'HTTPScaledObjectIsReady', status: 'True' }] },
+        };
+
+        setFixtures({
+          svcs: [serviceFixture('my-func')],
+          hsos: [hso],
+          deps: [kedaDeploymentFixture('my-func', 1, 1)],
+        });
+
+        render(<TestConsumer functionNames={['my-func']} />);
+
+        expect(fn('my-func').getByTestId('status')).toHaveTextContent('Deploying');
+      });
+    });
+
+    describe('url', () => {
+      it('extracts url from hso spec.hosts[0]', () => {
+        setFixtures({
+          svcs: [serviceFixture('my-func')],
+          hsos: [hsoFixture('my-func', 'True', ['my-func.example.com'])],
+          deps: [kedaDeploymentFixture('my-func', 1, 1)],
+        });
+
+        render(<TestConsumer functionNames={['my-func']} />);
+
+        expect(fn('my-func').getByTestId('url')).toHaveTextContent(
+          'http://my-func.example.com:8080',
+        );
+      });
+
+      it('returns undefined when hso has no hosts', () => {
+        setFixtures({
+          svcs: [serviceFixture('my-func')],
+          hsos: [hsoFixture('my-func', 'True', [])],
+          deps: [kedaDeploymentFixture('my-func', 1, 1)],
+        });
+
+        render(<TestConsumer functionNames={['my-func']} />);
+
+        expect(fn('my-func').getByTestId('url')).toHaveTextContent('');
+      });
+
+      it('returns undefined when no hso exists', () => {
+        setFixtures({
+          svcs: [serviceFixture('my-func')],
+          deps: [kedaDeploymentFixture('my-func', 1, 1)],
+        });
+
+        render(<TestConsumer functionNames={['my-func']} />);
+
+        expect(fn('my-func').getByTestId('url')).toHaveTextContent('');
+      });
+    });
+
+    describe('replicas', () => {
+      it('returns readyReplicas from deployment', () => {
+        setFixtures({
+          svcs: [serviceFixture('my-func')],
+          hsos: [hsoFixture('my-func', 'True')],
+          deps: [kedaDeploymentFixture('my-func', 2, 2)],
+        });
+
+        render(<TestConsumer functionNames={['my-func']} />);
+
+        expect(fn('my-func').getByTestId('replicas')).toHaveTextContent('2');
+      });
+
+      it('returns 0 when no deployment exists', () => {
+        setFixtures({
+          svcs: [serviceFixture('my-func')],
+          hsos: [hsoFixture('my-func', 'True')],
+        });
+
+        render(<TestConsumer functionNames={['my-func']} />);
+
+        expect(fn('my-func').getByTestId('replicas')).toHaveTextContent('0');
+      });
+    });
+
+    describe('merge', () => {
+      it('shows Knative and KEDA functions together', () => {
+        setFixtures({
+          knSvcs: [ksvcFixture('kn-func', 'True')],
+          deps: [deploymentFixture('kn-func', 1, 1), kedaDeploymentFixture('keda-func', 1, 1)],
+          svcs: [serviceFixture('keda-func')],
+          hsos: [hsoFixture('keda-func', 'True')],
+        });
+
+        render(<TestConsumer functionNames={['kn-func', 'keda-func']} />);
+
+        expect(screen.getByTestId('fn-count')).toHaveTextContent('2');
+        expect(fn('kn-func').getByTestId('status')).toHaveTextContent('Running');
+        expect(fn('keda-func').getByTestId('status')).toHaveTextContent('Running');
+      });
+    });
+
+    describe('best-effort', () => {
+      it('does not surface HSO CRD-missing error', () => {
+        setFixtures({
+          knSvcs: [ksvcFixture('kn-func', 'True')],
+          deps: [deploymentFixture('kn-func', 1, 1)],
+          svcs: [serviceFixture('keda-func')],
+          hsoError: { code: 404, message: 'not found' },
+        });
+
+        render(<TestConsumer functionNames={['kn-func', 'keda-func']} />);
+
+        expect(screen.getByTestId('error')).toHaveTextContent('');
+        expect(screen.getByTestId('loaded')).toHaveTextContent('true');
+      });
+    });
+  });
+
+  describe('partial installation', () => {
+    it('lists Knative functions when KEDA is not installed', () => {
+      setFixtures({
+        knSvcs: [ksvcFixture('kn-func', 'True')],
+        deps: [deploymentFixture('kn-func', 1, 1)],
+        hsoError: { code: 404, message: 'not found' },
+      });
+
+      render(<TestConsumer functionNames={['kn-func']} />);
+
+      expect(screen.getByTestId('fn-count')).toHaveTextContent('1');
+      expect(fn('kn-func').getByTestId('status')).toHaveTextContent('Running');
+      expect(screen.getByTestId('error')).toHaveTextContent('');
+      expect(screen.getByTestId('loaded')).toHaveTextContent('true');
+    });
+
+    it('lists KEDA functions when Knative is not installed', () => {
+      setFixtures({
+        knError: { code: 404, message: 'not found' },
+        svcs: [serviceFixture('keda-func')],
+        hsos: [hsoFixture('keda-func', 'True')],
+        deps: [kedaDeploymentFixture('keda-func', 1, 1)],
+      });
+
+      render(<TestConsumer functionNames={['keda-func']} />);
+
+      expect(screen.getByTestId('fn-count')).toHaveTextContent('1');
+      expect(fn('keda-func').getByTestId('status')).toHaveTextContent('Running');
+      expect(screen.getByTestId('error')).toHaveTextContent('');
+      expect(screen.getByTestId('loaded')).toHaveTextContent('true');
+    });
+
+    it('shows no functions when neither is installed', () => {
+      setFixtures({
+        knError: { code: 404, message: 'not found' },
+        hsoError: { code: 404, message: 'not found' },
+      });
+
+      render(<TestConsumer functionNames={['my-func']} />);
+
+      expect(screen.getByTestId('fn-count')).toHaveTextContent('0');
+      expect(screen.getByTestId('error')).toHaveTextContent('');
+      expect(screen.getByTestId('loaded')).toHaveTextContent('true');
     });
   });
 });
