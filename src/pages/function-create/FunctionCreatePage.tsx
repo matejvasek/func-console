@@ -1,4 +1,8 @@
-import { DocumentTitle, ListPageHeader } from '@openshift-console/dynamic-plugin-sdk';
+import {
+  DocumentTitle,
+  ListPageHeader,
+  useK8sWatchResource,
+} from '@openshift-console/dynamic-plugin-sdk';
 import { Alert, PageSection } from '@patternfly/react-core';
 import { useContext, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -71,7 +75,7 @@ function useFunctionCreatePage(): {
   const isConnectedToForge = useContext(ForgeConnectionContext).isActive;
   const functionService = useFunctionService();
   const sourceControl = useSourceControlService();
-  const { generateKubeconfig } = useClusterService();
+  const { generateKubeconfig } = useClusterService([], useK8sWatchResource);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);

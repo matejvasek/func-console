@@ -1,4 +1,8 @@
-import { DocumentTitle, ListPageHeader } from '@openshift-console/dynamic-plugin-sdk';
+import {
+  DocumentTitle,
+  ListPageHeader,
+  useK8sWatchResource,
+} from '@openshift-console/dynamic-plugin-sdk';
 import {
   Alert,
   Button,
@@ -179,7 +183,8 @@ function useFunctionListPage(): {
 
   const functionNames = useMemo(() => functionItems.map((item) => item.name), [functionItems]);
 
-  const { functions: clusterFunctions, loaded: clusterLoaded } = useClusterService(functionNames);
+  const { functions: clusterFunctions, loaded: clusterLoaded } =
+    useClusterService(functionNames, useK8sWatchResource);
 
   const functions = useMemo(
     () =>

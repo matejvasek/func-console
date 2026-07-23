@@ -1,51 +1,49 @@
+import type { K8sResourceKind } from '@openshift-console/dynamic-plugin-sdk';
 import { render, screen, within } from '@testing-library/react';
-import { useClusterService } from './useClusterService';
+import { useClusterService, UseWatchResource, WatchResourceConfig } from './useClusterService';
 
-type WatchConfig = {
-  groupVersionKind?: { group: string; kind: string };
-  selector?: {
-    matchExpressions?: { key: string; operator: string; values: string[] }[];
-  };
-} | null;
+vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
+  consoleFetchJSON: Object.assign(vi.fn(), { post: vi.fn() }),
+}));
 
 const FUNCTION_NAME_LABEL = 'function.knative.dev/name';
 
-const fixtures = vi.hoisted(() => ({
-  knSvcs: [] as unknown[],
-  deps: [] as unknown[],
+const fixtures = {
+  knSvcs: [] as K8sResourceKind[],
+  deps: [] as K8sResourceKind[],
   knLoaded: true,
   depLoaded: true,
   knError: null as unknown,
   depError: null as unknown,
-}));
+};
 
-function filterBySelector(items: unknown[], config: WatchConfig): unknown[] {
-  const expr = config?.selector?.matchExpressions?.find(
+function filterBySelector(
+  items: K8sResourceKind[],
+  config: WatchResourceConfig,
+): K8sResourceKind[] {
+  const expr = config.selector?.matchExpressions?.find(
     (e) => e.key === FUNCTION_NAME_LABEL && e.operator === 'In',
   );
   if (!expr) return items;
   return items.filter((item) => {
-    const labels = (item as { metadata?: { labels?: Record<string, string> } }).metadata?.labels;
-    const name = labels?.[FUNCTION_NAME_LABEL];
+    const name = item.metadata?.labels?.[FUNCTION_NAME_LABEL];
     return name != null && expr.values.includes(name);
   });
 }
 
-vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
-  useK8sWatchResource: (config: WatchConfig) => {
-    if (!config) return [[], true, null];
-    const { group, kind } = config.groupVersionKind ?? {};
-    if (group === 'serving.knative.dev' && kind === 'Service')
-      return [filterBySelector(fixtures.knSvcs, config), fixtures.knLoaded, fixtures.knError];
-    if (group === 'apps' && kind === 'Deployment')
-      return [filterBySelector(fixtures.deps, config), fixtures.depLoaded, fixtures.depError];
-    return [[], true, null];
-  },
-}));
+const fakeWatch: UseWatchResource = (config) => {
+  if (!config) return [[], true, null];
+  const { group, kind } = config.groupVersionKind;
+  if (group === 'serving.knative.dev' && kind === 'Service')
+    return [filterBySelector(fixtures.knSvcs, config), fixtures.knLoaded, fixtures.knError];
+  if (group === 'apps' && kind === 'Deployment')
+    return [filterBySelector(fixtures.deps, config), fixtures.depLoaded, fixtures.depError];
+  return [[], true, null];
+};
 
 function setFixtures(opts: {
-  knSvcs?: unknown[];
-  deps?: unknown[];
+  knSvcs?: K8sResourceKind[];
+  deps?: K8sResourceKind[];
   knLoaded?: boolean;
   depLoaded?: boolean;
   knError?: unknown;
@@ -60,7 +58,7 @@ function setFixtures(opts: {
 }
 
 function TestConsumer({ functionNames = [] }: { functionNames?: string[] }) {
-  const { functions, loaded, error } = useClusterService(functionNames);
+  const { functions, loaded, error } = useClusterService(functionNames, fakeWatch);
   return (
     <>
       <span data-testid="loaded">{String(loaded)}</span>

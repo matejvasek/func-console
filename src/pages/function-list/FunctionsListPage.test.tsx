@@ -18,6 +18,7 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
       {children}
     </>
   ),
+  useK8sWatchResource: vi.fn(() => [[], true, null]),
 }));
 
 const mockUseClusterService = vi.fn();
@@ -370,7 +371,7 @@ describe('FunctionsListPage', () => {
 
     await screen.findByTestId('fn-name');
 
-    expect(mockUseClusterService).toHaveBeenLastCalledWith(['fn-a']);
+    expect(mockUseClusterService).toHaveBeenLastCalledWith(['fn-a'], expect.any(Function));
   });
 
   it('re-fetches repos when refresh button is clicked', async () => {
@@ -524,7 +525,7 @@ describe('FunctionsListPage', () => {
 
     expect(await screen.findByTestId('fn-name')).toHaveTextContent('my-function');
     expect(screen.getByTestId('fn-status')).toHaveTextContent('Running');
-    expect(mockUseClusterService).toHaveBeenLastCalledWith(['my-function']);
+    expect(mockUseClusterService).toHaveBeenLastCalledWith(['my-function'], expect.any(Function));
   });
 
   it('removes a deleted repo from the list after refresh', async () => {
