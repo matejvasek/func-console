@@ -76,67 +76,14 @@ EOF
 }
 
 start_backend() {
-  echo "Building Go backend..."
-  (cd backend && go build -buildvcs=false -o ../bin/backend .)
-  (cd backend && go build -buildvcs=false -o ../bin/errserver ./cmd/errserver)
-  echo "Starting Go backend..."
-  ./bin/backend --http-port "$BACKEND_PORT" >>"$LOG_DIR/backend.log" 2>&1 &
+  echo "Building dev server..."
+  (cd backend && go build -buildvcs=false -o ../bin/devserver ./cmd/devserver)
+  echo "Starting dev server..."
+  ./bin/devserver --port "$BACKEND_PORT" >>"$LOG_DIR/backend.log" 2>&1 &
   echo $! > "$PID_DIR/backend.pid"
 }
 
-start_backend_watcher() {
-  if ! command -v inotifywait &>/dev/null; then
-    echo "Warning: inotifywait not found. Install inotify-tools for auto-recompile."
-    return
-  fi
-
-  echo "Starting backend file watcher..."
-  (
-    while true; do
-      if ! inotifywait -r -e modify,create,delete,move --include '\.(go|mod|sum)$' backend/ >/dev/null 2>&1; then
-        echo "[watcher] inotifywait failed. Shutting down dev environment."
-        stop_dev
-        break
-      fi
-      sleep 1  # debounce
-
-      echo "[watcher] Detected change, rebuilding backend..."
-      old_pid=$(cat "$PID_DIR/backend.pid" 2>/dev/null || true)
-      build_output=$(cd backend && go build -buildvcs=false -o ../bin/backend-tmp . 2>&1) && build_ok=true || build_ok=false
-
-      if [ -n "$old_pid" ]; then
-        kill_tree "$old_pid" 2>/dev/null || true
-        while kill -0 "$old_pid" 2>/dev/null; do sleep 0.1; done
-      fi
-
-      if $build_ok; then
-        mv bin/backend-tmp bin/backend
-        ./bin/backend --http-port "$BACKEND_PORT" >>"$LOG_DIR/backend.log" 2>&1 &
-        echo $! > "$PID_DIR/backend.pid"
-        echo "[watcher] Backend restarted (PID $!)."
-      else
-        echo "[watcher] Build failed. Starting error server."
-        echo "$build_output"
-        rm -f bin/backend-tmp
-        echo "$build_output" > "$LOG_DIR/backend-build-error.txt"
-        ./bin/errserver --port "$BACKEND_PORT" --msg-file "$LOG_DIR/backend-build-error.txt" >>"$LOG_DIR/backend.log" 2>&1 &
-        errserver_pid=$!
-        sleep 0.5
-        if ! kill -0 "$errserver_pid" 2>/dev/null; then
-          echo "[watcher] Error server failed to start. Shutting down."
-          stop_dev
-          break
-        fi
-        echo "$errserver_pid" > "$PID_DIR/backend.pid"
-      fi
-
-    done
-  ) >>"$LOG_DIR/backend.log" 2>&1 &
-  echo $! > "$PID_DIR/backend-watcher.pid"
-}
-
 stop_backend() {
-  stop_pid "backend-watcher.pid" "backend watcher"
   stop_pid "backend.pid" "Go backend"
 }
 
@@ -219,7 +166,6 @@ main() {
   write_dev_env
   start_backend
   wait_for_port "$BACKEND_PORT" "Go backend"
-  start_backend_watcher
   start_plugin
   wait_for_port "$PLUGIN_PORT" "Plugin dev server"
   start_console

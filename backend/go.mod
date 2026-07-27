@@ -3,6 +3,7 @@ module github.com/openshift/console-plugin-template/backend
 go 1.24.4
 
 require (
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/ory/viper v1.7.5
 	knative.dev/func v0.48.3
 )
@@ -25,7 +26,6 @@ require (
 	github.com/docker/distribution v2.8.3+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.3 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
-	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.6.2 // indirect

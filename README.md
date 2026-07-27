@@ -48,7 +48,6 @@ Available image tags are listed in the [container registry](https://github.com/f
 - [Docker](https://www.docker.com) or [podman 3.2.0+](https://podman.io)
 - An [OpenShift cluster](https://console.redhat.com/openshift/create)
 - Github [*Personal Access Token*](https://github.com/settings/personal-access-tokens) with *administration*, *content* and *workflow* write permissions in all repositories
-- [inotify-tools](https://github.com/inotify-tools/inotify-tools) (optional, enables Go backend auto-recompile on file changes)
 
 ### Option 1: Local
 
