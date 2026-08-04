@@ -69,14 +69,16 @@ for VAR in PLUGIN_PULL_SPEC BRIDGE_KUBEADMIN_PASSWORD; do
   fi
 done
 
+source "$(dirname "${BASH_SOURCE[0]}")/lib/crc-dns.sh"
+
 NETWORK_OPTS=()
 if grep -q 'api.crc.testing' "${KUBECONFIG:-/dev/null}" 2>/dev/null; then
   if [[ "$(uname)" == "Linux" ]]; then
     NETWORK_OPTS+=(--net=host)
   else
-    NETWORK_OPTS+=(--add-host "api.crc.testing:host-gateway")
-    NETWORK_OPTS+=(--add-host "console-openshift-console.apps-crc.testing:host-gateway")
-    NETWORK_OPTS+=(--add-host "oauth-openshift.apps-crc.testing:host-gateway")
+    crc_dns::start >/dev/null
+    trap 'crc_dns::stop' EXIT
+    NETWORK_OPTS+=(--dns "$(crc_dns::ip)")
   fi
 fi
 
