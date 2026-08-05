@@ -1,5 +1,6 @@
 import { test as base, Page } from '@playwright/test';
 import { mockBackendApi } from '../mocks/backend-api';
+import { startCoverage, stopAndAddCoverage } from '../helpers/coverage';
 
 const PAT_KEY = 'func-console-pat';
 const USER_KEY = 'func-console-user';
@@ -18,7 +19,9 @@ async function injectGitHubPat(page: Page): Promise<void> {
 export const test = base.extend<{ page: Page }>({
   page: async ({ page }, use) => {
     await injectGitHubPat(page);
+    await startCoverage(page);
     await use(page);
+    await stopAndAddCoverage(page);
   },
 });
 

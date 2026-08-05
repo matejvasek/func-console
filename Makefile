@@ -20,7 +20,7 @@ NAMESPACE ?= console-functions-plugin
 IMAGE ?= quay.io/redhat-user-workloads/ocp-serverless-tenant/faas-console-plugin:latest
 KUBE_API_SERVER ?= https://api.example.com:6443
 
-.PHONY: help install-frontend build-frontend lint-frontend unit-frontend type-check test-e2e verify \
+.PHONY: help install-frontend build-frontend lint-frontend unit-frontend type-check test-e2e test-e2e-coverage verify \
         install-backend build-backend unit-backend lint-backend fmt-backend \
         image manifests deploy undeploy deploy-dev setup-serverless \
         dev dev-% \
@@ -61,6 +61,9 @@ type-check: ## Run TypeScript compiler check
 
 test-e2e: install-frontend ## Run Playwright e2e tests (ARGS="--headed")
 	yarn test:e2e $(ARGS)
+
+test-e2e-coverage: install-frontend ## Run e2e tests with V8 code coverage
+	E2E_COVERAGE=true yarn test:e2e $(ARGS)
 
 verify: install-frontend ## Verify i18n freshness and yarn deduplication
 	yarn i18n

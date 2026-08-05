@@ -9,6 +9,7 @@ const baseURL = process.env.BRIDGE_BASE_ADDRESS || 'http://localhost:9000';
 
 export default defineConfig({
   globalSetup: './e2e/global-setup.ts',
+  globalTeardown: './e2e/global-teardown.ts',
   testDir: './e2e',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,

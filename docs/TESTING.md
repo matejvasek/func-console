@@ -178,6 +178,31 @@ make test-e2e ARGS="--ui"                                       # interactive UI
 yarn test:e2e:report                                            # open HTML report (no make target)
 ```
 
+#### Code Coverage
+
+E2e code coverage uses Chromium's V8 profiler and maps results back through
+webpack source maps to original TypeScript files. Coverage collection is opt-in
+and adds no overhead to normal test runs.
+
+Set `E2E_COVERAGE=true` to enable:
+
+```bash
+make test-e2e-coverage                                          # all tests with coverage
+make test-e2e-coverage ARGS="e2e/use-cases/list/"               # subset with coverage
+```
+
+Reports are generated in `.e2e/coverage/`:
+
+| Report | File |
+|--------|------|
+| V8 HTML (interactive) | `.e2e/coverage/index.html` |
+| LCOV | `.e2e/coverage/lcov.info` |
+| Console summary | printed to stdout |
+
+**Prerequisite:** The dev environment must be running with source maps enabled
+(`make dev`). Without source maps, the report will show bundled JS instead of
+TypeScript source files.
+
 ### File Structure
 
 ```
