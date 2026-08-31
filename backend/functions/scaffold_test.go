@@ -33,6 +33,7 @@ var _ = Describe("Generate", func() {
 		Expect(funcYAML).To(ContainSubstring("my-func"))
 		Expect(funcYAML).To(ContainSubstring("go"))
 		Expect(funcYAML).To(ContainSubstring("image-registry.openshift-image-registry.svc:5000/default"))
+		Expect(funcYAML).To(ContainSubstring("builder: s2i"))
 
 		Expect(fileMap).To(HaveKey(".github/workflows/func-deploy.yaml"))
 	})

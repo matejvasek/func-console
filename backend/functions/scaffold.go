@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"knative.dev/func/pkg/builders"
 	fn "knative.dev/func/pkg/functions"
 
 	"github.com/openshift/faas-console-plugin/backend/scm"
@@ -45,6 +46,9 @@ func Generate(cfg ScaffoldConfig) ([]scm.FileEntry, error) {
 		Registry:  cfg.Registry,
 		Namespace: cfg.Namespace,
 		Template:  "http",
+		Build: fn.BuildSpec{
+			Builder: builders.S2I,
+		},
 	}); err != nil {
 		return nil, fmt.Errorf("init function: %w", err)
 	}
