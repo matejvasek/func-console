@@ -36,6 +36,7 @@ var _ = Describe("Generate", func() {
 		Expect(funcYAML).To(ContainSubstring("builder: s2i"))
 
 		Expect(fileMap).To(HaveKey(".github/workflows/func-deploy.yaml"))
+		Expect(fileMap[".github/workflows/func-deploy.yaml"]).To(ContainSubstring("FUNC_BUILDER: s2i"))
 	})
 
 	It("returns an error when function init fails", func() {
