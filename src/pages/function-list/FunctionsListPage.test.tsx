@@ -11,10 +11,6 @@ import FunctionsListPage from './FunctionsListPage';
 // https://vitest.dev/api/vi.html#vi-hoisted
 const sdkTestDoubles = await vi.hoisted(async () => import('../../common/testing/sdkTestDoubles'));
 
-const streamStub = await vi.hoisted(
-  async () => import('../../common/testing/consoleFetchStreamStub'),
-);
-
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
@@ -37,7 +33,7 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', async () => {
       </>
     ),
     consoleFetchJSON,
-    consoleFetch: streamStub.consoleFetchStub,
+    consoleFetch: sdkTestDoubles.consoleFetchStub,
     SuccessStatus: ({ title }: { title: string }) => `Success: ${title}`,
     ProgressStatus: ({ title }: { title: string }) => `Progress: ${title}`,
     ErrorStatus: ({ title }: { title: string }) => `Error: ${title}`,
@@ -56,7 +52,7 @@ describe('FunctionsListPage', () => {
   beforeEach(() => {
     logoutGithubFake();
     authenticateGithubFake();
-    streamStub.resetStreamFrames();
+    sdkTestDoubles.resetStreamFrames();
   });
 
   afterEach(() => {
@@ -311,8 +307,8 @@ describe('FunctionsListPage', () => {
     // No cluster fixture, so the function is NotDeployed: the build status is the
     // most useful thing to show, so Building becomes the primary status.
     listFunctionsStub({ responses: [repoListItem(funcName)] });
-    streamStub.setStreamFrames([
-      streamStub.buildStatusFrame([{ key: `twoGiants/${funcName}`, buildStatus: 'Building' }]),
+    sdkTestDoubles.setStreamFrames([
+      sdkTestDoubles.buildStatusFrame([{ key: `twoGiants/${funcName}`, buildStatus: 'Building' }]),
     ]);
 
     render(
@@ -329,8 +325,8 @@ describe('FunctionsListPage', () => {
     // new revision builds; the build is surfaced only as a secondary spinner.
     listFunctionsStub({ responses: [repoListItem(funcName)] });
     sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
-    streamStub.setStreamFrames([
-      streamStub.buildStatusFrame([{ key: `twoGiants/${funcName}`, buildStatus: 'Building' }]),
+    sdkTestDoubles.setStreamFrames([
+      sdkTestDoubles.buildStatusFrame([{ key: `twoGiants/${funcName}`, buildStatus: 'Building' }]),
     ]);
 
     render(
@@ -347,8 +343,8 @@ describe('FunctionsListPage', () => {
   it('keeps Running with a build-failed indicator when the cluster is Running', async () => {
     listFunctionsStub({ responses: [repoListItem(funcName)] });
     sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
-    streamStub.setStreamFrames([
-      streamStub.buildStatusFrame([
+    sdkTestDoubles.setStreamFrames([
+      sdkTestDoubles.buildStatusFrame([
         {
           key: `twoGiants/${funcName}`,
           buildStatus: 'Failed',
@@ -381,8 +377,8 @@ describe('FunctionsListPage', () => {
       knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')],
       deps: [sdkTestDoubles.deploymentFixture(funcName, 0, 0)],
     });
-    streamStub.setStreamFrames([
-      streamStub.buildStatusFrame([
+    sdkTestDoubles.setStreamFrames([
+      sdkTestDoubles.buildStatusFrame([
         {
           key: `twoGiants/${funcName}`,
           buildStatus: 'Failed',
@@ -408,8 +404,8 @@ describe('FunctionsListPage', () => {
 
   it('shows BuildFailed with the failure reason and run link from the build stream', async () => {
     listFunctionsStub({ responses: [repoListItem(funcName)] });
-    streamStub.setStreamFrames([
-      streamStub.buildStatusFrame([
+    sdkTestDoubles.setStreamFrames([
+      sdkTestDoubles.buildStatusFrame([
         {
           key: `twoGiants/${funcName}`,
           buildStatus: 'Failed',

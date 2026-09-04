@@ -1,7 +1,7 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { PAT_KEY } from '../types';
 
-const streamStub = await vi.hoisted(async () => import('../testing/consoleFetchStreamStub'));
+const streamStub = await vi.hoisted(async () => import('../testing/sdkTestDoubles'));
 
 vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
   consoleFetch: streamStub.consoleFetchStub,
