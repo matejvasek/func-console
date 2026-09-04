@@ -74,9 +74,6 @@ export interface CreateFunctionRequest {
 }
 
 export type FunctionStatus =
-  | 'CreatingRepo'
-  | 'Pushing'
-  | 'PushedToGitHub'
   | 'Building'
   | 'Deploying'
   | 'Running'

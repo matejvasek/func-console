@@ -140,9 +140,6 @@ function StatusCell({
       );
     case 'Building':
     case 'Deploying':
-    case 'CreatingRepo':
-    case 'Pushing':
-    case 'PushedToGitHub':
       return <ProgressStatus title={status} />;
     case 'Error':
       return <ErrorStatus title={status} />;
