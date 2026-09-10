@@ -61,6 +61,21 @@ describe('useBuildStatus', () => {
     expect(result.current.get('alice/fn')?.buildStatus).toBe('Succeeded');
   });
 
+  it('ignores a frame with no event name', async () => {
+    // An unnamed frame is a default "message" event, not our build-status event.
+    vi.useFakeTimers();
+    streamStub.setStreamFrames(['data: {"functions":{"a/b":{"buildStatus":"Building"}}}\n\n']);
+
+    const { result, unmount } = renderHook(() => useBuildStatus());
+    // Reconnecting proves the frame was read and dropped, not merely unread yet.
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(streamStub.streamFetchCalls()).toBeGreaterThan(1);
+    expect(result.current.size).toBe(0);
+
+    unmount();
+  });
+
   it('reassembles a frame split across two stream chunks', async () => {
     // A single build-status frame delivered as two separate reader.read() chunks;
     // the split falls in the middle of the JSON payload ("func" | "tions").

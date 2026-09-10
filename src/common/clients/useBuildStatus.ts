@@ -113,7 +113,7 @@ function parseFrame(frame: string): BuildSnapshot | null {
     if (line.startsWith('event:')) event = line.slice('event:'.length).trim();
     else if (line.startsWith('data:')) dataLines.push(line.slice('data:'.length).trim());
   }
-  if (event && event !== 'build-status') return null;
+  if (event !== 'build-status') return null;
   if (dataLines.length === 0) return null;
   try {
     return JSON.parse(dataLines.join('\n')) as BuildSnapshot;
