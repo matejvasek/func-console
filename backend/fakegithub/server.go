@@ -171,10 +171,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /repos/{owner}/{repo}/actions/secrets/public-key", s.handleGetPublicKey)
 	s.mux.HandleFunc("PUT /repos/{owner}/{repo}/actions/secrets/{name}", s.handlePutSecret)
 
-	// Actions runs (build status). The client scopes build status to a single
-	// workflow file via the by-file-name endpoint, which filters runs to that
-	// workflow (mirroring real GitHub). The repo-wide endpoint returns every run.
-	s.mux.HandleFunc("GET /repos/{owner}/{repo}/actions/runs", s.handleListWorkflowRuns)
+	// Actions runs (build status).
 	s.mux.HandleFunc("GET /repos/{owner}/{repo}/actions/workflows/{workflow}/runs", s.handleListWorkflowRuns)
 	s.mux.HandleFunc("GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs", s.handleListWorkflowJobs)
 
@@ -682,9 +679,6 @@ func (s *Server) handleListWorkflowRuns(w http.ResponseWriter, r *http.Request) 
 	}
 
 	branch := r.URL.Query().Get("branch")
-	// workflow is set only on the by-file-name route; when present, scope runs to
-	// that workflow file the way real GitHub does. The repo-wide route leaves it
-	// empty and returns every run.
 	workflow := r.PathValue("workflow")
 	// GitHub returns most-recent first; our slice keeps most-recent last, so reverse.
 	var runs []workflowRun
@@ -693,7 +687,7 @@ func (s *Server) handleListWorkflowRuns(w http.ResponseWriter, r *http.Request) 
 		if branch != "" && run.HeadBranch != branch {
 			continue
 		}
-		if workflow != "" && run.WorkflowFile != workflow {
+		if run.WorkflowFile != workflow {
 			continue
 		}
 		runs = append(runs, run)
