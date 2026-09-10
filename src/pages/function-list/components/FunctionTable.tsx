@@ -26,8 +26,7 @@ export interface FunctionTableItem {
   mainResource?: K8sResourceCommon;
   buildRunURL?: string;
   failureReason?: string;
-  // buildActivity is set only when the primary status is a serving `Running`
-  // that the build status must not overwrite (non-destructive build indicator).
+  // Set only when the primary status is one the build status must not overwrite.
   buildActivity?: 'Building' | 'Failed';
 }
 
@@ -120,10 +119,8 @@ function StatusCell({
   const { t } = useTranslation('plugin__console-functions-plugin');
 
   switch (status) {
-    // Non-destructive build indicator: a function that is deployed and available
-    // (serving `Running` or idle `ScaledToZero`) keeps its cluster status; any
-    // in-progress or failed rebuild is shown only as a small secondary indicator
-    // so availability is never misrepresented.
+    // An available function keeps its cluster status; a rebuild only ever adds
+    // a secondary indicator, so availability is never misrepresented.
     case 'Running':
       return withBuildActivity(<SuccessStatus title={status} />, buildActivity, buildRunURL);
     case 'ScaledToZero':
@@ -134,9 +131,8 @@ function StatusCell({
     case 'Error':
       return <ErrorStatus title={status} />;
     case 'BuildFailed': {
-      // The status badge is a block-level flex box that fills the cell, which
-      // would anchor the tooltip to the cell rather than to the status itself.
-      // Inline-flex shrink-wraps it so the tooltip sits over the text.
+      // The badge is a block-level flex box that fills the cell, which would
+      // anchor the tooltip to the cell. Inline-flex shrink-wraps it.
       const badge = <ErrorStatus title={status} className="pf-v6-u-display-inline-flex" />;
       const withLink = buildRunURL ? <RunLink url={buildRunURL}>{badge}</RunLink> : badge;
       return <Tooltip content={failureReason || t('Build failed')}>{withLink}</Tooltip>;
@@ -148,9 +144,8 @@ function StatusCell({
   }
 }
 
-// RunLink wraps content in an external link to a GitHub Actions run. Pass
-// ariaLabel when the content has no visible text of its own (e.g. an icon) so
-// the link still has an accessible name.
+// Pass ariaLabel when the content has no visible text of its own (e.g. an icon)
+// so the link still has an accessible name.
 function RunLink({
   url,
   ariaLabel,
@@ -167,9 +162,6 @@ function RunLink({
   );
 }
 
-// withBuildActivity renders a primary status badge and, when a rebuild is in
-// progress or failed for an available function, appends the secondary build
-// indicator next to it.
 function withBuildActivity(
   badge: React.ReactNode,
   buildActivity?: 'Building' | 'Failed',
@@ -184,12 +176,8 @@ function withBuildActivity(
   );
 }
 
-// BuildActivityIndicator is the small secondary indicator shown next to an
-// available status (`Running` or `ScaledToZero`) while a new revision builds or a rebuild fails: a
-// spinner (tooltip "Build in progress") for an in-progress build, or a warning
-// icon (tooltip "Latest build failed", link to the run) for a failed one. The
-// tooltip is phrased to make clear the function is still running and only the
-// latest rebuild failed, not the function itself.
+// The tooltips say "latest build" so it stays clear the function itself is
+// still running and only the rebuild is affected.
 function BuildActivityIndicator({
   buildActivity,
   buildRunURL,
@@ -207,7 +195,7 @@ function BuildActivityIndicator({
     );
   }
   if (buildActivity === 'Failed') {
-    // status="danger" colors the icon red even inside the run link, which would
+    // status="danger" keeps the icon red inside the run link, which would
     // otherwise tint it link-blue via inherited anchor color.
     const icon = (
       <Icon status="danger">

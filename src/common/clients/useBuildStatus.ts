@@ -12,15 +12,13 @@ interface BuildStatusItem {
 }
 
 interface BuildSnapshot {
-  // Keyed by "owner/repo", the same identifier used to correlate build status
-  // with a function.
+  // Keyed by "owner/repo", the identifier a function is correlated on.
   functions: Record<string, BuildStatusItem>;
 }
 
-// useBuildStatus streams per-function GitHub Actions build status over SSE and
-// returns it keyed by "owner/repo". The backend scopes the stream to the
-// authenticated user. Pass the auth connectionId so the stream tears down and
-// reconnects (with the current PAT) on in-place login and account switch.
+// useBuildStatus streams GitHub Actions build status over SSE, keyed by
+// "owner/repo". Pass the auth connectionId so the stream tears down and
+// reconnects with the current PAT on in-place login and account switch.
 export function useBuildStatus(connectionId = 0): ReadonlyMap<string, BuildStatus> {
   const [statuses, setStatuses] = useState<ReadonlyMap<string, BuildStatus>>(() => new Map());
 
@@ -33,21 +31,15 @@ export function useBuildStatus(connectionId = 0): ReadonlyMap<string, BuildStatu
         const pat = sessionStorage.getItem(PAT_KEY);
         if (!pat) return;
         try {
-          // Pass timeout 0 to disable consoleFetch's default (~60s) request
-          // timeout: it aborts the request when it fires, which would tear down
-          // this long-lived SSE stream every minute regardless of the backend's
-          // heartbeats. Our own AbortController (signal below) remains the only
-          // thing that ends the stream, on unmount or connectionId change.
           const res = await consoleFetch(
             `${PROXY_BASE}/api/v1/func/build/watch`,
             {
               headers: { 'X-SCM-Token': pat },
               signal: controller.signal,
             },
-            0,
+            0, // no timeout; the default ~60s would abort this long-lived stream
           );
-          // A 2xx with no body is unexpected; fall through to backoff-and-reconnect
-          // below rather than permanently stopping the stream.
+          // A 2xx with no body is unexpected; reconnect rather than stop.
           if (res.body) {
             await readStream(res.body, (snap) => {
               if (!cancelled) setStatuses(toMap(snap));
@@ -56,17 +48,14 @@ export function useBuildStatus(connectionId = 0): ReadonlyMap<string, BuildStatu
         } catch (err) {
           if (cancelled) return;
           if (isAuthError(err)) {
-            // A bad or expired PAT will not recover on retry, so stop the stream
-            // instead of reconnecting in a tight loop. The console has no logger
-            // utility, so we surface the diagnostic via console.error.
+            // A bad or expired PAT will not recover on retry, so stop rather
+            // than reconnect in a tight loop.
             console.error(
               'useBuildStatus: build status stream unauthorized, not reconnecting',
               err,
             );
             return;
           }
-          // Transient stream/network error: log so it is not silent, then fall
-          // through to the backoff-and-reconnect below.
           console.error('useBuildStatus: build status stream error, reconnecting', err);
         }
         // Stream ended or errored transiently; back off, then reconnect.
@@ -136,9 +125,8 @@ function toMap(snap: BuildSnapshot): ReadonlyMap<string, BuildStatus> {
   );
 }
 
-// isAuthError reports whether a consoleFetch failure is a 401/403. consoleFetch
-// throws an HttpError carrying the status on `code`; we also check `response.status`
-// defensively without depending on the SDK error class at runtime.
+// consoleFetch throws an HttpError carrying the status on `code`; `response.status`
+// is a defensive fallback that avoids depending on the SDK error class at runtime.
 function isAuthError(err: unknown): boolean {
   if (typeof err !== 'object' || err === null) return false;
   const e = err as { code?: number; response?: { status?: number } };

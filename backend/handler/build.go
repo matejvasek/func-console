@@ -14,9 +14,7 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
-// Tunable so tests can drive the SSE loop quickly. Polling and repo
-// re-discovery are owned by scm.Client.WatchWorkflowRuns; the handler only
-// keeps the client-facing heartbeat.
+// Tunable so tests can drive the SSE loop quickly.
 var buildHeartbeatInterval = 15 * time.Second
 
 type buildStatusItem struct {
@@ -27,9 +25,9 @@ type buildStatusItem struct {
 	HeadSHA       string `json:"headSHA,omitempty"`
 }
 
-// buildSnapshot keys each function's status by its "owner/name" full name, the
-// same identifier the frontend correlates on. encoding/json emits the map keys
-// sorted, so the SSE frame stays byte-stable across unchanged polls.
+// buildSnapshot is keyed by "owner/name", the identifier the frontend correlates
+// on. encoding/json emits map keys sorted, so an unchanged snapshot always
+// serializes to the same bytes.
 type buildSnapshot struct {
 	Functions map[string]buildStatusItem `json:"functions"`
 }
@@ -49,7 +47,7 @@ func (h *Handlers) HandleBuildWatch(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// WatchWorkflowRuns discovers repos synchronously, so auth failures surface
-	// here (as a normal HTTP status) before we switch the response to SSE.
+	// here, as a normal HTTP status, before the response switches to SSE.
 	runs, err := client.WatchWorkflowRuns(ctx, functions.WorkflowFilename)
 	if err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
@@ -66,8 +64,8 @@ func (h *Handlers) HandleBuildWatch(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
-	// Flush the response head immediately so the client's request completes and
-	// it can start reading, rather than blocking until the first snapshot frame.
+	// Flush the head so the client's request completes and it can start reading,
+	// rather than blocking until the first snapshot frame.
 	flusher.Flush()
 
 	heartbeat := time.NewTicker(buildHeartbeatInterval)
@@ -84,9 +82,9 @@ func (h *Handlers) HandleBuildWatch(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		case snapshot, ok := <-runs:
 			if !ok {
-				// The watch ended (context cancelled or the token was revoked
-				// mid-stream). End the SSE stream so the client reconnects and
-				// its initial request hits a 401, triggering its re-auth path.
+				// Watch ended (cancelled, or the token was revoked mid-stream).
+				// End the stream so the client reconnects, hits a 401 on its
+				// initial request, and takes its re-auth path.
 				return
 			}
 			data, err := json.Marshal(toSnapshot(snapshot))
@@ -102,9 +100,8 @@ func (h *Handlers) HandleBuildWatch(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// toSnapshot maps a scm snapshot of repo runs into the wire DTO the frontend
-// consumes, keyed by "owner/name" and translating each run into the build
-// vocabulary. The map is always non-nil so an empty snapshot encodes as {}.
+// toSnapshot maps repo runs into the wire DTO. The map is always non-nil, so an
+// empty snapshot encodes as {} rather than null.
 func toSnapshot(runs []scm.RepoRun) buildSnapshot {
 	items := make(map[string]buildStatusItem, len(runs))
 	for _, rr := range runs {
@@ -129,9 +126,8 @@ func deriveBuildStatus(run *scm.WorkflowRun) string {
 		return "None"
 	}
 	switch run.Status {
-	// Every pre-completion status (including the gated "waiting"/"requested"/
-	// "pending" states) means a run exists but has not finished, so the build is
-	// still in flight.
+	// The gated "waiting"/"requested"/"pending" states also mean a run exists
+	// but has not finished.
 	case "queued", "in_progress", "waiting", "requested", "pending":
 		return "Building"
 	case "completed":
@@ -141,10 +137,9 @@ func deriveBuildStatus(run *scm.WorkflowRun) string {
 		case "failure", "cancelled", "timed_out":
 			return "Failed"
 		default:
-			// Non-failure outcomes like "skipped", "neutral", "stale", or
-			// "action_required" are not build failures; report no build signal
-			// so the frontend falls back to the cluster-derived status rather
-			// than showing a red "Build failed" badge.
+			// "skipped", "neutral", "stale" and "action_required" are not
+			// failures; report no signal so the frontend falls back to the
+			// cluster-derived status instead of a red "Build failed" badge.
 			return "None"
 		}
 	default:
@@ -152,7 +147,6 @@ func deriveBuildStatus(run *scm.WorkflowRun) string {
 	}
 }
 
-// writeSnapshotEvent writes the already-marshaled snapshot bytes as an SSE frame.
 func writeSnapshotEvent(w io.Writer, data []byte) error {
 	if _, err := fmt.Fprintf(w, "event: build-status\ndata: %s\n\n", data); err != nil {
 		return fmt.Errorf("write build-status event: %w", err)
