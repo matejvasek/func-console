@@ -3,6 +3,7 @@ package handler
 import (
 	"bufio"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -63,6 +64,40 @@ var _ = Describe("HandleBuildWatch", func() {
 		w := httptest.NewRecorder()
 		(&Handlers{}).HandleBuildWatch(w, req)
 		Expect(w.Code).To(Equal(http.StatusUnauthorized))
+	})
+
+	It("returns 502 when discovery fails with a non-auth error", func() {
+		withSCMStub(&scm.ClientStub{
+			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
+				return nil, errors.New("github unreachable")
+			},
+		})
+		req := httptest.NewRequest(http.MethodGet, "/watch", nil)
+		req.Header.Set("X-SCM-Token", "pat")
+		w := httptest.NewRecorder()
+		(&Handlers{}).HandleBuildWatch(w, req)
+		Expect(w.Code).To(Equal(http.StatusBadGateway))
+	})
+
+	It("emits a heartbeat comment on the heartbeat interval", func() {
+		orig := buildHeartbeatInterval
+		buildHeartbeatInterval = 10 * time.Millisecond
+		DeferCleanup(func() { buildHeartbeatInterval = orig })
+
+		// The watch never emits a snapshot, so the only output is the heartbeat
+		// that keeps the SSE connection alive.
+		ch := make(chan []scm.RepoRun)
+		withSCMStub(&scm.ClientStub{
+			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
+				return ch, nil
+			},
+		})
+
+		reader := startWatchStream()
+
+		line, ok := readLineWithin(reader, 2*time.Second)
+		Expect(ok).To(BeTrue(), "expected a heartbeat line")
+		Expect(line).To(Equal(":"))
 	})
 
 	It("emits an SSE frame per snapshot, keyed by owner/repo in build vocabulary", func() {
@@ -191,6 +226,27 @@ func readSSEDataWithin(reader *bufio.Reader, timeout time.Duration) (string, boo
 	select {
 	case data := <-ch:
 		return data, true
+	case <-time.After(timeout):
+		return "", false
+	}
+}
+
+// readLineWithin reads a single line (newline trimmed) with a timeout, so a
+// handler that never writes fails fast instead of blocking until the spec
+// timeout. Returns "" and false if the timeout elapses first.
+func readLineWithin(reader *bufio.Reader, timeout time.Duration) (string, bool) {
+	ch := make(chan string, 1)
+	go func() {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			ch <- ""
+			return
+		}
+		ch <- strings.TrimRight(line, "\n")
+	}()
+	select {
+	case line := <-ch:
+		return line, true
 	case <-time.After(timeout):
 		return "", false
 	}

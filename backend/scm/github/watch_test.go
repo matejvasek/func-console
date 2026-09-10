@@ -290,6 +290,98 @@ var _ = Describe("WatchWorkflowRuns", func() {
 			}
 		}, 2*time.Second, 10*time.Millisecond).Should(BeTrue(), "expected the channel to close")
 	})
+
+	It("picks up a newly discovered repo on the next rediscover", func() {
+		pinWatch(10*time.Millisecond, 10*time.Millisecond)
+		var mu sync.Mutex
+		repos := []map[string]any{repoItem("alice", "fn1", "main")}
+		cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.URL.Path == "/user":
+				json.NewEncoder(w).Encode(map[string]string{"login": "alice"})
+			case r.URL.Path == "/search/repositories":
+				mu.Lock()
+				items := append([]map[string]any(nil), repos...)
+				mu.Unlock()
+				json.NewEncoder(w).Encode(map[string]any{"total_count": len(items), "items": items})
+			case strings.Contains(r.URL.Path, "/actions/workflows/"):
+				writeRuns(w, map[string]any{"id": 1, "status": "in_progress"})
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		DeferCleanup(cancel)
+		ch, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
+		Expect(err).NotTo(HaveOccurred())
+
+		first, ok := recvWithin(ch, 2*time.Second)
+		Expect(ok).To(BeTrue(), "expected an initial snapshot")
+		Expect(first).To(HaveLen(1))
+
+		// A second func repo appears; the periodic rediscover must pick it up and
+		// the next snapshot must include it.
+		mu.Lock()
+		repos = append(repos, repoItem("alice", "fn2", "main"))
+		mu.Unlock()
+
+		Eventually(func() int {
+			snap, ok := recvWithin(ch, 200*time.Millisecond)
+			if !ok {
+				return -1
+			}
+			return len(snap)
+		}, 2*time.Second, 10*time.Millisecond).Should(Equal(2), "expected the rediscovered repo in the snapshot")
+	})
+
+	It("treats a missing workflow file as a repo with no run", func() {
+		pinWatch(10*time.Millisecond, time.Hour)
+		cl := newClient(watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
+			func(w http.ResponseWriter, r *http.Request) {
+				// The func workflow file does not exist in this repo, so GitHub's
+				// by-file-name runs endpoint 404s. That is not a func repo error;
+				// it must surface as a nil run, not end the stream.
+				w.WriteHeader(http.StatusNotFound)
+				json.NewEncoder(w).Encode(map[string]string{"message": "Not Found"})
+			}))
+
+		ctx, cancel := context.WithCancel(context.Background())
+		DeferCleanup(cancel)
+		ch, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
+		Expect(err).NotTo(HaveOccurred())
+
+		first, ok := recvWithin(ch, 2*time.Second)
+		Expect(ok).To(BeTrue(), "expected an initial snapshot")
+		Expect(first).To(HaveLen(1))
+		Expect(first[0].Repo.FullName()).To(Equal("alice/fn"))
+		Expect(first[0].Run).To(BeNil())
+	})
+
+	It("returns a multi-repo snapshot sorted by repo full name", func() {
+		pinWatch(10*time.Millisecond, time.Hour)
+		cl := newClient(watchFake("alice",
+			[]map[string]any{
+				repoItem("alice", "zeta", "main"),
+				repoItem("alice", "alpha", "main"),
+			},
+			func(w http.ResponseWriter, r *http.Request) {
+				writeRuns(w, map[string]any{"id": 1, "status": "in_progress"})
+			}))
+
+		ctx, cancel := context.WithCancel(context.Background())
+		DeferCleanup(cancel)
+		ch, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
+		Expect(err).NotTo(HaveOccurred())
+
+		first, ok := recvWithin(ch, 2*time.Second)
+		Expect(ok).To(BeTrue(), "expected an initial snapshot")
+		Expect(first).To(HaveLen(2))
+		// Discovery returned the repos out of order; the snapshot is sorted so the
+		// stream and its change-detection are deterministic across polls.
+		Expect(first[0].Repo.FullName()).To(Equal("alice/alpha"))
+		Expect(first[1].Repo.FullName()).To(Equal("alice/zeta"))
+	})
 })
 
 // watchFake routes the minimal endpoints WatchWorkflowRuns needs: the
