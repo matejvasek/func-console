@@ -49,7 +49,7 @@ type Client interface {
 	InitRepo(ctx context.Context, owner, name, branch string, topics []string) error
 	StoreSecret(ctx context.Context, owner, repo, name, value string) error
 	DeleteRepo(ctx context.Context, owner, repo string) error
-	LatestWorkflowRun(ctx context.Context, owner, repo, branch, workflowFile string) (*WorkflowRun, error)
+	WatchWorkflowRuns(ctx context.Context, workflowFile string) (<-chan []RepoRun, error)
 }
 
 type Repo struct {
@@ -57,6 +57,17 @@ type Repo struct {
 	Name          string `json:"name"`
 	URL           string `json:"url"`
 	DefaultBranch string `json:"defaultBranch"`
+}
+
+// FullName is the "owner/name" identifier, matching GitHub's full_name field.
+// Used to correlate a repo across cluster and build state.
+func (r Repo) FullName() string { return r.Owner + "/" + r.Name }
+
+// RepoRun pairs a repo with its latest workflow run. A nil Run means the repo
+// has no run yet (including when the workflow file does not exist there).
+type RepoRun struct {
+	Repo Repo
+	Run  *WorkflowRun
 }
 
 type User struct {
@@ -93,7 +104,7 @@ type ClientStub struct {
 	OnInitRepo          func(ctx context.Context, owner, name, branch string, topics []string) error
 	OnStoreSecret       func(ctx context.Context, owner, repo, name, value string) error
 	OnDeleteRepo        func(ctx context.Context, owner, repo string) error
-	OnLatestWorkflowRun func(ctx context.Context, owner, repo, branch, workflowFile string) (*WorkflowRun, error)
+	OnWatchWorkflowRuns func(ctx context.Context, workflowFile string) (<-chan []RepoRun, error)
 }
 
 func (s *ClientStub) GetUser(ctx context.Context) (*User, error) {
@@ -152,9 +163,9 @@ func (s *ClientStub) DeleteRepo(ctx context.Context, owner, repo string) error {
 	return nil
 }
 
-func (s *ClientStub) LatestWorkflowRun(ctx context.Context, owner, repo, branch, workflowFile string) (*WorkflowRun, error) {
-	if s.OnLatestWorkflowRun != nil {
-		return s.OnLatestWorkflowRun(ctx, owner, repo, branch, workflowFile)
+func (s *ClientStub) WatchWorkflowRuns(ctx context.Context, workflowFile string) (<-chan []RepoRun, error) {
+	if s.OnWatchWorkflowRuns != nil {
+		return s.OnWatchWorkflowRuns(ctx, workflowFile)
 	}
 	return nil, nil
 }

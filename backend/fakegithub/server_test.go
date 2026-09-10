@@ -243,8 +243,7 @@ var _ = Describe("FakeGitHub Server", func() {
 				"headSha": "abc123", "status": "in_progress", "conclusion": ""
 			}`)
 
-			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main", "func-deploy.yaml")
-			Expect(err).NotTo(HaveOccurred())
+			run := latestRun(cl, "testuser", "test-func")
 			Expect(run).NotTo(BeNil())
 			Expect(run.Status).To(Equal("in_progress"))
 			Expect(run.HeadSHA).To(Equal("abc123"))
@@ -258,8 +257,7 @@ var _ = Describe("FakeGitHub Server", func() {
 			resetFakeGitHub(ts)
 			seedRepo(ts)
 
-			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main", "func-deploy.yaml")
-			Expect(err).NotTo(HaveOccurred())
+			run := latestRun(cl, "testuser", "test-func")
 			Expect(run).To(BeNil())
 		})
 	})
@@ -269,8 +267,7 @@ var _ = Describe("FakeGitHub Server", func() {
 			ts, cl := startServer()
 			seedRepo(ts)
 
-			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main", "func-deploy.yaml")
-			Expect(err).NotTo(HaveOccurred())
+			run := latestRun(cl, "testuser", "test-func")
 			Expect(run).To(BeNil())
 		})
 
@@ -279,8 +276,7 @@ var _ = Describe("FakeGitHub Server", func() {
 			seedRepo(ts)
 			setWorkflowRun(ts, `{"owner":"testuser","repo":"test-func","branch":"main","headSha":"sha1","status":"in_progress","conclusion":""}`)
 
-			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main", "func-deploy.yaml")
-			Expect(err).NotTo(HaveOccurred())
+			run := latestRun(cl, "testuser", "test-func")
 			Expect(run).NotTo(BeNil())
 			Expect(run.Status).To(Equal("in_progress"))
 			Expect(run.Conclusion).To(BeEmpty())
@@ -294,8 +290,7 @@ var _ = Describe("FakeGitHub Server", func() {
 			seedRepo(ts)
 			setWorkflowRun(ts, `{"owner":"testuser","repo":"test-func","branch":"other","status":"completed","conclusion":"success"}`)
 
-			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main", "func-deploy.yaml")
-			Expect(err).NotTo(HaveOccurred())
+			run := latestRun(cl, "testuser", "test-func")
 			Expect(run).To(BeNil())
 		})
 
@@ -307,8 +302,7 @@ var _ = Describe("FakeGitHub Server", func() {
 				"status":"completed","conclusion":"success","workflow":"other.yaml"
 			}`)
 
-			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main", "func-deploy.yaml")
-			Expect(err).NotTo(HaveOccurred())
+			run := latestRun(cl, "testuser", "test-func")
 			Expect(run).To(BeNil())
 		})
 
@@ -327,8 +321,7 @@ var _ = Describe("FakeGitHub Server", func() {
 				}]
 			}`)
 
-			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main", "func-deploy.yaml")
-			Expect(err).NotTo(HaveOccurred())
+			run := latestRun(cl, "testuser", "test-func")
 			Expect(run).NotTo(BeNil())
 			Expect(run.Conclusion).To(Equal("failure"))
 			Expect(run.FailureReason).To(Equal("build / go test"))
@@ -348,8 +341,7 @@ var _ = Describe("FakeGitHub Server", func() {
 				}]
 			}`)
 
-			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main", "func-deploy.yaml")
-			Expect(err).NotTo(HaveOccurred())
+			run := latestRun(cl, "testuser", "test-func")
 			Expect(run).NotTo(BeNil())
 			Expect(run.Conclusion).To(Equal("failure"))
 			Expect(run.FailureReason).To(Equal("build"))
@@ -378,14 +370,32 @@ var _ = Describe("FakeGitHub Server", func() {
 				]
 			}`)
 
-			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main", "func-deploy.yaml")
-			Expect(err).NotTo(HaveOccurred())
+			run := latestRun(cl, "testuser", "test-func")
 			Expect(run).NotTo(BeNil())
 			Expect(run.Conclusion).To(Equal("failure"))
 			Expect(run.FailureReason).To(Equal("test / unit tests"))
 		})
 	})
 })
+
+// latestRun drives WatchWorkflowRuns and returns the given repo's latest run
+// from the initial snapshot. The repo must be discoverable (seeded with the
+// serverless-function topic) before calling. WatchWorkflowRuns uses the repo's
+// default branch, so callers seed runs on the default branch (main).
+func latestRun(cl scm.Client, owner, repo string) *scm.WorkflowRun {
+	ctx, cancel := context.WithCancel(context.Background())
+	DeferCleanup(cancel)
+	ch, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	var snap []scm.RepoRun
+	EventuallyWithOffset(1, ch).Should(Receive(&snap))
+	for _, rr := range snap {
+		if rr.Repo.Owner == owner && rr.Repo.Name == repo {
+			return rr.Run
+		}
+	}
+	return nil
+}
 
 func startServer() (*httptest.Server, scm.Client) {
 	srv := fakegithub.New(fakegithub.User{Login: "testuser", AvatarURL: "https://example.com/avatar"}, testPAT)

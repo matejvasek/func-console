@@ -3,13 +3,10 @@ package handler
 import (
 	"bufio"
 	"context"
-	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -18,147 +15,20 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
-var _ = Describe("HandleBuildStatus", func() {
-	It("returns 401 without an SCM token", func() {
-		withSCMStub(&scm.ClientStub{})
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/func/build/status", nil)
-		w := httptest.NewRecorder()
-
-		(&Handlers{}).HandleBuildStatus(w, req)
-
-		Expect(w.Code).To(Equal(http.StatusUnauthorized))
-	})
-
-	It("maps a run to a build-status item keyed by owner/repo", func() {
-		withSCMStub(&scm.ClientStub{
-			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
-				return []scm.Repo{{Owner: "alice", Name: "fn", DefaultBranch: "main"}}, nil
-			},
-			OnLatestWorkflowRun: func(ctx context.Context, owner, repo, branch, workflowFile string) (*scm.WorkflowRun, error) {
-				return &scm.WorkflowRun{Status: "in_progress", HeadSHA: "sha1", HTMLURL: "u"}, nil
-			},
-		})
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/func/build/status", nil)
-		req.Header.Set("X-SCM-Token", "pat")
-		w := httptest.NewRecorder()
-
-		(&Handlers{}).HandleBuildStatus(w, req)
-
-		Expect(w.Code).To(Equal(http.StatusOK))
-		var snap buildSnapshot
-		Expect(json.Unmarshal(w.Body.Bytes(), &snap)).To(Succeed())
-		Expect(snap.Functions).To(HaveLen(1))
-		Expect(snap.Functions[0].Key).To(Equal("alice/fn"))
-		Expect(snap.Functions[0].BuildStatus).To(Equal("Building"))
-	})
-
-	It("reports None when a repo has no runs", func() {
-		withSCMStub(&scm.ClientStub{
-			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
-				return []scm.Repo{{Owner: "alice", Name: "fn", DefaultBranch: "main"}}, nil
-			},
-			OnLatestWorkflowRun: func(ctx context.Context, owner, repo, branch, workflowFile string) (*scm.WorkflowRun, error) {
-				return nil, nil
-			},
-		})
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/func/build/status", nil)
-		req.Header.Set("X-SCM-Token", "pat")
-		w := httptest.NewRecorder()
-
-		(&Handlers{}).HandleBuildStatus(w, req)
-
-		var snap buildSnapshot
-		Expect(json.Unmarshal(w.Body.Bytes(), &snap)).To(Succeed())
-		Expect(snap.Functions[0].BuildStatus).To(Equal("None"))
-	})
-
-	It("returns 401 when the SCM token is rejected", func() {
-		withSCMStub(&scm.ClientStub{
-			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
-				return nil, scm.ErrUnauthorized
-			},
-		})
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/func/build/status", nil)
-		req.Header.Set("X-SCM-Token", "pat")
-		w := httptest.NewRecorder()
-
-		(&Handlers{}).HandleBuildStatus(w, req)
-
-		Expect(w.Code).To(Equal(http.StatusUnauthorized))
-	})
-
-	It("isolates a per-repo fetch error to that repo without leaking it", func() {
-		withSCMStub(&scm.ClientStub{
-			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
-				return []scm.Repo{
-					{Owner: "alice", Name: "bad", DefaultBranch: "main"},
-					{Owner: "alice", Name: "good", DefaultBranch: "main"},
-				}, nil
-			},
-			OnLatestWorkflowRun: func(ctx context.Context, owner, repo, branch, workflowFile string) (*scm.WorkflowRun, error) {
-				if repo == "bad" {
-					return nil, errors.New("boom")
-				}
-				return &scm.WorkflowRun{Status: "in_progress"}, nil
-			},
-		})
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/func/build/status", nil)
-		req.Header.Set("X-SCM-Token", "pat")
-		w := httptest.NewRecorder()
-
-		(&Handlers{}).HandleBuildStatus(w, req)
-
-		Expect(w.Code).To(Equal(http.StatusOK))
-		var snap buildSnapshot
-		Expect(json.Unmarshal(w.Body.Bytes(), &snap)).To(Succeed())
-		Expect(snap.Functions).To(HaveLen(2))
-
-		byKey := map[string]buildStatusItem{}
-		for _, f := range snap.Functions {
-			byKey[f.Key] = f
-		}
-		Expect(byKey["alice/bad"].BuildStatus).To(Equal("None"))
-		Expect(byKey["alice/good"].BuildStatus).To(Equal("Building"))
-	})
-})
-
 var _ = Describe("HandleBuildWatch", func() {
-	// pinIntervals makes the SSE timing fully explicit: a fast poll, and
-	// rediscover/heartbeat pushed far out so they never fire during a test.
-	pinIntervals := func() {
-		origPoll := buildPollInterval
-		origRediscover := buildRediscoverInterval
-		origHeartbeat := buildHeartbeatInterval
-		buildPollInterval = 10 * time.Millisecond
-		buildRediscoverInterval = time.Hour
+	// The poll and rediscover loops are owned by scm.Client.WatchWorkflowRuns
+	// (exercised in the github package); the handler only owns SSE transport.
+	// Pin the heartbeat far out so it never interleaves with the assertions.
+	pinHeartbeat := func() {
+		orig := buildHeartbeatInterval
 		buildHeartbeatInterval = time.Hour
-		DeferCleanup(func() {
-			buildPollInterval = origPoll
-			buildRediscoverInterval = origRediscover
-			buildHeartbeatInterval = origHeartbeat
-		})
+		DeferCleanup(func() { buildHeartbeatInterval = orig })
 	}
 
-	It("emits an initial snapshot then a new snapshot on change", func() {
-		pinIntervals()
-
-		var mu sync.Mutex
-		calls := 0
-		withSCMStub(&scm.ClientStub{
-			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
-				return []scm.Repo{{Owner: "alice", Name: "fn", DefaultBranch: "main"}}, nil
-			},
-			OnLatestWorkflowRun: func(ctx context.Context, owner, repo, branch, workflowFile string) (*scm.WorkflowRun, error) {
-				mu.Lock()
-				defer mu.Unlock()
-				calls++
-				if calls == 1 {
-					return &scm.WorkflowRun{Status: "in_progress"}, nil
-				}
-				return &scm.WorkflowRun{Status: "completed", Conclusion: "failure", FailureReason: "build / test"}, nil
-			},
-		})
-
+	// startWatchStream mounts the handler on a test server, opens the SSE
+	// stream, asserts the event-stream content type, and returns a reader over
+	// the response body.
+	startWatchStream := func() *bufio.Reader {
 		mux := http.NewServeMux()
 		mux.HandleFunc("GET /watch", (&Handlers{}).HandleBuildWatch)
 		ts := httptest.NewServer(mux)
@@ -169,54 +39,10 @@ var _ = Describe("HandleBuildWatch", func() {
 		req.Header.Set("X-SCM-Token", "pat")
 		resp, err := ts.Client().Do(req)
 		Expect(err).NotTo(HaveOccurred())
-		defer resp.Body.Close()
+		DeferCleanup(func() { resp.Body.Close() })
 		Expect(resp.Header.Get("Content-Type")).To(Equal("text/event-stream"))
-
-		reader := bufio.NewReader(resp.Body)
-		first, ok := readSSEDataWithin(reader, 2*time.Second)
-		Expect(ok).To(BeTrue(), "expected an initial snapshot frame")
-		Expect(first).To(ContainSubstring(`"buildStatus":"Building"`))
-
-		second, ok := readSSEDataWithin(reader, 2*time.Second)
-		Expect(ok).To(BeTrue(), "expected a second snapshot frame on change")
-		Expect(second).To(ContainSubstring(`"buildStatus":"Failed"`))
-		Expect(second).To(ContainSubstring(`"failureReason":"build / test"`))
-	})
-
-	It("does not emit a second frame when the snapshot is unchanged", func() {
-		pinIntervals()
-
-		withSCMStub(&scm.ClientStub{
-			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
-				return []scm.Repo{{Owner: "alice", Name: "fn", DefaultBranch: "main"}}, nil
-			},
-			OnLatestWorkflowRun: func(ctx context.Context, owner, repo, branch, workflowFile string) (*scm.WorkflowRun, error) {
-				// Same state on every poll, so the change-detection key never moves.
-				return &scm.WorkflowRun{Status: "in_progress"}, nil
-			},
-		})
-
-		mux := http.NewServeMux()
-		mux.HandleFunc("GET /watch", (&Handlers{}).HandleBuildWatch)
-		ts := httptest.NewServer(mux)
-		DeferCleanup(ts.Close)
-
-		req, err := http.NewRequest(http.MethodGet, ts.URL+"/watch", nil)
-		Expect(err).NotTo(HaveOccurred())
-		req.Header.Set("X-SCM-Token", "pat")
-		resp, err := ts.Client().Do(req)
-		Expect(err).NotTo(HaveOccurred())
-		defer resp.Body.Close()
-
-		reader := bufio.NewReader(resp.Body)
-		first, ok := readSSEDataWithin(reader, 2*time.Second)
-		Expect(ok).To(BeTrue(), "expected an initial snapshot frame")
-		Expect(first).To(ContainSubstring(`"buildStatus":"Building"`))
-
-		// Wait well beyond several poll cycles (poll is 10ms). No new frame should arrive.
-		_, ok = readSSEDataWithin(reader, 300*time.Millisecond)
-		Expect(ok).To(BeFalse(), "expected no second frame while the snapshot is unchanged")
-	})
+		return bufio.NewReader(resp.Body)
+	}
 
 	It("returns 401 without an SCM token", func() {
 		withSCMStub(&scm.ClientStub{})
@@ -226,102 +52,92 @@ var _ = Describe("HandleBuildWatch", func() {
 		Expect(w.Code).To(Equal(http.StatusUnauthorized))
 	})
 
-	It("carries forward the last-known status when a poll errors transiently", func() {
-		pinIntervals()
-
-		var mu sync.Mutex
-		calls := 0
+	It("returns 401 when the SCM token is rejected during discovery", func() {
 		withSCMStub(&scm.ClientStub{
-			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
-				return []scm.Repo{{Owner: "alice", Name: "fn", DefaultBranch: "main"}}, nil
-			},
-			OnLatestWorkflowRun: func(ctx context.Context, owner, repo, branch, workflowFile string) (*scm.WorkflowRun, error) {
-				mu.Lock()
-				defer mu.Unlock()
-				calls++
-				if calls == 1 {
-					return &scm.WorkflowRun{Status: "in_progress"}, nil
-				}
-				return nil, errors.New("transient boom")
-			},
-		})
-
-		mux := http.NewServeMux()
-		mux.HandleFunc("GET /watch", (&Handlers{}).HandleBuildWatch)
-		ts := httptest.NewServer(mux)
-		DeferCleanup(ts.Close)
-
-		req, err := http.NewRequest(http.MethodGet, ts.URL+"/watch", nil)
-		Expect(err).NotTo(HaveOccurred())
-		req.Header.Set("X-SCM-Token", "pat")
-		resp, err := ts.Client().Do(req)
-		Expect(err).NotTo(HaveOccurred())
-		defer resp.Body.Close()
-
-		reader := bufio.NewReader(resp.Body)
-		first, ok := readSSEDataWithin(reader, 2*time.Second)
-		Expect(ok).To(BeTrue(), "expected an initial snapshot frame")
-		Expect(first).To(ContainSubstring(`"buildStatus":"Building"`))
-
-		// Subsequent polls error; the last-known "Building" is carried forward, so
-		// the change-detection key does not move and no new frame is emitted (no
-		// flicker back to "None", no error-string churn re-sends).
-		_, ok = readSSEDataWithin(reader, 300*time.Millisecond)
-		Expect(ok).To(BeFalse(), "expected no new frame while transient errors are carried forward")
-	})
-
-	It("ends the stream when the token is revoked mid-stream", func() {
-		// Fire rediscover quickly so the test does not wait a real interval.
-		origPoll := buildPollInterval
-		origRediscover := buildRediscoverInterval
-		origHeartbeat := buildHeartbeatInterval
-		buildPollInterval = 10 * time.Millisecond
-		buildRediscoverInterval = 10 * time.Millisecond
-		buildHeartbeatInterval = time.Hour
-		DeferCleanup(func() {
-			buildPollInterval = origPoll
-			buildRediscoverInterval = origRediscover
-			buildHeartbeatInterval = origHeartbeat
-		})
-
-		var mu sync.Mutex
-		listCalls := 0
-		withSCMStub(&scm.ClientStub{
-			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
-				mu.Lock()
-				defer mu.Unlock()
-				listCalls++
-				// The initial discovery succeeds; the token is then revoked, so
-				// every rediscover call is unauthorized.
-				if listCalls == 1 {
-					return []scm.Repo{{Owner: "alice", Name: "fn", DefaultBranch: "main"}}, nil
-				}
+			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
 				return nil, scm.ErrUnauthorized
 			},
-			OnLatestWorkflowRun: func(ctx context.Context, owner, repo, branch, workflowFile string) (*scm.WorkflowRun, error) {
-				return &scm.WorkflowRun{Status: "in_progress"}, nil
+		})
+		req := httptest.NewRequest(http.MethodGet, "/watch", nil)
+		req.Header.Set("X-SCM-Token", "pat")
+		w := httptest.NewRecorder()
+		(&Handlers{}).HandleBuildWatch(w, req)
+		Expect(w.Code).To(Equal(http.StatusUnauthorized))
+	})
+
+	It("emits an SSE frame per snapshot, keyed by owner/repo in build vocabulary", func() {
+		pinHeartbeat()
+
+		ch := make(chan []scm.RepoRun, 4)
+		withSCMStub(&scm.ClientStub{
+			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
+				return ch, nil
 			},
 		})
 
-		mux := http.NewServeMux()
-		mux.HandleFunc("GET /watch", (&Handlers{}).HandleBuildWatch)
-		ts := httptest.NewServer(mux)
-		DeferCleanup(ts.Close)
+		reader := startWatchStream()
 
-		req, err := http.NewRequest(http.MethodGet, ts.URL+"/watch", nil)
-		Expect(err).NotTo(HaveOccurred())
-		req.Header.Set("X-SCM-Token", "pat")
-		resp, err := ts.Client().Do(req)
-		Expect(err).NotTo(HaveOccurred())
-		defer resp.Body.Close()
-
-		reader := bufio.NewReader(resp.Body)
+		ch <- []scm.RepoRun{{
+			Repo: scm.Repo{Owner: "alice", Name: "fn"},
+			Run:  &scm.WorkflowRun{Status: "in_progress"},
+		}}
 		first, ok := readSSEDataWithin(reader, 2*time.Second)
-		Expect(ok).To(BeTrue(), "expected an initial snapshot frame")
+		Expect(ok).To(BeTrue(), "expected a frame for the first snapshot")
+		Expect(first).To(ContainSubstring(`"key":"alice/fn"`))
 		Expect(first).To(ContainSubstring(`"buildStatus":"Building"`))
 
-		// Once the token is revoked, the rediscover tick ends the stream, so the
-		// response body reaches EOF.
+		ch <- []scm.RepoRun{{
+			Repo: scm.Repo{Owner: "alice", Name: "fn"},
+			Run:  &scm.WorkflowRun{Status: "completed", Conclusion: "failure", FailureReason: "build / test"},
+		}}
+		second, ok := readSSEDataWithin(reader, 2*time.Second)
+		Expect(ok).To(BeTrue(), "expected a frame for the second snapshot")
+		Expect(second).To(ContainSubstring(`"buildStatus":"Failed"`))
+		Expect(second).To(ContainSubstring(`"failureReason":"build / test"`))
+	})
+
+	It("reports None for a repo with no run", func() {
+		pinHeartbeat()
+
+		ch := make(chan []scm.RepoRun, 1)
+		withSCMStub(&scm.ClientStub{
+			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
+				return ch, nil
+			},
+		})
+
+		reader := startWatchStream()
+
+		ch <- []scm.RepoRun{{Repo: scm.Repo{Owner: "alice", Name: "fn"}, Run: nil}}
+		frame, ok := readSSEDataWithin(reader, 2*time.Second)
+		Expect(ok).To(BeTrue(), "expected a frame for the snapshot")
+		Expect(frame).To(ContainSubstring(`"key":"alice/fn"`))
+		Expect(frame).To(ContainSubstring(`"buildStatus":"None"`))
+	})
+
+	It("ends the stream when the watch channel closes", func() {
+		pinHeartbeat()
+
+		ch := make(chan []scm.RepoRun, 1)
+		withSCMStub(&scm.ClientStub{
+			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
+				return ch, nil
+			},
+		})
+
+		reader := startWatchStream()
+
+		ch <- []scm.RepoRun{{
+			Repo: scm.Repo{Owner: "alice", Name: "fn"},
+			Run:  &scm.WorkflowRun{Status: "in_progress"},
+		}}
+		first, ok := readSSEDataWithin(reader, 2*time.Second)
+		Expect(ok).To(BeTrue(), "expected an initial frame")
+		Expect(first).To(ContainSubstring(`"buildStatus":"Building"`))
+
+		// Closing the channel signals the watch ended (e.g. the token was revoked
+		// mid-stream); the handler ends the SSE stream, so the body reaches EOF.
+		close(ch)
 		errCh := make(chan error, 1)
 		go func() {
 			for {
@@ -335,7 +151,7 @@ var _ = Describe("HandleBuildWatch", func() {
 		case err := <-errCh:
 			Expect(err).To(MatchError(io.EOF))
 		case <-time.After(2 * time.Second):
-			Fail("expected the stream to close after the token was revoked")
+			Fail("expected the stream to close after the watch channel closed")
 		}
 	})
 })
