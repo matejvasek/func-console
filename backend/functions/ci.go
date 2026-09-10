@@ -11,11 +11,8 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
-// WorkflowFilename is the file name (under .github/workflows/) of the CI
-// workflow generated for a function. It is the identifier used to scope build
-// status queries to the func build workflow rather than to arbitrary other
-// workflows in the repository. It aliases func's default so it stays in sync
-// with what generateGithubCIFiles actually writes.
+// WorkflowFilename aliases func's default workflow file name, keeping build
+// status queries scoped to the workflow generateGithubCIFiles actually writes.
 const WorkflowFilename = cigithub.DefaultGitHubWorkflowFilename
 
 var ciGenerators = map[scm.Platform]func(string, ScaffoldConfig) error{
