@@ -182,6 +182,24 @@ describe('FunctionTable', () => {
     );
   });
 
+  it('omits the failure reason from the secondary build indicator tooltip', async () => {
+    const user = userEvent.setup();
+    const failedRebuild: FunctionTableItem = {
+      ...mockFunctions[0],
+      buildActivity: 'Failed',
+      failureReason: 'build / go test',
+    };
+
+    render(
+      <MemoryRouter>
+        <FunctionTable functions={[failedRebuild]} onEdit={vi.fn()} showNamespace />
+      </MemoryRouter>,
+    );
+
+    await user.hover(screen.getByText('WarningIcon'));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(/^Latest build failed$/);
+  });
+
   it('keeps ScaledToZero and shows a build-in-progress spinner when buildActivity is Building', () => {
     const idleRebuilding: FunctionTableItem = {
       ...mockFunctions[0],

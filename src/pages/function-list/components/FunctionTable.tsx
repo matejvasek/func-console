@@ -125,19 +125,9 @@ function StatusCell({
     // in-progress or failed rebuild is shown only as a small secondary indicator
     // so availability is never misrepresented.
     case 'Running':
-      return withBuildActivity(
-        <SuccessStatus title={status} />,
-        buildActivity,
-        failureReason,
-        buildRunURL,
-      );
+      return withBuildActivity(<SuccessStatus title={status} />, buildActivity, buildRunURL);
     case 'ScaledToZero':
-      return withBuildActivity(
-        <InfoStatus title={status} />,
-        buildActivity,
-        failureReason,
-        buildRunURL,
-      );
+      return withBuildActivity(<InfoStatus title={status} />, buildActivity, buildRunURL);
     case 'Building':
     case 'Deploying':
       return <ProgressStatus title={status} />;
@@ -183,18 +173,13 @@ function RunLink({
 function withBuildActivity(
   badge: React.ReactNode,
   buildActivity?: 'Building' | 'Failed',
-  failureReason?: string,
   buildRunURL?: string,
 ) {
   if (!buildActivity) return <>{badge}</>;
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
       {badge}
-      <BuildActivityIndicator
-        buildActivity={buildActivity}
-        failureReason={failureReason}
-        buildRunURL={buildRunURL}
-      />
+      <BuildActivityIndicator buildActivity={buildActivity} buildRunURL={buildRunURL} />
     </span>
   );
 }
@@ -202,16 +187,14 @@ function withBuildActivity(
 // BuildActivityIndicator is the small secondary indicator shown next to an
 // available status (`Running` or `ScaledToZero`) while a new revision builds or a rebuild fails: a
 // spinner (tooltip "Build in progress") for an in-progress build, or a warning
-// icon (tooltip "Latest build failed: <reason>", link to the run) for a failed
-// one. On a serving function the tooltip is phrased to make clear the function
-// is still running and only the latest rebuild failed, not the function itself.
+// icon (tooltip "Latest build failed", link to the run) for a failed one. The
+// tooltip is phrased to make clear the function is still running and only the
+// latest rebuild failed, not the function itself.
 function BuildActivityIndicator({
   buildActivity,
-  failureReason,
   buildRunURL,
 }: {
   buildActivity?: 'Building' | 'Failed';
-  failureReason?: string;
   buildRunURL?: string;
 }) {
   const { t } = useTranslation('plugin__console-functions-plugin');
@@ -238,10 +221,7 @@ function BuildActivityIndicator({
     ) : (
       icon
     );
-    const tooltip = failureReason
-      ? t('Latest build failed: {{reason}}', { reason: failureReason })
-      : t('Latest build failed');
-    return <Tooltip content={tooltip}>{withLink}</Tooltip>;
+    return <Tooltip content={t('Latest build failed')}>{withLink}</Tooltip>;
   }
   return null;
 }
