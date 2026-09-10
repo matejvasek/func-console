@@ -144,7 +144,10 @@ function StatusCell({
     case 'Error':
       return <ErrorStatus title={status} />;
     case 'BuildFailed': {
-      const badge = <ErrorStatus title={status} />;
+      // The status badge is a block-level flex box that fills the cell, which
+      // would anchor the tooltip to the cell rather than to the status itself.
+      // Inline-flex shrink-wraps it so the tooltip sits over the text.
+      const badge = <ErrorStatus title={status} className="pf-v6-u-display-inline-flex" />;
       const withLink = buildRunURL ? <RunLink url={buildRunURL}>{badge}</RunLink> : badge;
       return <Tooltip content={failureReason || t('Build failed')}>{withLink}</Tooltip>;
     }
