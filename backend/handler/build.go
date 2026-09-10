@@ -20,7 +20,6 @@ import (
 var buildHeartbeatInterval = 15 * time.Second
 
 type buildStatusItem struct {
-	Key           string `json:"key"`
 	BuildStatus   string `json:"buildStatus"` // Building | Succeeded | Failed | None
 	Conclusion    string `json:"conclusion,omitempty"`
 	RunURL        string `json:"runURL,omitempty"`
@@ -28,8 +27,11 @@ type buildStatusItem struct {
 	HeadSHA       string `json:"headSHA,omitempty"`
 }
 
+// buildSnapshot keys each function's status by its "owner/name" full name, the
+// same identifier the frontend correlates on. encoding/json emits the map keys
+// sorted, so the SSE frame stays byte-stable across unchanged polls.
 type buildSnapshot struct {
-	Functions []buildStatusItem `json:"functions"`
+	Functions map[string]buildStatusItem `json:"functions"`
 }
 
 func (h *Handlers) HandleBuildWatch(w http.ResponseWriter, r *http.Request) {
@@ -101,17 +103,18 @@ func (h *Handlers) HandleBuildWatch(w http.ResponseWriter, r *http.Request) {
 }
 
 // toSnapshot maps a scm snapshot of repo runs into the wire DTO the frontend
-// consumes, translating each run into the build vocabulary.
+// consumes, keyed by "owner/name" and translating each run into the build
+// vocabulary. The map is always non-nil so an empty snapshot encodes as {}.
 func toSnapshot(runs []scm.RepoRun) buildSnapshot {
-	items := make([]buildStatusItem, len(runs))
-	for i, rr := range runs {
-		items[i] = toBuildStatusItem(rr.Repo.FullName(), rr.Run)
+	items := make(map[string]buildStatusItem, len(runs))
+	for _, rr := range runs {
+		items[rr.Repo.FullName()] = toBuildStatusItem(rr.Run)
 	}
 	return buildSnapshot{Functions: items}
 }
 
-func toBuildStatusItem(key string, run *scm.WorkflowRun) buildStatusItem {
-	item := buildStatusItem{Key: key, BuildStatus: deriveBuildStatus(run)}
+func toBuildStatusItem(run *scm.WorkflowRun) buildStatusItem {
+	item := buildStatusItem{BuildStatus: deriveBuildStatus(run)}
 	if run != nil {
 		item.Conclusion = run.Conclusion
 		item.RunURL = run.HTMLURL

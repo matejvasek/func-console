@@ -22,10 +22,10 @@ describe('useBuildStatus', () => {
 
   it('parses a build-status frame into a keyed map', async () => {
     streamStub.setStreamFrames([
-      streamStub.buildStatusFrame([
-        { key: 'alice/fn', buildStatus: 'Building' },
-        { key: 'alice/gn', buildStatus: 'Failed', failureReason: 'build / test', runURL: 'u' },
-      ]),
+      streamStub.buildStatusFrame({
+        'alice/fn': { buildStatus: 'Building' },
+        'alice/gn': { buildStatus: 'Failed', failureReason: 'build / test', runURL: 'u' },
+      }),
     ]);
 
     const { result } = renderHook(() => useBuildStatus());
@@ -40,7 +40,7 @@ describe('useBuildStatus', () => {
     // long-lived SSE stream that would tear the connection down every minute
     // regardless of heartbeats, so the hook must pass timeout 0 to disable it.
     streamStub.setStreamFrames([
-      streamStub.buildStatusFrame([{ key: 'alice/fn', buildStatus: 'Building' }]),
+      streamStub.buildStatusFrame({ 'alice/fn': { buildStatus: 'Building' } }),
     ]);
 
     const { result } = renderHook(() => useBuildStatus());
@@ -52,7 +52,7 @@ describe('useBuildStatus', () => {
   it('ignores heartbeat comment frames', async () => {
     streamStub.setStreamFrames([
       ':\n\n',
-      streamStub.buildStatusFrame([{ key: 'alice/fn', buildStatus: 'Succeeded' }]),
+      streamStub.buildStatusFrame({ 'alice/fn': { buildStatus: 'Succeeded' } }),
     ]);
 
     const { result } = renderHook(() => useBuildStatus());
@@ -66,7 +66,7 @@ describe('useBuildStatus', () => {
     // the split falls in the middle of the JSON payload ("func" | "tions").
     streamStub.setStreamFrames([
       'event: build-status\ndata: {"func',
-      'tions":[{"key":"a/b","buildStatus":"Building"}]}\n\n',
+      'tions":{"a/b":{"buildStatus":"Building"}}}\n\n',
     ]);
 
     const { result } = renderHook(() => useBuildStatus());
@@ -77,8 +77,8 @@ describe('useBuildStatus', () => {
 
   it('applies the last snapshot when two frames arrive in one chunk', async () => {
     streamStub.setStreamFrames([
-      streamStub.buildStatusFrame([{ key: 'a/b', buildStatus: 'Building' }]) +
-        streamStub.buildStatusFrame([{ key: 'a/b', buildStatus: 'Failed' }]),
+      streamStub.buildStatusFrame({ 'a/b': { buildStatus: 'Building' } }) +
+        streamStub.buildStatusFrame({ 'a/b': { buildStatus: 'Failed' } }),
     ]);
 
     const { result } = renderHook(() => useBuildStatus());
@@ -104,7 +104,7 @@ describe('useBuildStatus', () => {
 
   it('restarts the stream when connectionId changes', async () => {
     streamStub.setStreamFrames([
-      streamStub.buildStatusFrame([{ key: 'alice/fn', buildStatus: 'Building' }]),
+      streamStub.buildStatusFrame({ 'alice/fn': { buildStatus: 'Building' } }),
     ]);
 
     const { rerender } = renderHook(({ connectionId }) => useBuildStatus(connectionId), {

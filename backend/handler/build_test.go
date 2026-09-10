@@ -118,8 +118,7 @@ var _ = Describe("HandleBuildWatch", func() {
 		}}
 		first, ok := readSSEDataWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a frame for the first snapshot")
-		Expect(first).To(ContainSubstring(`"key":"alice/fn"`))
-		Expect(first).To(ContainSubstring(`"buildStatus":"Building"`))
+		Expect(first).To(ContainSubstring(`"alice/fn":{"buildStatus":"Building"}`))
 
 		ch <- []scm.RepoRun{{
 			Repo: scm.Repo{Owner: "alice", Name: "fn"},
@@ -146,8 +145,7 @@ var _ = Describe("HandleBuildWatch", func() {
 		ch <- []scm.RepoRun{{Repo: scm.Repo{Owner: "alice", Name: "fn"}, Run: nil}}
 		frame, ok := readSSEDataWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a frame for the snapshot")
-		Expect(frame).To(ContainSubstring(`"key":"alice/fn"`))
-		Expect(frame).To(ContainSubstring(`"buildStatus":"None"`))
+		Expect(frame).To(ContainSubstring(`"alice/fn":{"buildStatus":"None"}`))
 	})
 
 	It("ends the stream when the watch channel closes", func() {

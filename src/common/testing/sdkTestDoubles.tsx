@@ -287,8 +287,9 @@ export function streamFetchLastArgs(): unknown[] {
   return lastStreamArgs;
 }
 
-// buildStatusFrame formats a single SSE build-status event.
-export function buildStatusFrame(functions: unknown[]): string {
+// buildStatusFrame formats a single SSE build-status event. functions is keyed
+// by "owner/repo", matching the backend wire shape.
+export function buildStatusFrame(functions: Record<string, unknown>): string {
   return `event: build-status\ndata: ${JSON.stringify({ functions })}\n\n`;
 }
 

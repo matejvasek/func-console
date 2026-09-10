@@ -5,7 +5,6 @@ import { BuildStatus, PAT_KEY, PROXY_BASE } from '../types';
 const RECONNECT_DELAY_MS = 3000;
 
 interface BuildStatusItem {
-  key: string;
   buildStatus: BuildStatus['buildStatus'];
   conclusion?: string;
   runURL?: string;
@@ -13,7 +12,9 @@ interface BuildStatusItem {
 }
 
 interface BuildSnapshot {
-  functions: BuildStatusItem[];
+  // Keyed by "owner/repo", the same identifier used to correlate build status
+  // with a function.
+  functions: Record<string, BuildStatusItem>;
 }
 
 // useBuildStatus streams per-function GitHub Actions build status over SSE and
@@ -123,8 +124,8 @@ function parseFrame(frame: string): BuildSnapshot | null {
 
 function toMap(snap: BuildSnapshot): ReadonlyMap<string, BuildStatus> {
   return new Map(
-    (snap.functions ?? []).map((f) => [
-      f.key,
+    Object.entries(snap.functions ?? {}).map(([key, f]) => [
+      key,
       {
         buildStatus: f.buildStatus,
         conclusion: f.conclusion,
