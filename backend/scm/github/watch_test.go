@@ -1,9 +1,10 @@
-package github
+package github_test
 
 import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"time"
@@ -12,25 +13,14 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/openshift/faas-console-plugin/backend/scm"
+	"github.com/openshift/faas-console-plugin/backend/scm/github"
 )
 
 var _ = Describe("WatchWorkflowRuns", func() {
-	// Drive the poll loop fast; push rediscover out unless a test needs it.
-	pinWatch := func(poll, rediscover time.Duration) {
-		origPoll, origRe := watchPollInterval, watchRediscoverInterval
-		watchPollInterval = poll
-		watchRediscoverInterval = rediscover
-		DeferCleanup(func() {
-			watchPollInterval = origPoll
-			watchRediscoverInterval = origRe
-		})
-	}
-
 	It("revalidates each poll with If-None-Match so unchanged runs cost a free 304", func() {
-		pinWatch(10*time.Millisecond, time.Hour)
 		var mu sync.Mutex
 		var conditional []string
-		cl := newClient(watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
+		cl := newWatchClient(fastPoll, noRediscover, watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
 			func(w http.ResponseWriter, r *http.Request) {
 				mu.Lock()
 				defer mu.Unlock()
@@ -82,21 +72,20 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	})
 
 	It("returns an unauthorized error from the initial discovery", func() {
-		pinWatch(10*time.Millisecond, time.Hour)
-		cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+		// Discovery fails before the watch loop starts, so the cadence is moot.
+		cl := newWatchClient(fastPoll, noRediscover, func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(map[string]string{"message": "Bad credentials"})
 		})
 
 		_, err := cl.WatchWorkflowRuns(context.Background(), "func-deploy.yaml")
-		Expect(isUnauthorized(err)).To(BeTrue())
+		Expect(err).To(MatchError(scm.ErrUnauthorized))
 	})
 
 	It("streams an initial snapshot keyed by repo, then re-emits only on change", func() {
-		pinWatch(10*time.Millisecond, time.Hour)
 		var mu sync.Mutex
 		runCalls := 0
-		cl := newClient(watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
+		cl := newWatchClient(fastPoll, noRediscover, watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
 			func(w http.ResponseWriter, r *http.Request) {
 				mu.Lock()
 				defer mu.Unlock()
@@ -127,8 +116,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	})
 
 	It("does not re-emit while the run is unchanged", func() {
-		pinWatch(10*time.Millisecond, time.Hour)
-		cl := newClient(watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
+		cl := newWatchClient(fastPoll, noRediscover, watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
 			func(w http.ResponseWriter, r *http.Request) {
 				writeRuns(w, map[string]any{"id": 1, "status": "in_progress"})
 			}))
@@ -147,10 +135,9 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	})
 
 	It("carries a repo's last-known run forward across a transient poll error", func() {
-		pinWatch(10*time.Millisecond, time.Hour)
 		var mu sync.Mutex
 		runCalls := 0
-		cl := newClient(watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
+		cl := newWatchClient(fastPoll, noRediscover, watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
 			func(w http.ResponseWriter, r *http.Request) {
 				mu.Lock()
 				defer mu.Unlock()
@@ -179,10 +166,9 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	})
 
 	It("closes the channel when the token is revoked at rediscover", func() {
-		pinWatch(10*time.Millisecond, 10*time.Millisecond)
 		var mu sync.Mutex
 		userCalls := 0
-		cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+		cl := newWatchClient(fastPoll, fastPoll, func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case r.URL.Path == "/user":
 				mu.Lock()
@@ -230,10 +216,9 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	})
 
 	It("picks up a newly discovered repo on the next rediscover", func() {
-		pinWatch(10*time.Millisecond, 10*time.Millisecond)
 		var mu sync.Mutex
 		repos := []map[string]any{repoItem("alice", "fn1", "main")}
-		cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+		cl := newWatchClient(fastPoll, fastPoll, func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case r.URL.Path == "/user":
 				json.NewEncoder(w).Encode(map[string]string{"login": "alice"})
@@ -274,8 +259,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	})
 
 	It("treats a missing workflow file as a repo with no run", func() {
-		pinWatch(10*time.Millisecond, time.Hour)
-		cl := newClient(watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
+		cl := newWatchClient(fastPoll, noRediscover, watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
 			func(w http.ResponseWriter, r *http.Request) {
 				// The func workflow file does not exist in this repo, so GitHub's
 				// by-file-name runs endpoint 404s. That is not a func repo error;
@@ -297,8 +281,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	})
 
 	It("returns a multi-repo snapshot sorted by repo full name", func() {
-		pinWatch(10*time.Millisecond, time.Hour)
-		cl := newClient(watchFake("alice",
+		cl := newWatchClient(fastPoll, noRediscover, watchFake("alice",
 			[]map[string]any{
 				repoItem("alice", "zeta", "main"),
 				repoItem("alice", "alpha", "main"),
@@ -321,6 +304,22 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		Expect(first[1].Repo.FullName()).To(Equal("alice/zeta"))
 	})
 })
+
+const (
+	// Drive the poll loop fast, and push rediscover out unless a test needs it.
+	fastPoll     = 10 * time.Millisecond
+	noRediscover = time.Hour
+)
+
+// newWatchClient serves handler as GitHub and returns a client whose watch loop
+// ticks fast enough for a test to observe several polls. The cadence belongs to
+// this client alone, so specs can run the loop at different speeds without
+// affecting each other.
+func newWatchClient(poll, rediscover time.Duration, handler http.HandlerFunc) scm.Client {
+	srv := httptest.NewServer(handler)
+	DeferCleanup(srv.Close)
+	return github.NewWithBaseURL("test-pat", srv.URL, github.WithWatchIntervals(poll, rediscover))
+}
 
 // watchFake routes the minimal endpoints WatchWorkflowRuns needs: the
 // authenticated user, the repo search (items), and per-repo workflow runs.

@@ -14,11 +14,27 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
+// Option customizes a client returned by New or NewWithBaseURL.
+type Option func(*ghClient)
+
+// WithWatchIntervals sets the cadence of the WatchWorkflowRuns loop: how often
+// each repo's latest run is polled, and how often the repo set is rediscovered.
+// Both must be positive.
+func WithWatchIntervals(poll, rediscover time.Duration) Option {
+	return func(c *ghClient) {
+		c.pollInterval = poll
+		c.rediscoverInterval = rediscover
+	}
+}
+
+// New builds a client against github.com with default settings. It is not
+// variadic so it stays assignable to scm.ClientFactory, which is how the
+// registry wires it; use NewWithBaseURL to pass options.
 func New(pat string) scm.Client {
 	return NewWithBaseURL(pat, "")
 }
 
-func NewWithBaseURL(pat, baseURL string) scm.Client {
+func NewWithBaseURL(pat, baseURL string, opts ...Option) scm.Client {
 	// A per-client in-memory HTTP cache issues conditional requests
 	// (If-None-Match) using the ETags GitHub returns. When build status is
 	// unchanged the server replies 304 Not Modified, which does NOT count
@@ -32,18 +48,33 @@ func NewWithBaseURL(pat, baseURL string) scm.Client {
 	// status is still just a (free) 304, but a real change is seen immediately.
 	cacheTransport := httpcache.NewMemoryCacheTransport()
 	httpClient := &http.Client{Transport: &forceRevalidate{next: cacheTransport}, Timeout: 30 * time.Second}
-	opts := []ghlib.ClientOptionsFunc{
+	clientOpts := []ghlib.ClientOptionsFunc{
 		ghlib.WithHTTPClient(httpClient),
 		ghlib.WithAuthToken(pat),
 	}
 	if baseURL != "" {
-		opts = append(opts, ghlib.WithURLs(&baseURL, nil))
+		clientOpts = append(clientOpts, ghlib.WithURLs(&baseURL, nil))
 	}
-	client, err := ghlib.NewClient(opts...)
+	client, err := ghlib.NewClient(clientOpts...)
 	if err != nil {
 		panic(fmt.Sprintf("github.NewWithBaseURL: invalid baseURL %q: %v", baseURL, err))
 	}
-	return &ghClient{client: client}
+	c := &ghClient{
+		client:             client,
+		pollInterval:       defaultWatchPollInterval,
+		rediscoverInterval: defaultWatchRediscoverInterval,
+	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	if c.pollInterval <= 0 || c.rediscoverInterval <= 0 {
+		// A wiring mistake, caught here rather than by a panicking
+		// time.NewTicker inside the watch goroutine, which would take down the
+		// process instead of failing the call that caused it.
+		panic(fmt.Sprintf("github.NewWithBaseURL: watch intervals must be positive, got poll=%s rediscover=%s",
+			c.pollInterval, c.rediscoverInterval))
+	}
+	return c
 }
 
 // forceRevalidate sets Cache-Control: max-age=0 on every request so the
@@ -65,6 +96,10 @@ func (t *forceRevalidate) RoundTrip(req *http.Request) (*http.Response, error) {
 
 type ghClient struct {
 	client *ghlib.Client
+	// Cadence of the WatchWorkflowRuns loop. Set once at construction and only
+	// read afterwards, including by the watch goroutine.
+	pollInterval       time.Duration
+	rediscoverInterval time.Duration
 }
 
 func mapErr(err error) error {

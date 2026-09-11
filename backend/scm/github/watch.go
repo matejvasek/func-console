@@ -15,10 +15,11 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
-// Tunable so tests can drive the watch loop quickly.
-var (
-	watchPollInterval       = 3 * time.Second
-	watchRediscoverInterval = 30 * time.Second
+// Defaults for the WatchWorkflowRuns cadence, applied by NewWithBaseURL.
+// WithWatchIntervals overrides them per client.
+const (
+	defaultWatchPollInterval       = 3 * time.Second
+	defaultWatchRediscoverInterval = 30 * time.Second
 )
 
 // WatchWorkflowRuns implements scm.Client. Repo discovery runs synchronously so
@@ -68,9 +69,9 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFile string) (
 			return
 		}
 
-		poll := time.NewTicker(watchPollInterval)
+		poll := time.NewTicker(c.pollInterval)
 		defer poll.Stop()
-		rediscover := time.NewTicker(watchRediscoverInterval)
+		rediscover := time.NewTicker(c.rediscoverInterval)
 		defer rediscover.Stop()
 
 		for {

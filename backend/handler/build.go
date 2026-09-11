@@ -14,8 +14,9 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
-// Tunable so tests can drive the SSE loop quickly.
-var buildHeartbeatInterval = 15 * time.Second
+// defaultHeartbeat is the SSE heartbeat cadence of a handler built without
+// options. It is short enough to keep proxies from closing an idle connection.
+const defaultHeartbeat = 15 * time.Second
 
 type buildStatusItem struct {
 	BuildStatus string `json:"buildStatus"` // Building | Succeeded | Failed | None
@@ -31,7 +32,38 @@ type buildSnapshot struct {
 	Functions map[string]buildStatusItem `json:"functions"`
 }
 
-func (h *Handlers) HandleBuildWatch(w http.ResponseWriter, r *http.Request) {
+// watchConfig holds the tunables of a BuildWatch handler.
+type watchConfig struct {
+	heartbeat time.Duration
+}
+
+// WatchOption customizes the handler returned by BuildWatch.
+type WatchOption func(*watchConfig)
+
+// WithHeartbeat overrides the SSE heartbeat cadence. It must be positive.
+func WithHeartbeat(d time.Duration) WatchOption {
+	return func(c *watchConfig) { c.heartbeat = d }
+}
+
+// BuildWatch returns the build-status SSE handler. Unlike its siblings it needs
+// no cluster configuration, so it is a plain function rather than a method on
+// Handlers, and its one tunable has a default.
+func BuildWatch(opts ...WatchOption) http.HandlerFunc {
+	cfg := watchConfig{heartbeat: defaultHeartbeat}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	if cfg.heartbeat <= 0 {
+		// A wiring mistake, caught here rather than by a panicking
+		// time.NewTicker inside the first request's stream goroutine.
+		panic(fmt.Sprintf("handler.BuildWatch: heartbeat must be positive, got %s", cfg.heartbeat))
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		handleBuildWatch(w, r, cfg.heartbeat)
+	}
+}
+
+func handleBuildWatch(w http.ResponseWriter, r *http.Request, heartbeat time.Duration) {
 	pat, ok := extractSCMToken(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "X-SCM-Token header is required")
@@ -67,14 +99,14 @@ func (h *Handlers) HandleBuildWatch(w http.ResponseWriter, r *http.Request) {
 	// rather than blocking until the first snapshot frame.
 	flusher.Flush()
 
-	heartbeat := time.NewTicker(buildHeartbeatInterval)
-	defer heartbeat.Stop()
+	beat := time.NewTicker(heartbeat)
+	defer beat.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-heartbeat.C:
+		case <-beat.C:
 			if _, err := io.WriteString(w, ":\n\n"); err != nil {
 				return
 			}

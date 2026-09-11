@@ -1,8 +1,9 @@
-package handler
+package handler_test
 
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -12,26 +13,30 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/openshift/faas-console-plugin/backend/config"
+	"github.com/openshift/faas-console-plugin/backend/handler"
 
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
-var _ = Describe("HandleBuildWatch", func() {
+var _ = Describe("BuildWatch", func() {
 	// The poll and rediscover loops are owned by scm.Client.WatchWorkflowRuns
 	// (exercised in the github package); the handler only owns SSE transport.
-	// Pin the heartbeat far out so it never interleaves with the assertions.
-	pinHeartbeat := func() {
-		orig := buildHeartbeatInterval
-		buildHeartbeatInterval = time.Hour
-		DeferCleanup(func() { buildHeartbeatInterval = orig })
-	}
+	// noHeartbeat pushes the heartbeat out so it never interleaves with the
+	// assertions; fastHeartbeat is for the test that wants to see one. Every
+	// spec that reads the stream names its cadence, so changing the default
+	// cannot make them flaky.
+	const (
+		noHeartbeat   = time.Hour
+		fastHeartbeat = 10 * time.Millisecond
+	)
 
-	// startWatchStream mounts the handler on a test server, opens the SSE
-	// stream, asserts the event-stream content type, and returns a reader over
-	// the response body.
-	startWatchStream := func() *bufio.Reader {
+	// startWatchStream mounts the handler on a test server with the given
+	// heartbeat cadence, opens the SSE stream, asserts the event-stream content
+	// type, and returns a reader over the response body.
+	startWatchStream := func(heartbeat time.Duration) *bufio.Reader {
 		mux := http.NewServeMux()
-		mux.HandleFunc("GET /watch", (&Handlers{}).HandleBuildWatch)
+		mux.HandleFunc("GET /watch", handler.BuildWatch(handler.WithHeartbeat(heartbeat)))
 		ts := httptest.NewServer(mux)
 		DeferCleanup(ts.Close)
 
@@ -45,11 +50,13 @@ var _ = Describe("HandleBuildWatch", func() {
 		return bufio.NewReader(resp.Body)
 	}
 
+	// The next three fail before the stream starts, so their cadence never
+	// matters and they take the default.
 	It("returns 401 without an SCM token", func() {
 		withSCMStub(&scm.ClientStub{})
 		req := httptest.NewRequest(http.MethodGet, "/watch", nil)
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleBuildWatch(w, req)
+		handler.BuildWatch()(w, req)
 		Expect(w.Code).To(Equal(http.StatusUnauthorized))
 	})
 
@@ -62,7 +69,7 @@ var _ = Describe("HandleBuildWatch", func() {
 		req := httptest.NewRequest(http.MethodGet, "/watch", nil)
 		req.Header.Set("X-SCM-Token", "pat")
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleBuildWatch(w, req)
+		handler.BuildWatch()(w, req)
 		Expect(w.Code).To(Equal(http.StatusUnauthorized))
 	})
 
@@ -75,15 +82,11 @@ var _ = Describe("HandleBuildWatch", func() {
 		req := httptest.NewRequest(http.MethodGet, "/watch", nil)
 		req.Header.Set("X-SCM-Token", "pat")
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleBuildWatch(w, req)
+		handler.BuildWatch()(w, req)
 		Expect(w.Code).To(Equal(http.StatusBadGateway))
 	})
 
 	It("emits a heartbeat comment on the heartbeat interval", func() {
-		orig := buildHeartbeatInterval
-		buildHeartbeatInterval = 10 * time.Millisecond
-		DeferCleanup(func() { buildHeartbeatInterval = orig })
-
 		// The watch never emits a snapshot, so the only output is the heartbeat
 		// that keeps the SSE connection alive.
 		ch := make(chan []scm.RepoRun)
@@ -93,7 +96,7 @@ var _ = Describe("HandleBuildWatch", func() {
 			},
 		})
 
-		reader := startWatchStream()
+		reader := startWatchStream(fastHeartbeat)
 
 		line, ok := readLineWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a heartbeat line")
@@ -101,8 +104,6 @@ var _ = Describe("HandleBuildWatch", func() {
 	})
 
 	It("emits an SSE frame per snapshot, keyed by owner/repo in build vocabulary", func() {
-		pinHeartbeat()
-
 		ch := make(chan []scm.RepoRun, 4)
 		withSCMStub(&scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
@@ -110,7 +111,7 @@ var _ = Describe("HandleBuildWatch", func() {
 			},
 		})
 
-		reader := startWatchStream()
+		reader := startWatchStream(noHeartbeat)
 
 		ch <- []scm.RepoRun{{
 			Repo: scm.Repo{Owner: "alice", Name: "fn"},
@@ -133,9 +134,10 @@ var _ = Describe("HandleBuildWatch", func() {
 		Expect(second).To(ContainSubstring(`"runURL":"https://github.com/alice/fn/actions/runs/1"`))
 	})
 
-	It("reports None for a repo with no run", func() {
-		pinHeartbeat()
-
+	// The status mapping itself is covered by the table below; this pins the
+	// frame's shape, that a repo with no run carries no empty conclusion, runURL
+	// or headSHA keys.
+	It("omits the optional fields for a repo with no run", func() {
 		ch := make(chan []scm.RepoRun, 1)
 		withSCMStub(&scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
@@ -143,7 +145,7 @@ var _ = Describe("HandleBuildWatch", func() {
 			},
 		})
 
-		reader := startWatchStream()
+		reader := startWatchStream(noHeartbeat)
 
 		ch <- []scm.RepoRun{{Repo: scm.Repo{Owner: "alice", Name: "fn"}, Run: nil}}
 		frame, ok := readSSEDataWithin(reader, 2*time.Second)
@@ -152,8 +154,6 @@ var _ = Describe("HandleBuildWatch", func() {
 	})
 
 	It("ends the stream when the watch channel closes", func() {
-		pinHeartbeat()
-
 		ch := make(chan []scm.RepoRun, 1)
 		withSCMStub(&scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
@@ -161,7 +161,7 @@ var _ = Describe("HandleBuildWatch", func() {
 			},
 		})
 
-		reader := startWatchStream()
+		reader := startWatchStream(noHeartbeat)
 
 		ch <- []scm.RepoRun{{
 			Repo: scm.Repo{Owner: "alice", Name: "fn"},
@@ -190,31 +190,60 @@ var _ = Describe("HandleBuildWatch", func() {
 			Fail("expected the stream to close after the watch channel closed")
 		}
 	})
-})
 
-var _ = Describe("deriveBuildStatus", func() {
-	DescribeTable("maps run status and conclusion to a build status",
-		func(status, conclusion, expected string) {
-			Expect(deriveBuildStatus(&scm.WorkflowRun{Status: status, Conclusion: conclusion})).To(Equal(expected))
-		},
-		Entry("queued -> Building", "queued", "", "Building"),
-		Entry("in_progress -> Building", "in_progress", "", "Building"),
-		Entry("waiting -> Building", "waiting", "", "Building"),
-		Entry("requested -> Building", "requested", "", "Building"),
-		Entry("pending -> Building", "pending", "", "Building"),
-		Entry("completed+success -> Succeeded", "completed", "success", "Succeeded"),
-		Entry("completed+failure -> Failed", "completed", "failure", "Failed"),
-		Entry("completed+cancelled -> Failed", "completed", "cancelled", "Failed"),
-		Entry("completed+timed_out -> Failed", "completed", "timed_out", "Failed"),
-		Entry("completed+skipped -> None", "completed", "skipped", "None"),
-		Entry("completed+neutral -> None", "completed", "neutral", "None"),
-		Entry("completed+stale -> None", "completed", "stale", "None"),
-		Entry("completed+action_required -> None", "completed", "action_required", "None"),
-		Entry("unknown status -> None", "bogus", "", "None"),
-	)
+	Describe("build status vocabulary", func() {
+		// buildStatusFor drives one workflow run through the handler and returns
+		// the buildStatus its SSE frame carries, so the mapping is pinned at the
+		// wire contract the frontend consumes.
+		buildStatusFor := func(run *scm.WorkflowRun) string {
+			ch := make(chan []scm.RepoRun, 1)
+			withSCMStub(&scm.ClientStub{
+				OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
+					return ch, nil
+				},
+			})
 
-	It("maps a nil run to None", func() {
-		Expect(deriveBuildStatus(nil)).To(Equal("None"))
+			reader := startWatchStream(noHeartbeat)
+			ch <- []scm.RepoRun{{Repo: scm.Repo{Owner: "alice", Name: "fn"}, Run: run}}
+			data, ok := readSSEDataWithin(reader, 2*time.Second)
+			Expect(ok).To(BeTrue(), "expected a frame for the snapshot")
+
+			// Decoded into a local mirror of the DTO, so a change to the JSON
+			// tags the frontend reads fails here.
+			var frame struct {
+				Functions map[string]struct {
+					BuildStatus string `json:"buildStatus"`
+				} `json:"functions"`
+			}
+			Expect(json.Unmarshal([]byte(data), &frame)).To(Succeed())
+			return frame.Functions["alice/fn"].BuildStatus
+		}
+
+		DescribeTable("maps run status and conclusion to a build status",
+			func(status, conclusion, expected string) {
+				Expect(buildStatusFor(&scm.WorkflowRun{Status: status, Conclusion: conclusion})).To(Equal(expected))
+			},
+			Entry("queued -> Building", "queued", "", "Building"),
+			Entry("in_progress -> Building", "in_progress", "", "Building"),
+			Entry("waiting -> Building", "waiting", "", "Building"),
+			Entry("requested -> Building", "requested", "", "Building"),
+			Entry("pending -> Building", "pending", "", "Building"),
+			Entry("completed+success -> Succeeded", "completed", "success", "Succeeded"),
+			Entry("completed+failure -> Failed", "completed", "failure", "Failed"),
+			Entry("completed+cancelled -> Failed", "completed", "cancelled", "Failed"),
+			Entry("completed+timed_out -> Failed", "completed", "timed_out", "Failed"),
+			// Not failures: the frontend must fall back to the cluster-derived
+			// status instead of showing a red "Build failed" badge.
+			Entry("completed+skipped -> None", "completed", "skipped", "None"),
+			Entry("completed+neutral -> None", "completed", "neutral", "None"),
+			Entry("completed+stale -> None", "completed", "stale", "None"),
+			Entry("completed+action_required -> None", "completed", "action_required", "None"),
+			Entry("unknown status -> None", "bogus", "", "None"),
+		)
+
+		It("maps a repo with no run to None", func() {
+			Expect(buildStatusFor(nil)).To(Equal("None"))
+		})
 	})
 })
 
@@ -272,4 +301,12 @@ func readSSEData(reader *bufio.Reader) string {
 			data = append(data, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
 		}
 	}
+}
+
+func withSCMStub(stub scm.Client) {
+	orig := config.SCMRegistry
+	config.SCMRegistry = scm.Registry{
+		scm.GitHub: func(token string) scm.Client { return stub },
+	}
+	DeferCleanup(func() { config.SCMRegistry = orig })
 }
