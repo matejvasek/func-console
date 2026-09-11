@@ -237,6 +237,44 @@ describe('FunctionTable', () => {
     );
   });
 
+  it('keeps Deploying and shows a build-in-progress spinner when buildActivity is Building', () => {
+    const rollingOut: FunctionTableItem = {
+      ...mockFunctions[0],
+      status: 'Deploying',
+      buildActivity: 'Building',
+    };
+
+    render(
+      <MemoryRouter>
+        <FunctionTable functions={[rollingOut]} onEdit={vi.fn()} showNamespace />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Progress: Deploying')).toBeInTheDocument();
+    expect(screen.getByLabelText('Build in progress')).toBeInTheDocument();
+  });
+
+  it('keeps Error and shows a warning icon linking to the run when buildActivity is Failed', () => {
+    const brokenWithFailedRebuild: FunctionTableItem = {
+      ...mockFunctions[0],
+      status: 'Error',
+      buildActivity: 'Failed',
+      buildRunURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+    };
+
+    render(
+      <MemoryRouter>
+        <FunctionTable functions={[brokenWithFailedRebuild]} onEdit={vi.fn()} showNamespace />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Error: Error')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Latest build failed' })).toHaveAttribute(
+      'href',
+      'https://github.com/twoGiants/my-func/actions/runs/1',
+    );
+  });
+
   it('renders InfoStatus for NotDeployed functions', () => {
     render(
       <MemoryRouter>

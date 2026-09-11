@@ -113,17 +113,21 @@ function StatusCell({
   buildActivity?: 'Building' | 'Failed';
 }) {
   switch (status) {
-    // An available function keeps its cluster status; a rebuild only ever adds
-    // a secondary indicator, so availability is never misrepresented.
+    // A function the cluster knows about keeps its cluster status; a rebuild
+    // only ever adds a secondary indicator, so the cluster state is never
+    // misrepresented.
     case 'Running':
       return withBuildActivity(<SuccessStatus title={status} />, buildActivity, buildRunURL);
     case 'ScaledToZero':
       return withBuildActivity(<InfoStatus title={status} />, buildActivity, buildRunURL);
-    case 'Building':
     case 'Deploying':
-      return <ProgressStatus title={status} />;
+      return withBuildActivity(<ProgressStatus title={status} />, buildActivity, buildRunURL);
     case 'Error':
-      return <ErrorStatus title={status} />;
+      return withBuildActivity(<ErrorStatus title={status} />, buildActivity, buildRunURL);
+    // Only reached when the cluster knows nothing about the function, so there
+    // is never a secondary indicator to add.
+    case 'Building':
+      return <ProgressStatus title={status} />;
     case 'BuildFailed': {
       // The badge is a block-level flex box that would otherwise fill the cell
       // and make the whole width clickable. Inline-flex shrink-wraps it.

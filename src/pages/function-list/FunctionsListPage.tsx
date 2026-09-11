@@ -220,7 +220,7 @@ function useFunctionListPage(): {
         const cf = clusterFunctions.get(`${item.namespace}/${item.name}`);
         const enriched = cf ? enrichItem(item, cf) : item;
         const build = buildStatuses.get(`${item.owner}/${item.repoName}`);
-        return build ? mergeBuild(enriched, build) : enriched;
+        return build ? mergeBuild(enriched, build, Boolean(cf)) : enriched;
       }),
     [functionItems, clusterFunctions, buildStatuses],
   );
@@ -271,25 +271,32 @@ function enrichItem(item: FunctionTableItem, cf: ClusterFunction): FunctionTable
   };
 }
 
-function isAvailable(status: FunctionTableItem['status']): boolean {
-  return status === 'Running' || status === 'ScaledToZero';
-}
-
-// mergeBuild overlays build status onto a function: an available function keeps
-// its cluster status with the build shown only as a secondary indicator,
+// mergeBuild overlays build status onto a function: one the cluster knows about
+// keeps its cluster status with the build shown only as a secondary indicator,
 // otherwise the build status becomes the primary status.
-function mergeBuild(item: FunctionTableItem, build: BuildStatus): FunctionTableItem {
-  if (isAvailable(item.status)) {
+//
+// The gate is cluster presence (inCluster), not the status value. A live
+// function reports Deploying for a moment while a new revision rolls out, and
+// overwriting that with Building made the row flicker through Building on every
+// redeploy. Cluster presence also separates the two sources of Error: a broken
+// ksvc keeps Error as primary, while a repo-level error (no cluster resource)
+// still falls through to the build status.
+function mergeBuild(
+  item: FunctionTableItem,
+  build: BuildStatus,
+  inCluster: boolean,
+): FunctionTableItem {
+  if (inCluster) {
     if (build.buildStatus === 'Building') {
       return { ...item, buildActivity: 'Building' };
     }
     if (build.buildStatus === 'Failed') {
       return { ...item, buildActivity: 'Failed', buildRunURL: build.runURL };
     }
-    // Succeeded / None: nothing to overlay on an available function.
+    // Succeeded / None: nothing to overlay on a cluster-known function.
     return item;
   }
-  // Not currently deployed/available: show only the build status.
+  // Not in the cluster at all: show only the build status.
   if (build.buildStatus === 'Building') {
     return { ...item, status: 'Building' };
   }
