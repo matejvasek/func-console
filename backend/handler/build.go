@@ -34,36 +34,49 @@ type buildSnapshot struct {
 
 // watchConfig holds the tunables of a BuildWatch handler.
 type watchConfig struct {
-	heartbeat time.Duration
+	newSCMClient scm.ClientFactory
+	heartbeat    time.Duration
 }
 
 // WatchOption customizes the handler returned by BuildWatch.
 type WatchOption func(*watchConfig)
+
+// WithSCMFactory overrides how the handler builds an SCM client from the
+// caller's token.
+func WithSCMFactory(f scm.ClientFactory) WatchOption {
+	return func(c *watchConfig) { c.newSCMClient = f }
+}
 
 // WithHeartbeat overrides the SSE heartbeat cadence. It must be positive.
 func WithHeartbeat(d time.Duration) WatchOption {
 	return func(c *watchConfig) { c.heartbeat = d }
 }
 
-// BuildWatch returns the build-status SSE handler. Unlike its siblings it needs
-// no cluster configuration, so it is a plain function rather than a method on
-// Handlers, and its one tunable has a default.
+// defaultSCMClient builds a client for the platform the registry is wired to.
+func defaultSCMClient(pat string) scm.Client {
+	return config.SCMRegistry.Client(scm.DefaultPlatform, pat)
+}
+
+// BuildWatch returns the build-status SSE handler, which builds an SCM client
+// per request from the caller's token. Unlike its siblings it needs no cluster
+// configuration, so it is a plain function rather than a method on Handlers,
+// and both of its tunables have defaults.
 func BuildWatch(opts ...WatchOption) http.HandlerFunc {
-	cfg := watchConfig{heartbeat: defaultHeartbeat}
+	cfg := watchConfig{newSCMClient: defaultSCMClient, heartbeat: defaultHeartbeat}
 	for _, opt := range opts {
 		opt(&cfg)
 	}
 	if cfg.heartbeat <= 0 {
-		// A wiring mistake, caught here rather than by a panicking
-		// time.NewTicker inside the first request's stream goroutine.
+		// A wiring mistake, caught once at construction rather than by a
+		// panicking time.NewTicker on every request.
 		panic(fmt.Sprintf("handler.BuildWatch: heartbeat must be positive, got %s", cfg.heartbeat))
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		handleBuildWatch(w, r, cfg.heartbeat)
+		handleBuildWatch(w, r, cfg.newSCMClient, cfg.heartbeat)
 	}
 }
 
-func handleBuildWatch(w http.ResponseWriter, r *http.Request, heartbeat time.Duration) {
+func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.ClientFactory, heartbeat time.Duration) {
 	pat, ok := extractSCMToken(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "X-SCM-Token header is required")
@@ -74,7 +87,7 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, heartbeat time.Dur
 		writeError(w, http.StatusInternalServerError, "streaming unsupported")
 		return
 	}
-	client := config.SCMRegistry.Client(scm.DefaultPlatform, pat)
+	client := newSCMClient(pat)
 	ctx := r.Context()
 
 	// WatchWorkflowRuns discovers repos synchronously, so auth failures surface

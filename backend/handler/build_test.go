@@ -13,9 +13,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/openshift/faas-console-plugin/backend/config"
 	"github.com/openshift/faas-console-plugin/backend/handler"
-
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
@@ -31,12 +29,12 @@ var _ = Describe("BuildWatch", func() {
 		fastHeartbeat = 10 * time.Millisecond
 	)
 
-	// startWatchStream mounts the handler on a test server with the given
-	// heartbeat cadence, opens the SSE stream, asserts the event-stream content
-	// type, and returns a reader over the response body.
-	startWatchStream := func(heartbeat time.Duration) *bufio.Reader {
+	// startWatchStream mounts a handler backed by stub on a test server with the
+	// given heartbeat cadence, opens the SSE stream, asserts the event-stream
+	// content type, and returns a reader over the response body.
+	startWatchStream := func(stub scm.Client, heartbeat time.Duration) *bufio.Reader {
 		mux := http.NewServeMux()
-		mux.HandleFunc("GET /watch", handler.BuildWatch(handler.WithHeartbeat(heartbeat)))
+		mux.HandleFunc("GET /watch", buildWatchWithStub(stub, handler.WithHeartbeat(heartbeat)))
 		ts := httptest.NewServer(mux)
 		DeferCleanup(ts.Close)
 
@@ -53,36 +51,35 @@ var _ = Describe("BuildWatch", func() {
 	// The next three fail before the stream starts, so their cadence never
 	// matters and they take the default.
 	It("returns 401 without an SCM token", func() {
-		withSCMStub(&scm.ClientStub{})
 		req := httptest.NewRequest(http.MethodGet, "/watch", nil)
 		w := httptest.NewRecorder()
-		handler.BuildWatch()(w, req)
+		buildWatchWithStub(&scm.ClientStub{})(w, req)
 		Expect(w.Code).To(Equal(http.StatusUnauthorized))
 	})
 
 	It("returns 401 when the SCM token is rejected during discovery", func() {
-		withSCMStub(&scm.ClientStub{
+		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
 				return nil, scm.ErrUnauthorized
 			},
-		})
+		}
 		req := httptest.NewRequest(http.MethodGet, "/watch", nil)
 		req.Header.Set("X-SCM-Token", "pat")
 		w := httptest.NewRecorder()
-		handler.BuildWatch()(w, req)
+		buildWatchWithStub(stub)(w, req)
 		Expect(w.Code).To(Equal(http.StatusUnauthorized))
 	})
 
 	It("returns 502 when discovery fails with a non-auth error", func() {
-		withSCMStub(&scm.ClientStub{
+		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
 				return nil, errors.New("github unreachable")
 			},
-		})
+		}
 		req := httptest.NewRequest(http.MethodGet, "/watch", nil)
 		req.Header.Set("X-SCM-Token", "pat")
 		w := httptest.NewRecorder()
-		handler.BuildWatch()(w, req)
+		buildWatchWithStub(stub)(w, req)
 		Expect(w.Code).To(Equal(http.StatusBadGateway))
 	})
 
@@ -90,13 +87,13 @@ var _ = Describe("BuildWatch", func() {
 		// The watch never emits a snapshot, so the only output is the heartbeat
 		// that keeps the SSE connection alive.
 		ch := make(chan []scm.RepoRun)
-		withSCMStub(&scm.ClientStub{
+		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
 				return ch, nil
 			},
-		})
+		}
 
-		reader := startWatchStream(fastHeartbeat)
+		reader := startWatchStream(stub, fastHeartbeat)
 
 		line, ok := readLineWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a heartbeat line")
@@ -105,13 +102,13 @@ var _ = Describe("BuildWatch", func() {
 
 	It("emits an SSE frame per snapshot, keyed by owner/repo in build vocabulary", func() {
 		ch := make(chan []scm.RepoRun, 4)
-		withSCMStub(&scm.ClientStub{
+		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
 				return ch, nil
 			},
-		})
+		}
 
-		reader := startWatchStream(noHeartbeat)
+		reader := startWatchStream(stub, noHeartbeat)
 
 		ch <- []scm.RepoRun{{
 			Repo: scm.Repo{Owner: "alice", Name: "fn"},
@@ -139,13 +136,13 @@ var _ = Describe("BuildWatch", func() {
 	// or headSHA keys.
 	It("omits the optional fields for a repo with no run", func() {
 		ch := make(chan []scm.RepoRun, 1)
-		withSCMStub(&scm.ClientStub{
+		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
 				return ch, nil
 			},
-		})
+		}
 
-		reader := startWatchStream(noHeartbeat)
+		reader := startWatchStream(stub, noHeartbeat)
 
 		ch <- []scm.RepoRun{{Repo: scm.Repo{Owner: "alice", Name: "fn"}, Run: nil}}
 		frame, ok := readSSEDataWithin(reader, 2*time.Second)
@@ -155,13 +152,13 @@ var _ = Describe("BuildWatch", func() {
 
 	It("ends the stream when the watch channel closes", func() {
 		ch := make(chan []scm.RepoRun, 1)
-		withSCMStub(&scm.ClientStub{
+		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
 				return ch, nil
 			},
-		})
+		}
 
-		reader := startWatchStream(noHeartbeat)
+		reader := startWatchStream(stub, noHeartbeat)
 
 		ch <- []scm.RepoRun{{
 			Repo: scm.Repo{Owner: "alice", Name: "fn"},
@@ -197,13 +194,13 @@ var _ = Describe("BuildWatch", func() {
 		// wire contract the frontend consumes.
 		buildStatusFor := func(run *scm.WorkflowRun) string {
 			ch := make(chan []scm.RepoRun, 1)
-			withSCMStub(&scm.ClientStub{
+			stub := &scm.ClientStub{
 				OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
 					return ch, nil
 				},
-			})
+			}
 
-			reader := startWatchStream(noHeartbeat)
+			reader := startWatchStream(stub, noHeartbeat)
 			ch <- []scm.RepoRun{{Repo: scm.Repo{Owner: "alice", Name: "fn"}, Run: run}}
 			data, ok := readSSEDataWithin(reader, 2*time.Second)
 			Expect(ok).To(BeTrue(), "expected a frame for the snapshot")
@@ -246,6 +243,14 @@ var _ = Describe("BuildWatch", func() {
 		})
 	})
 })
+
+// buildWatchWithStub returns the handler wired to stub instead of the SCM
+// registry it defaults to, ignoring the token the way the stubs ignore
+// authentication. Any opts are applied after, so a spec can name its heartbeat.
+func buildWatchWithStub(stub scm.Client, opts ...handler.WatchOption) http.HandlerFunc {
+	withStub := handler.WithSCMFactory(func(string) scm.Client { return stub })
+	return handler.BuildWatch(append([]handler.WatchOption{withStub}, opts...)...)
+}
 
 // readSSEDataWithin runs readSSEData with a timeout so a handler that never
 // emits fails fast instead of blocking until the spec timeout. It returns the
@@ -301,12 +306,4 @@ func readSSEData(reader *bufio.Reader) string {
 			data = append(data, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
 		}
 	}
-}
-
-func withSCMStub(stub scm.Client) {
-	orig := config.SCMRegistry
-	config.SCMRegistry = scm.Registry{
-		scm.GitHub: func(token string) scm.Client { return stub },
-	}
-	DeferCleanup(func() { config.SCMRegistry = orig })
 }
