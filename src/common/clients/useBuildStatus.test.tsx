@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { PAT_KEY } from '../types';
 
 const streamStub = await vi.hoisted(async () => import('../testing/sdkTestDoubles'));
@@ -9,6 +9,13 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
 
 import { useBuildStatus } from './useBuildStatus';
 
+// jsdom cannot background a tab, so drive visibilityState directly and fire the
+// event the browser would.
+function setTabVisibility(state: 'visible' | 'hidden') {
+  Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
 describe('useBuildStatus', () => {
   beforeEach(() => {
     sessionStorage.setItem(PAT_KEY, 'test-pat');
@@ -17,6 +24,7 @@ describe('useBuildStatus', () => {
 
   afterEach(() => {
     sessionStorage.clear();
+    setTabVisibility('visible');
     vi.useRealTimers();
   });
 
@@ -146,6 +154,89 @@ describe('useBuildStatus', () => {
     await vi.advanceTimersByTimeAsync(10_000);
 
     expect(streamStub.streamFetchCalls()).toBeGreaterThan(1);
+
+    unmount();
+  });
+
+  it('stops the stream once the tab has been hidden past the grace period', async () => {
+    // A hidden tab holds a server-side watch that polls GitHub per repo, so the
+    // request is aborted rather than left open for status nobody is reading.
+    vi.useFakeTimers();
+    streamStub.setStreamFrames([
+      streamStub.buildStatusFrame({ 'alice/fn': { buildStatus: 'Building' } }),
+    ]);
+
+    const { unmount } = renderHook(() => useBuildStatus());
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(streamStub.streamFetchCalls()).toBeGreaterThan(0);
+
+    act(() => setTabVisibility('hidden'));
+    await vi.advanceTimersByTimeAsync(31_000); // past the 30s grace period
+    const whilePaused = streamStub.streamFetchCalls();
+
+    // However long the tab stays hidden, a paused stream must not reconnect.
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(streamStub.streamFetchCalls()).toBe(whilePaused);
+
+    unmount();
+  });
+
+  it('keeps the stream open across a brief tab switch', async () => {
+    vi.useFakeTimers();
+    streamStub.setStreamFrames([
+      streamStub.buildStatusFrame({ 'alice/fn': { buildStatus: 'Building' } }),
+    ]);
+
+    const { unmount } = renderHook(() => useBuildStatus());
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    act(() => setTabVisibility('hidden'));
+    await vi.advanceTimersByTimeAsync(5_000);
+    act(() => setTabVisibility('visible'));
+
+    // Advance past the moment the pending teardown would have fired had coming
+    // back not cancelled it; the stream must still be reconnecting normally.
+    await vi.advanceTimersByTimeAsync(40_000);
+    const before = streamStub.streamFetchCalls();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(streamStub.streamFetchCalls()).toBeGreaterThan(before);
+
+    unmount();
+  });
+
+  it('reopens the stream when the tab becomes visible again', async () => {
+    vi.useFakeTimers();
+    streamStub.setStreamFrames([
+      streamStub.buildStatusFrame({ 'alice/fn': { buildStatus: 'Building' } }),
+    ]);
+
+    const { unmount } = renderHook(() => useBuildStatus());
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    act(() => setTabVisibility('hidden'));
+    await vi.advanceTimersByTimeAsync(31_000);
+    const whilePaused = streamStub.streamFetchCalls();
+
+    act(() => setTabVisibility('visible'));
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(streamStub.streamFetchCalls()).toBeGreaterThan(whilePaused);
+
+    unmount();
+  });
+
+  it('does not open a stream in a tab that starts hidden', async () => {
+    // Opening the console in a background tab (middle-click, restored session)
+    // should cost nothing until the user actually looks at it.
+    vi.useFakeTimers();
+    setTabVisibility('hidden');
+    streamStub.setStreamFrames([
+      streamStub.buildStatusFrame({ 'alice/fn': { buildStatus: 'Building' } }),
+    ]);
+
+    const { unmount } = renderHook(() => useBuildStatus());
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(streamStub.streamFetchCalls()).toBe(0);
 
     unmount();
   });

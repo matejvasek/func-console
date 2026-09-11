@@ -4,6 +4,12 @@ import { BuildStatus, PAT_KEY, PROXY_BASE } from '../types';
 
 const RECONNECT_DELAY_MS = 3000;
 
+// How long a tab may stay hidden before its stream is torn down. A short glance
+// at another tab should not churn the connection, because every reconnect
+// re-runs repo discovery through GitHub's search API, which has a far lower rate
+// limit than the rest of the REST API.
+const HIDDEN_GRACE_MS = 30_000;
+
 interface BuildStatusItem {
   buildStatus: BuildStatus['buildStatus'];
   conclusion?: string;
@@ -17,11 +23,23 @@ interface BuildSnapshot {
 
 // useBuildStatus streams GitHub Actions build status over SSE, keyed by
 // "owner/repo". Pass the auth connectionId so the stream tears down and
-// reconnects with the current PAT on in-place login and account switch.
+// reconnects with the current PAT on in-place login and account switch. The
+// stream is paused while the tab sits in the background.
 export function useBuildStatus(connectionId = 0): ReadonlyMap<string, BuildStatus> {
   const [statuses, setStatuses] = useState<ReadonlyMap<string, BuildStatus>>(() => new Map());
+  const tabActive = useTabActive();
 
   useEffect(() => {
+    // Nothing to stream to. Aborting the request does more than stop reading:
+    // it cancels the request context, which ends the server-side watch and its
+    // per-repo GitHub polling, so a forgotten tab costs no API budget.
+    //
+    // The last snapshot stays rendered rather than being cleared. It is still
+    // the best available answer, and resuming refreshes it within one poll
+    // round-trip, because the backend emits a snapshot on connect before its
+    // first tick.
+    if (!tabActive) return;
+
     let cancelled = false;
     const controller = new AbortController();
 
@@ -67,9 +85,40 @@ export function useBuildStatus(connectionId = 0): ReadonlyMap<string, BuildStatu
       cancelled = true;
       controller.abort();
     };
-  }, [connectionId]);
+  }, [connectionId, tabActive]);
 
   return statuses;
+}
+
+// useTabActive reports whether the tab is worth streaming to: true while it is
+// visible, false once it has been hidden for HIDDEN_GRACE_MS. Visibility only
+// covers backgrounded tabs and minimized windows; navigating away within the
+// console unmounts the consumer, which tears the stream down already.
+function useTabActive(): boolean {
+  const [active, setActive] = useState(() => document.visibilityState !== 'hidden');
+
+  useEffect(() => {
+    let graceTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const onVisibilityChange = () => {
+      // Coming back before the grace period elapses cancels the pending
+      // teardown, so the stream is never interrupted.
+      clearTimeout(graceTimer);
+      if (document.visibilityState === 'hidden') {
+        graceTimer = setTimeout(() => setActive(false), HIDDEN_GRACE_MS);
+      } else {
+        setActive(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      clearTimeout(graceTimer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, []);
+
+  return active;
 }
 
 async function readStream(
