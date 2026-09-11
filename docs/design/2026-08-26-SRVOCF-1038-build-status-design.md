@@ -81,6 +81,18 @@ Notes:
   correctly means gating the non-destructive branch on **cluster presence** (whether
   a `ClusterFunction` exists), not on the status string. Deferred to a later change.
 
+## Source decision: polling GitHub, not webhooks
+
+GitHub can push `workflow_run` events to a webhook, which would be lower latency
+than a 3s poll, but it is a much bigger system: a publicly reachable route into
+the cluster, a webhook plus signing secret registered and kept in sync on every
+function repo, signature verification, and server-side state to fan each event
+out to the right browser session. Polling needs none of that. It runs inside the
+existing user-scoped request, holds no state beyond the life of the connection
+(matching the stateless backend below), and unchanged polls are 304s, so the
+steady-state cost is close to zero. The push that is actually needed, backend to
+browser, is the one SSE provides.
+
 ## Transport decision: SSE over consoleFetch stream
 
 - Server-to-client push only, so SSE fits better than WebSocket (full-duplex we
