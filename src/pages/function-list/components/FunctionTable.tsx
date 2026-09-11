@@ -25,7 +25,6 @@ export interface FunctionTableItem {
   source: FunctionSource;
   mainResource?: K8sResourceCommon;
   buildRunURL?: string;
-  failureReason?: string;
   // Set only when the primary status is one the build status must not overwrite.
   buildActivity?: 'Building' | 'Failed';
 }
@@ -75,7 +74,6 @@ export function FunctionTable({
             <Td dataLabel={t('Status')}>
               <StatusCell
                 status={fn.status}
-                failureReason={fn.failureReason}
                 buildRunURL={fn.buildRunURL}
                 buildActivity={fn.buildActivity}
               />
@@ -107,17 +105,13 @@ function TextOrDash({ value }: { value?: string }) {
 
 function StatusCell({
   status,
-  failureReason,
   buildRunURL,
   buildActivity,
 }: {
   status: FunctionStatus;
-  failureReason?: string;
   buildRunURL?: string;
   buildActivity?: 'Building' | 'Failed';
 }) {
-  const { t } = useTranslation('plugin__console-functions-plugin');
-
   switch (status) {
     // An available function keeps its cluster status; a rebuild only ever adds
     // a secondary indicator, so availability is never misrepresented.
@@ -131,11 +125,10 @@ function StatusCell({
     case 'Error':
       return <ErrorStatus title={status} />;
     case 'BuildFailed': {
-      // The badge is a block-level flex box that fills the cell, which would
-      // anchor the tooltip to the cell. Inline-flex shrink-wraps it.
+      // The badge is a block-level flex box that would otherwise fill the cell
+      // and make the whole width clickable. Inline-flex shrink-wraps it.
       const badge = <ErrorStatus title={status} className="pf-v6-u-display-inline-flex" />;
-      const withLink = buildRunURL ? <RunLink url={buildRunURL}>{badge}</RunLink> : badge;
-      return <Tooltip content={failureReason || t('Build failed')}>{withLink}</Tooltip>;
+      return buildRunURL ? <RunLink url={buildRunURL}>{badge}</RunLink> : badge;
     }
     case 'NotDeployed':
       return <InfoStatus title={status} />;

@@ -8,7 +8,6 @@ interface BuildStatusItem {
   buildStatus: BuildStatus['buildStatus'];
   conclusion?: string;
   runURL?: string;
-  failureReason?: string;
 }
 
 interface BuildSnapshot {
@@ -119,7 +118,6 @@ function toMap(snap: BuildSnapshot): ReadonlyMap<string, BuildStatus> {
         buildStatus: f.buildStatus,
         conclusion: f.conclusion,
         runURL: f.runURL,
-        failureReason: f.failureReason,
       },
     ]),
   );

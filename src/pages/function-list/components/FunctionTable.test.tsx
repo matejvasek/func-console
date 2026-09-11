@@ -164,7 +164,6 @@ describe('FunctionTable', () => {
     const failedRebuild: FunctionTableItem = {
       ...mockFunctions[0],
       buildActivity: 'Failed',
-      failureReason: 'build / go test',
       buildRunURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
     };
 
@@ -182,12 +181,11 @@ describe('FunctionTable', () => {
     );
   });
 
-  it('omits the failure reason from the secondary build indicator tooltip', async () => {
+  it('shows a fixed tooltip on the secondary build indicator', async () => {
     const user = userEvent.setup();
     const failedRebuild: FunctionTableItem = {
       ...mockFunctions[0],
       buildActivity: 'Failed',
-      failureReason: 'build / go test',
     };
 
     render(
@@ -222,7 +220,6 @@ describe('FunctionTable', () => {
       ...mockFunctions[0],
       status: 'ScaledToZero',
       buildActivity: 'Failed',
-      failureReason: 'build / go test',
       buildRunURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
     };
 

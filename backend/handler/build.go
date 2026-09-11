@@ -18,11 +18,10 @@ import (
 var buildHeartbeatInterval = 15 * time.Second
 
 type buildStatusItem struct {
-	BuildStatus   string `json:"buildStatus"` // Building | Succeeded | Failed | None
-	Conclusion    string `json:"conclusion,omitempty"`
-	RunURL        string `json:"runURL,omitempty"`
-	FailureReason string `json:"failureReason,omitempty"`
-	HeadSHA       string `json:"headSHA,omitempty"`
+	BuildStatus string `json:"buildStatus"` // Building | Succeeded | Failed | None
+	Conclusion  string `json:"conclusion,omitempty"`
+	RunURL      string `json:"runURL,omitempty"`
+	HeadSHA     string `json:"headSHA,omitempty"`
 }
 
 // buildSnapshot is keyed by "owner/name", the identifier the frontend correlates
@@ -115,7 +114,6 @@ func toBuildStatusItem(run *scm.WorkflowRun) buildStatusItem {
 	if run != nil {
 		item.Conclusion = run.Conclusion
 		item.RunURL = run.HTMLURL
-		item.FailureReason = run.FailureReason
 		item.HeadSHA = run.HeadSHA
 	}
 	return item

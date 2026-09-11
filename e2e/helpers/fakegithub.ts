@@ -72,26 +72,10 @@ export async function deleteRepoOnFakeGithub(owner: string, name: string): Promi
   }
 }
 
-interface WorkflowStep {
-  name: string;
-  status: string;
-  conclusion: string;
-  number: number;
-}
-
-interface WorkflowJob {
-  id: number;
-  name: string;
-  status: string;
-  conclusion: string;
-  steps: WorkflowStep[];
-}
-
 interface WorkflowRunInput {
   headSha?: string;
   status: string; // queued | in_progress | completed
   conclusion?: string; // success | failure | ...
-  jobs?: WorkflowJob[];
 }
 
 export async function setWorkflowRun(
@@ -111,7 +95,6 @@ export async function setWorkflowRun(
       headSha: run.headSha ?? '',
       status: run.status,
       conclusion: run.conclusion ?? '',
-      jobs: run.jobs ?? [],
     }),
   });
   if (!resp.ok) {

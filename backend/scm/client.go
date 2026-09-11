@@ -87,12 +87,11 @@ type FileEntry struct {
 // repo branch. A nil *WorkflowRun means the workflow has no runs on that branch
 // (including when the workflow file does not exist in the repo).
 type WorkflowRun struct {
-	ID            int64
-	Status        string // queued | in_progress | completed
-	Conclusion    string // success | failure | cancelled | timed_out | ""
-	HeadSHA       string
-	HTMLURL       string
-	FailureReason string // set for failures: "<job> / <step>" summary
+	ID         int64
+	Status     string // queued | in_progress | completed
+	Conclusion string // success | failure | cancelled | timed_out | ""
+	HeadSHA    string
+	HTMLURL    string
 }
 
 type ClientStub struct {

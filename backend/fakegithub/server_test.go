@@ -282,7 +282,6 @@ var _ = Describe("FakeGitHub Server", func() {
 			Expect(run.Conclusion).To(BeEmpty())
 			Expect(run.HeadSHA).To(Equal("sha1"))
 			Expect(run.HTMLURL).To(ContainSubstring("/actions/runs/"))
-			Expect(run.FailureReason).To(BeEmpty())
 		})
 
 		It("filters by branch", func() {
@@ -306,74 +305,19 @@ var _ = Describe("FakeGitHub Server", func() {
 			Expect(run).To(BeNil())
 		})
 
-		It("composes a failure reason from the first failed step", func() {
+		It("returns a completed failed run", func() {
 			ts, cl := startServer()
 			seedRepo(ts)
 			setWorkflowRun(ts, `{
 				"owner":"testuser","repo":"test-func","branch":"main","headSha":"badsha",
-				"status":"completed","conclusion":"failure",
-				"jobs":[{
-					"id":1,"name":"build","status":"completed","conclusion":"failure",
-					"steps":[
-						{"name":"checkout","status":"completed","conclusion":"success","number":1},
-						{"name":"go test","status":"completed","conclusion":"failure","number":2}
-					]
-				}]
+				"status":"completed","conclusion":"failure"
 			}`)
 
 			run := latestRun(cl, "testuser", "test-func")
 			Expect(run).NotTo(BeNil())
+			Expect(run.Status).To(Equal("completed"))
 			Expect(run.Conclusion).To(Equal("failure"))
-			Expect(run.FailureReason).To(Equal("build / go test"))
-		})
-
-		It("falls back to the job name when no step failed", func() {
-			ts, cl := startServer()
-			seedRepo(ts)
-			setWorkflowRun(ts, `{
-				"owner":"testuser","repo":"test-func","branch":"main","headSha":"badsha",
-				"status":"completed","conclusion":"failure",
-				"jobs":[{
-					"id":1,"name":"build","status":"completed","conclusion":"failure",
-					"steps":[
-						{"name":"checkout","status":"completed","conclusion":"success","number":1}
-					]
-				}]
-			}`)
-
-			run := latestRun(cl, "testuser", "test-func")
-			Expect(run).NotTo(BeNil())
-			Expect(run.Conclusion).To(Equal("failure"))
-			Expect(run.FailureReason).To(Equal("build"))
-		})
-
-		It("skips successful jobs and uses a later failing job", func() {
-			ts, cl := startServer()
-			seedRepo(ts)
-			setWorkflowRun(ts, `{
-				"owner":"testuser","repo":"test-func","branch":"main","headSha":"badsha",
-				"status":"completed","conclusion":"failure",
-				"jobs":[
-					{
-						"id":1,"name":"lint","status":"completed","conclusion":"success",
-						"steps":[
-							{"name":"eslint","status":"completed","conclusion":"success","number":1}
-						]
-					},
-					{
-						"id":2,"name":"test","status":"completed","conclusion":"failure",
-						"steps":[
-							{"name":"setup","status":"completed","conclusion":"success","number":1},
-							{"name":"unit tests","status":"completed","conclusion":"failure","number":2}
-						]
-					}
-				]
-			}`)
-
-			run := latestRun(cl, "testuser", "test-func")
-			Expect(run).NotTo(BeNil())
-			Expect(run.Conclusion).To(Equal("failure"))
-			Expect(run.FailureReason).To(Equal("test / unit tests"))
+			Expect(run.HTMLURL).To(ContainSubstring("/actions/runs/"))
 		})
 	})
 })

@@ -5,7 +5,6 @@ import { E2E_USER } from '../../helpers/constants';
 
 const FUNC_NAME = 'build-status-func';
 const BRANCH = 'main';
-const FAILURE_REASON = 'build / go test';
 
 test.describe('Build status', () => {
   test.beforeEach(async () => {
@@ -53,18 +52,6 @@ test.describe('Build status', () => {
         headSha: 'sha-failed',
         status: 'completed',
         conclusion: 'failure',
-        jobs: [
-          {
-            id: 1,
-            name: 'build',
-            status: 'completed',
-            conclusion: 'failure',
-            steps: [
-              { name: 'checkout', status: 'completed', conclusion: 'success', number: 1 },
-              { name: 'go test', status: 'completed', conclusion: 'failure', number: 2 },
-            ],
-          },
-        ],
       });
 
       const grid = page.getByRole('grid', { name: 'Functions' });
@@ -72,16 +59,13 @@ test.describe('Build status', () => {
       await expect(row.getByText('BuildFailed')).toBeVisible({ timeout: 20_000 });
     });
 
-    await test.step('verify a link to the run and the failure reason', async () => {
+    await test.step('verify the status badge links to the failing run', async () => {
       const grid = page.getByRole('grid', { name: 'Functions' });
       const row = grid.locator(`tbody tr:has(td:text-is("${FUNC_NAME}"))`);
 
       const runLink = row.locator('a[href*="/actions/runs/"]');
       await expect(runLink).toBeVisible();
-
-      // The failure reason is surfaced via a tooltip on the status badge.
-      await runLink.hover();
-      await expect(page.getByRole('tooltip')).toContainText(FAILURE_REASON, { timeout: 20_000 });
+      await expect(runLink).toContainText('BuildFailed');
     });
   });
 });

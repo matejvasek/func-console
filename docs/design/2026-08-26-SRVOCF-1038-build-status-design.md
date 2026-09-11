@@ -66,8 +66,8 @@ Notes:
 - For a function that is **not** currently available, the build status is the most
   useful thing to show, so `Building` (first deploy / redeploy of a stopped
   function) and `BuildFailed` become the primary status.
-- `BuildFailed` (and the secondary "build failed" indicator) carries a failure
-  reason and a link to the failing run.
+- `BuildFailed` (and the secondary "build failed" indicator) links to the failing
+  run. No failure reason is surfaced in the list; the run is one click away.
 - The backend returns a build-centric status (`Building`/`Succeeded`/`Failed`/`None`);
   the merge to `FunctionStatus` happens in the frontend, which is the only place
   that also has the cluster status.
@@ -118,12 +118,11 @@ type RepoRun struct {
 }
 
 type WorkflowRun struct {
-    ID            int64
-    Status        string // queued | in_progress | completed
-    Conclusion    string // success | failure | cancelled | timed_out | ""
-    HeadSHA       string
-    HTMLURL       string
-    FailureReason string // set for failures: "<job> / <step>" summary
+    ID         int64
+    Status     string // queued | in_progress | completed
+    Conclusion string // success | failure | cancelled | timed_out | ""
+    HeadSHA    string
+    HTMLURL    string
 }
 ```
 
@@ -143,8 +142,10 @@ key everything is correlated on, matching what `listFunctions` returns.
 - Scoped to a single workflow file, `functions.WorkflowFilename` (func's
   `func-deploy.yaml`), so an unrelated workflow in the same repo cannot be
   reported as the function's build.
-- On `conclusion == "failure"`, call `Actions.ListWorkflowJobs` and compose
-  `FailureReason` from the first failed job and its first failed step.
+- No per-job lookup. A composed failure reason ("<job> / <step>") was tried and
+  dropped: it cost an extra `ListWorkflowJobs` call per failed repo per poll, it
+  is GitHub-Actions-shaped and would not port to another builder, and it told a
+  user little they would not get by opening the run.
 - Repos are polled concurrently (errgroup, limit 10). A per-repo error carries
   that repo's last-known run forward rather than flickering the status to `None`.
 - The channel carries **changes only**: a snapshot equal to the previous one is
@@ -192,7 +193,6 @@ keys, an unchanged snapshot always serializes to the same bytes:
       "buildStatus": "Failed",
       "conclusion": "failure",
       "runURL": "https://github.com/.../actions/runs/123",
-      "failureReason": "build / go test",
       "headSHA": "abc123"
     }
   }
@@ -219,12 +219,10 @@ GitHub API:
   head_sha, status, conclusion, html_url, created_at`. The repo-wide
   `/actions/runs` listing is deliberately not implemented: nothing calls it once
   build status is scoped to one workflow.
-- `GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs` -> `{ total_count, jobs: [...] }`,
-  each job: `id, name, status, conclusion, steps: [{ name, status, conclusion, number }]`.
 
 Admin control:
 - `POST /_admin/actions/runs` with `{ owner, repo, branch, headSha, status,
-  conclusion, jobs: [...], workflow }` creates/replaces the latest run for a repo.
+  conclusion, workflow }` creates/replaces the latest run for a repo.
   Lets tests drive queued -> in_progress -> failed transitions with exact control.
   `workflow` defaults to the func build workflow; set it to script a run under a
   different workflow and assert build status stays scoped.
@@ -246,7 +244,6 @@ interface BuildStatus {
   buildStatus: 'Building' | 'Succeeded' | 'Failed' | 'None';
   conclusion?: string;
   runURL?: string;
-  failureReason?: string;
 }
 ```
 
@@ -268,14 +265,14 @@ looking up each item's build status by its `owner/repo` key.
 ### Types and rendering
 
 - `FunctionStatus` gains `Building` and `BuildFailed`.
-- `FunctionTableItem` gains optional `buildRunURL`, `failureReason`, and
+- `FunctionTableItem` gains optional `buildRunURL` and
   `buildActivity` (`'Building' | 'Failed'`, set only when the primary status is an
   available cluster status (`Running`/`ScaledToZero`) that the build status must
   not overwrite).
 - `StatusCell` in `FunctionTable.tsx`:
   - `Building` -> `ProgressStatus`.
-  - `BuildFailed` -> error style with a tooltip showing `failureReason` and a link
-    to `buildRunURL`.
+  - `BuildFailed` -> error style linking to `buildRunURL`. No tooltip: the badge
+    already reads "BuildFailed", so one would only repeat it.
   - An available status (`Running` -> `SuccessStatus`, `ScaledToZero` ->
     `InfoStatus`) with `buildActivity` renders the cluster badge plus a secondary
     indicator: a spinner (tooltip "Build in progress") for `'Building'`, or a red
@@ -288,9 +285,8 @@ Follow `docs/TESTING.md` (red/green/refactor, one test at a time).
 
 Backend (Ginkgo/Gomega):
 - `scm/github` client: `WatchWorkflowRuns` happy path (in_progress, success),
-  failure path (composes `FailureReason`), change-only emission, per-repo error
-  carry-forward, rediscovery, missing workflow file, and conditional-request
-  revalidation. Use the existing github client test harness; also manually
+  failure path, change-only emission, per-repo error carry-forward, rediscovery,
+  missing workflow file, and conditional-request revalidation. Use the existing github client test harness; also manually
   cross-check against real GitHub repo `matejvasek/fn-testing-a` (token in
   `gh-token.txt`) during development.
 - `handler` build endpoint: snapshot maps runs to `buildStatus`; SSE emits an
@@ -320,7 +316,7 @@ E2e (Playwright): run against the **real backend connected to fakegithub**, no
 branch, run)` helper that POSTs to `/_admin/actions/runs`. A test seeds a repo,
 scripts an `in_progress` run, loads the list and asserts the status column shows
 `Building`, then scripts a `completed`/`failure` run and asserts the column
-updates to `BuildFailed` with the failure reason and a link to the run. Because
+updates to `BuildFailed` with a link to the run. Because
 the list streams over SSE, the update should appear without a manual refresh
 (use `expect.poll` / `toBeVisible` with a timeout).
 

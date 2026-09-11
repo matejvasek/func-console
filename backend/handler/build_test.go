@@ -122,12 +122,15 @@ var _ = Describe("HandleBuildWatch", func() {
 
 		ch <- []scm.RepoRun{{
 			Repo: scm.Repo{Owner: "alice", Name: "fn"},
-			Run:  &scm.WorkflowRun{Status: "completed", Conclusion: "failure", FailureReason: "build / test"},
+			Run: &scm.WorkflowRun{
+				Status: "completed", Conclusion: "failure",
+				HTMLURL: "https://github.com/alice/fn/actions/runs/1",
+			},
 		}}
 		second, ok := readSSEDataWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a frame for the second snapshot")
 		Expect(second).To(ContainSubstring(`"buildStatus":"Failed"`))
-		Expect(second).To(ContainSubstring(`"failureReason":"build / test"`))
+		Expect(second).To(ContainSubstring(`"runURL":"https://github.com/alice/fn/actions/runs/1"`))
 	})
 
 	It("reports None for a repo with no run", func() {

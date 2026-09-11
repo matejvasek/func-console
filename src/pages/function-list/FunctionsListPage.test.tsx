@@ -347,7 +347,6 @@ describe('FunctionsListPage', () => {
       sdkTestDoubles.buildStatusFrame({
         [`twoGiants/${funcName}`]: {
           buildStatus: 'Failed',
-          failureReason: 'build / go test',
           runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
         },
       }),
@@ -380,7 +379,6 @@ describe('FunctionsListPage', () => {
       sdkTestDoubles.buildStatusFrame({
         [`twoGiants/${funcName}`]: {
           buildStatus: 'Failed',
-          failureReason: 'build / go test',
           runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
         },
       }),
@@ -400,13 +398,12 @@ describe('FunctionsListPage', () => {
     );
   });
 
-  it('shows BuildFailed with the failure reason and run link from the build stream', async () => {
+  it('shows BuildFailed with a run link from the build stream', async () => {
     listFunctionsStub({ responses: [repoListItem(funcName)] });
     sdkTestDoubles.setStreamFrames([
       sdkTestDoubles.buildStatusFrame({
         [`twoGiants/${funcName}`]: {
           buildStatus: 'Failed',
-          failureReason: 'build / go test',
           runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
         },
       }),

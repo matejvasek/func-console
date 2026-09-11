@@ -153,34 +153,5 @@ func (c *ghClient) latestWorkflowRun(ctx context.Context, owner, repo, branch, w
 		HeadSHA:    run.GetHeadSHA(),
 		HTMLURL:    run.GetHTMLURL(),
 	}
-	if result.Conclusion == "failure" {
-		reason, err := c.failureReason(ctx, owner, repo, result.ID)
-		if err != nil {
-			return nil, err
-		}
-		result.FailureReason = reason
-	}
 	return result, nil
-}
-
-// failureReason returns a "<job> / <step>" summary of the first failed step, the
-// failing job name, or "". It errors only when the jobs lookup itself fails, so
-// pollRuns carries the previous reason forward instead of flickering it to empty.
-func (c *ghClient) failureReason(ctx context.Context, owner, repo string, runID int64) (string, error) {
-	jobs, _, err := c.client.Actions.ListWorkflowJobs(ctx, owner, repo, runID, nil)
-	if err != nil {
-		return "", fmt.Errorf("list workflow jobs for %s/%s (run %d): %w", owner, repo, runID, mapErr(err))
-	}
-	for _, job := range jobs.Jobs {
-		if job.GetConclusion() != "failure" {
-			continue
-		}
-		for _, step := range job.Steps {
-			if step.GetConclusion() == "failure" {
-				return job.GetName() + " / " + step.GetName(), nil
-			}
-		}
-		return job.GetName(), nil
-	}
-	return "", nil
 }

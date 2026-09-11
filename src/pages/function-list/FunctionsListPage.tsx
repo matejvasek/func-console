@@ -284,12 +284,7 @@ function mergeBuild(item: FunctionTableItem, build: BuildStatus): FunctionTableI
       return { ...item, buildActivity: 'Building' };
     }
     if (build.buildStatus === 'Failed') {
-      return {
-        ...item,
-        buildActivity: 'Failed',
-        buildRunURL: build.runURL,
-        failureReason: build.failureReason,
-      };
+      return { ...item, buildActivity: 'Failed', buildRunURL: build.runURL };
     }
     // Succeeded / None: nothing to overlay on an available function.
     return item;
@@ -299,12 +294,7 @@ function mergeBuild(item: FunctionTableItem, build: BuildStatus): FunctionTableI
     return { ...item, status: 'Building' };
   }
   if (build.buildStatus === 'Failed') {
-    return {
-      ...item,
-      status: 'BuildFailed',
-      buildRunURL: build.runURL,
-      failureReason: build.failureReason,
-    };
+    return { ...item, status: 'BuildFailed', buildRunURL: build.runURL };
   }
   // Succeeded / None: fall through to the cluster-derived status.
   return item;

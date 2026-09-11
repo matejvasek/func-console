@@ -24,7 +24,7 @@ describe('useBuildStatus', () => {
     streamStub.setStreamFrames([
       streamStub.buildStatusFrame({
         'alice/fn': { buildStatus: 'Building' },
-        'alice/gn': { buildStatus: 'Failed', failureReason: 'build / test', runURL: 'u' },
+        'alice/gn': { buildStatus: 'Failed', runURL: 'u' },
       }),
     ]);
 
@@ -32,7 +32,8 @@ describe('useBuildStatus', () => {
 
     await waitFor(() => expect(result.current.size).toBe(2));
     expect(result.current.get('alice/fn')?.buildStatus).toBe('Building');
-    expect(result.current.get('alice/gn')?.failureReason).toBe('build / test');
+    expect(result.current.get('alice/gn')?.buildStatus).toBe('Failed');
+    expect(result.current.get('alice/gn')?.runURL).toBe('u');
   });
 
   it('opens the stream with the request timeout disabled', async () => {

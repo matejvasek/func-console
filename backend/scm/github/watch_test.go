@@ -178,68 +178,6 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		Expect(ok).To(BeFalse(), "expected no re-emit while the error is carried forward")
 	})
 
-	It("does not flip a failed run's reason to empty when the jobs lookup fails transiently", func() {
-		pinWatch(10*time.Millisecond, time.Hour)
-		var mu sync.Mutex
-		jobsCalls := 0
-		cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-			switch {
-			case r.URL.Path == "/user":
-				json.NewEncoder(w).Encode(map[string]string{"login": "alice"})
-			case r.URL.Path == "/search/repositories":
-				json.NewEncoder(w).Encode(map[string]any{
-					"total_count": 1,
-					"items":       []map[string]any{repoItem("alice", "fn", "main")},
-				})
-			case strings.Contains(r.URL.Path, "/actions/workflows/"):
-				// The runs list is identical on every poll: one failed run.
-				writeRuns(w, map[string]any{
-					"id": 1, "status": "completed", "conclusion": "failure", "head_sha": "sha1",
-				})
-			case strings.Contains(r.URL.Path, "/jobs"):
-				// The separate failure-reason lookup succeeds once, then fails
-				// transiently on every later poll.
-				mu.Lock()
-				jobsCalls++
-				n := jobsCalls
-				mu.Unlock()
-				if n == 1 {
-					json.NewEncoder(w).Encode(map[string]any{
-						"jobs": []map[string]any{{
-							"id": 1, "name": "build", "status": "completed", "conclusion": "failure",
-							"steps": []map[string]any{
-								{"name": "go test", "status": "completed", "conclusion": "failure", "number": 1},
-							},
-						}},
-					})
-					return
-				}
-				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]string{"message": "boom"})
-			default:
-				w.WriteHeader(http.StatusNotFound)
-			}
-		})
-
-		ctx, cancel := context.WithCancel(context.Background())
-		DeferCleanup(cancel)
-		ch, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
-		Expect(err).NotTo(HaveOccurred())
-
-		first, ok := recvWithin(ch, 2*time.Second)
-		Expect(ok).To(BeTrue(), "expected an initial snapshot")
-		Expect(first[0].Run).NotTo(BeNil())
-		Expect(first[0].Run.Conclusion).To(Equal("failure"))
-		Expect(first[0].Run.FailureReason).To(Equal("build / go test"))
-
-		// The run itself never changes; only the best-effort jobs lookup now
-		// fails. The failure reason must be carried forward, not flipped to ""
-		// and re-emitted (that is exactly the flicker carry-forward prevents).
-		_, ok = recvWithin(ch, 300*time.Millisecond)
-		Expect(ok).To(BeFalse(),
-			"expected no re-emit: a transient jobs-lookup error should not flip FailureReason to empty")
-	})
-
 	It("closes the channel when the token is revoked at rediscover", func() {
 		pinWatch(10*time.Millisecond, 10*time.Millisecond)
 		var mu sync.Mutex
