@@ -188,9 +188,15 @@ function BuildActivityIndicator({
   const { t } = useTranslation('plugin__console-functions-plugin');
 
   if (buildActivity === 'Building') {
+    // The tooltip triggers off the wrapper, not the spinner: it attaches a focus
+    // listener to its trigger, and Blink makes an <svg> with focus listeners
+    // focusable, so clicking the bare spinner drew a focus ring that then
+    // rotated along with it. A span with the same listener stays unfocusable.
     return (
       <Tooltip content={t('Build in progress')}>
-        <Spinner size="sm" aria-label={t('Build in progress')} />
+        <span className="pf-v6-u-display-inline-flex">
+          <Spinner size="sm" aria-label={t('Build in progress')} />
+        </span>
       </Tooltip>
     );
   }
