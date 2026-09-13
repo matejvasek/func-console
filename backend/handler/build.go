@@ -32,31 +32,6 @@ type buildSnapshot struct {
 	Functions map[string]buildStatusItem `json:"functions"`
 }
 
-// watchConfig holds the tunables of a BuildWatch handler.
-type watchConfig struct {
-	newSCMClient scm.ClientFactory
-	heartbeat    time.Duration
-}
-
-// WatchOption customizes the handler returned by BuildWatch.
-type WatchOption func(*watchConfig)
-
-// WithSCMFactory overrides how the handler builds an SCM client from the
-// caller's token.
-func WithSCMFactory(f scm.ClientFactory) WatchOption {
-	return func(c *watchConfig) { c.newSCMClient = f }
-}
-
-// WithHeartbeat overrides the SSE heartbeat cadence. It must be positive.
-func WithHeartbeat(d time.Duration) WatchOption {
-	return func(c *watchConfig) { c.heartbeat = d }
-}
-
-// defaultSCMClient builds a client for the platform the registry is wired to.
-func defaultSCMClient(pat string) scm.Client {
-	return config.SCMRegistry.Client(scm.DefaultPlatform, pat)
-}
-
 // BuildWatch returns the build-status SSE handler, which builds an SCM client
 // per request from the caller's token. Unlike its siblings it needs no cluster
 // configuration, so it is a plain function rather than a method on Handlers,
@@ -149,6 +124,31 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 			flusher.Flush()
 		}
 	}
+}
+
+// watchConfig holds the tunables of a BuildWatch handler.
+type watchConfig struct {
+	newSCMClient scm.ClientFactory
+	heartbeat    time.Duration
+}
+
+// WatchOption customizes the handler returned by BuildWatch.
+type WatchOption func(*watchConfig)
+
+// WithSCMFactory overrides how the handler builds an SCM client from the
+// caller's token.
+func WithSCMFactory(f scm.ClientFactory) WatchOption {
+	return func(c *watchConfig) { c.newSCMClient = f }
+}
+
+// WithHeartbeat overrides the SSE heartbeat cadence. It must be positive.
+func WithHeartbeat(d time.Duration) WatchOption {
+	return func(c *watchConfig) { c.heartbeat = d }
+}
+
+// defaultSCMClient builds a client for the platform the registry is wired to.
+func defaultSCMClient(pat string) scm.Client {
+	return config.SCMRegistry.Client(scm.DefaultPlatform, pat)
 }
 
 // toSnapshot maps repo runs into the wire DTO. The map is always non-nil, so an

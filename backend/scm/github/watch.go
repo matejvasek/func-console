@@ -22,19 +22,6 @@ const (
 	defaultWatchRediscoverInterval = 30 * time.Second
 )
 
-// workflowWatch implements scm.WorkflowWatch. The result channel carries both
-// snapshots and errors; the caller must handle both.
-type workflowWatch struct {
-	ch     chan scm.WorkflowRunsOrErr
-	cancel context.CancelFunc
-}
-
-func (w *workflowWatch) ResultChan() <-chan scm.WorkflowRunsOrErr { return w.ch }
-func (w *workflowWatch) Stop() {
-	// Cancel the polling loop's context. The loop will clean up and close the channel.
-	w.cancel()
-}
-
 // WatchWorkflowRuns implements scm.Client. Repo discovery runs synchronously so
 // auth failures are returned to the caller rather than lost in the goroutine.
 // The returned watch's lifetime is independent of ctx; call Stop() to terminate.
@@ -120,6 +107,19 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFile string) (
 		}
 	}()
 	return watch, nil
+}
+
+// workflowWatch implements scm.WorkflowWatch. The result channel carries both
+// snapshots and errors; the caller must handle both.
+type workflowWatch struct {
+	ch     chan scm.WorkflowRunsOrErr
+	cancel context.CancelFunc
+}
+
+func (w *workflowWatch) ResultChan() <-chan scm.WorkflowRunsOrErr { return w.ch }
+func (w *workflowWatch) Stop() {
+	// Cancel the polling loop's context. The loop will clean up and close the channel.
+	w.cancel()
 }
 
 // pollRuns fetches the latest run for each repo concurrently. A per-repo error

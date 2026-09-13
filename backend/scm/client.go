@@ -40,16 +40,6 @@ func (r Registry) Client(platform Platform, token string) Client {
 	return client
 }
 
-type WorkflowRunsOrErr struct {
-	Runs []RepoRun
-	Err  error
-}
-
-type WorkflowWatch interface {
-	ResultChan() <-chan WorkflowRunsOrErr
-	Stop()
-}
-
 type Client interface {
 	GetUser(ctx context.Context) (*User, error)
 	ListRepos(ctx context.Context) ([]Repo, error)
@@ -73,13 +63,6 @@ type Repo struct {
 // Used to correlate a repo across cluster and build state.
 func (r Repo) FullName() string { return r.Owner + "/" + r.Name }
 
-// RepoRun pairs a repo with its latest workflow run. A nil Run means the repo
-// has no run yet (including when the workflow file does not exist there).
-type RepoRun struct {
-	Repo Repo
-	Run  *WorkflowRun
-}
-
 type User struct {
 	Login     string `json:"login"`
 	AvatarURL string `json:"avatarUrl"`
@@ -91,6 +74,23 @@ type FileEntry struct {
 	Content string `json:"content"`
 	Type    string `json:"type"`
 	Deleted bool   `json:"deleted,omitempty"`
+}
+
+// RepoRun pairs a repo with its latest workflow run. A nil Run means the repo
+// has no run yet (including when the workflow file does not exist there).
+type RepoRun struct {
+	Repo Repo
+	Run  *WorkflowRun
+}
+
+type WorkflowRunsOrErr struct {
+	Runs []RepoRun
+	Err  error
+}
+
+type WorkflowWatch interface {
+	ResultChan() <-chan WorkflowRunsOrErr
+	Stop()
 }
 
 // WorkflowRun is the latest GitHub Actions run of a specific workflow file on a
