@@ -319,6 +319,32 @@ var _ = Describe("FakeGitHub Server", func() {
 			Expect(run.Conclusion).To(Equal("failure"))
 			Expect(run.HTMLURL).To(ContainSubstring("/actions/runs/"))
 		})
+
+		It("returns a latest run of default branch", func() {
+			ts, cl := startServer()
+			seedRepo(ts)
+
+			setWorkflowRun(ts, `{
+				"owner":"testuser","repo":"test-func","branch":"main","headSha":"badsha",
+				"status":"completed","conclusion":"failure"
+			}`)
+
+			setWorkflowRun(ts, `{
+				"owner":"testuser","repo":"test-func","branch":"main","headSha":"goodsh",
+				"status":"completed","conclusion":"success"
+			}`)
+
+			setWorkflowRun(ts, `{
+				"owner":"testuser","repo":"test-func","branch":"devel","headSha":"badsha",
+				"status":"completed","conclusion":"failure"
+			}`)
+
+			run := latestRun(cl, "testuser", "test-func")
+			Expect(run).NotTo(BeNil())
+			Expect(run.Status).To(Equal("completed"))
+			Expect(run.Conclusion).To(Equal("success"))
+			Expect(run.HTMLURL).To(ContainSubstring("/actions/runs/"))
+		})
 	})
 })
 

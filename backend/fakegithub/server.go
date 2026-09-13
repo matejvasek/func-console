@@ -791,14 +791,8 @@ func (s *Server) handleAdminSetRun(w http.ResponseWriter, r *http.Request) {
 		HTMLURL:      fmt.Sprintf("https://github.com/%s/actions/runs/%d", key, s.runIDSeq),
 		WorkflowFile: workflowFile,
 	}
-	// Replace the latest run for this branch, keep others.
-	kept := rp.Runs[:0:0]
-	for _, existing := range rp.Runs {
-		if existing.HeadBranch != req.Branch {
-			kept = append(kept, existing)
-		}
-	}
-	rp.Runs = append(kept, run)
+
+	rp.Runs = append(rp.Runs, run)
 
 	writeJSON(w, http.StatusOK, map[string]any{"status": "run set", "id": run.ID})
 }
