@@ -219,7 +219,7 @@ function useFunctionListPage(): {
         // keyed by namespace/name - the same function name can exist in multiple namespaces
         const cf = clusterFunctions.get(`${item.namespace}/${item.name}`);
         const enriched = cf ? enrichItem(item, cf) : item;
-        const build = buildStatuses.get(`${item.owner}/${item.repoName}`);
+        const build = buildStatuses[`${item.owner}/${item.repoName}`];
         return build ? mergeBuild(enriched, build, Boolean(cf)) : enriched;
       }),
     [functionItems, clusterFunctions, buildStatuses],

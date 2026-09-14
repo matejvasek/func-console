@@ -30,10 +30,10 @@ describe('useBuildStatus', () => {
 
     const { result } = renderHook(() => useBuildStatus());
 
-    await waitFor(() => expect(result.current.size).toBe(2));
-    expect(result.current.get('alice/fn')?.buildStatus).toBe('Building');
-    expect(result.current.get('alice/gn')?.buildStatus).toBe('Failed');
-    expect(result.current.get('alice/gn')?.runURL).toBe('u');
+    await waitFor(() => expect(Object.keys(result.current).length).toBe(2));
+    expect(result.current['alice/fn']?.buildStatus).toBe('Building');
+    expect(result.current['alice/gn']?.buildStatus).toBe('Failed');
+    expect(result.current['alice/gn']?.runURL).toBe('u');
   });
 
   it('opens the stream with the request timeout disabled', async () => {
@@ -46,7 +46,7 @@ describe('useBuildStatus', () => {
 
     const { result } = renderHook(() => useBuildStatus());
 
-    await waitFor(() => expect(result.current.size).toBe(1));
+    await waitFor(() => expect(Object.keys(result.current).length).toBe(1));
     expect(streamStub.streamFetchLastArgs()[2]).toBe(0);
   });
 
@@ -58,8 +58,8 @@ describe('useBuildStatus', () => {
 
     const { result } = renderHook(() => useBuildStatus());
 
-    await waitFor(() => expect(result.current.size).toBe(1));
-    expect(result.current.get('alice/fn')?.buildStatus).toBe('Succeeded');
+    await waitFor(() => expect(Object.keys(result.current).length).toBe(1));
+    expect(result.current['alice/fn']?.buildStatus).toBe('Succeeded');
   });
 
   it('ignores a frame with no event name', async () => {
@@ -72,7 +72,7 @@ describe('useBuildStatus', () => {
     await vi.advanceTimersByTimeAsync(10_000);
 
     expect(streamStub.streamFetchCalls()).toBeGreaterThan(1);
-    expect(result.current.size).toBe(0);
+    expect(Object.keys(result.current).length).toBe(0);
 
     unmount();
   });
@@ -87,8 +87,8 @@ describe('useBuildStatus', () => {
 
     const { result } = renderHook(() => useBuildStatus());
 
-    await waitFor(() => expect(result.current.size).toBe(1));
-    expect(result.current.get('a/b')?.buildStatus).toBe('Building');
+    await waitFor(() => expect(Object.keys(result.current).length).toBe(1));
+    expect(result.current['a/b']?.buildStatus).toBe('Building');
   });
 
   it('applies the last snapshot when two frames arrive in one chunk', async () => {
@@ -99,8 +99,8 @@ describe('useBuildStatus', () => {
 
     const { result } = renderHook(() => useBuildStatus());
 
-    await waitFor(() => expect(result.current.size).toBe(1));
-    expect(result.current.get('a/b')?.buildStatus).toBe('Failed');
+    await waitFor(() => expect(Object.keys(result.current).length).toBe(1));
+    expect(result.current['a/b']?.buildStatus).toBe('Failed');
   });
 
   it('stops reconnecting after an auth failure', async () => {
