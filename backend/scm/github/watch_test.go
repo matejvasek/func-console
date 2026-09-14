@@ -3,6 +3,7 @@ package github_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -180,7 +181,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		}
 	})
 
-	It("closes the channel when the token is revoked at rediscover", func() {
+	It("propagate error when token is revoked at rediscover", func() {
 		var mu sync.Mutex
 		userCalls := 0
 		cl := newWatchClient(fastPoll, fastPoll, func(w http.ResponseWriter, r *http.Request) {
@@ -218,12 +219,11 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		_, ok := recvWithin(w.ResultChan(), 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an initial snapshot")
 
-		// The rediscover tick sees the revoked token and ends the watch, which
-		// closes the channel.
+		// The rediscover tick sees the revoked token and propagates the error.
 		Eventually(func() bool {
 			select {
-			case _, open := <-w.ResultChan():
-				return !open
+			case res := <-w.ResultChan():
+				return errors.Is(res.Err, scm.ErrUnauthorized)
 			case <-time.After(50 * time.Millisecond):
 				return false
 			}

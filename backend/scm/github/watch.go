@@ -2,7 +2,6 @@ package github
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"reflect"
@@ -88,11 +87,7 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFile string) (
 			case <-rediscover.C:
 				latest, err := c.ListRepos(pollCtx)
 				if err != nil {
-					// Unlike a per-repo poll error, which is only carried
-					// forward, this one is unambiguous: end the stream rather
-					// than leave the client on stale status indefinitely.
-					if errors.Is(err, scm.ErrUnauthorized) {
-						slog.Info("watch workflow runs: token no longer authorized, ending stream")
+					if !emitWithErr(prevSnapshot, fmt.Errorf("repository rediscovery failed: %w", err)) {
 						return
 					}
 					slog.Warn("watch workflow runs: rediscover failed", "err", err)
