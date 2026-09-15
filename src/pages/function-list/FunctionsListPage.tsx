@@ -49,6 +49,7 @@ function FunctionsListPageContent() {
     onRefresh,
     isAuthenticated,
     error,
+    buildWatchError,
     showNamespace,
   } = useFunctionListPage();
 
@@ -63,6 +64,11 @@ function FunctionsListPageContent() {
         {error && (
           <Alert variant="danger" title={t('Error listing functions')} isInline>
             {error}
+          </Alert>
+        )}
+        {buildWatchError && (
+          <Alert variant="danger" title={t('Error watching build statuses')} isInline>
+            {buildWatchError}
           </Alert>
         )}
         {!loaded && (
@@ -125,6 +131,7 @@ function useFunctionListPage(): {
   onRefresh: () => void;
   isAuthenticated: boolean;
   error: string;
+  buildWatchError?: string;
   showNamespace: boolean;
 } {
   const { isAuthenticated, connectionId } = useContext(AuthContext);
@@ -211,7 +218,7 @@ function useFunctionListPage(): {
     // to 'get resources from all namespaces'
     isAllNamespacesKey(namespace) ? undefined : namespace,
   );
-  const { statuses: buildStatuses } = useBuildStatus(connectionId);
+  const { statuses: buildStatuses, error: buildWatchError } = useBuildStatus(connectionId);
 
   const functions = useMemo(
     () =>
@@ -238,6 +245,7 @@ function useFunctionListPage(): {
     onRefresh,
     isAuthenticated,
     error,
+    buildWatchError,
     showNamespace: isAllNamespacesKey(namespace),
   };
 }

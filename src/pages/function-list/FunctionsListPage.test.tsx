@@ -81,6 +81,35 @@ describe('FunctionsListPage', () => {
     );
   }
 
+  function setWatchErrorResponse(
+    status: number = 503,
+    message: string = 'Build watcher service unavailable',
+  ) {
+    server.use(
+      http.get(`${BACKEND_API}/api/v1/func/build/watch`, () =>
+        HttpResponse.json({ error: message }, { status }),
+      ),
+    );
+  }
+
+  it('displays build watcher error alert with message when stream fails', async () => {
+    const functionItem = repoListItem('my-repo');
+    listFunctionsStub({ responses: [functionItem] });
+    setWatchErrorResponse(503, 'Service Unavailable');
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    // Verify error alert title and HTTP error message are displayed
+    await waitFor(() => {
+      expect(screen.getByText('Error watching build statuses')).toBeInTheDocument();
+      expect(screen.getByText('HTTP 503: Service Unavailable')).toBeInTheDocument();
+    });
+  });
+
   it('renders a spinner while loading', () => {
     listFunctionsStub();
     sdkTestDoubles.setWatchFixtures({ knLoaded: false, depLoaded: false });
