@@ -30,10 +30,15 @@ export interface BuildSnapshotEvent {
   readonly data: string;
 }
 
+export interface ErrorEvent {
+  readonly message: string;
+  readonly isAuthError: boolean;
+}
+
 // BuildStatusEventSource is a minimal subset of the standard EventSource interface we require.
 export interface BuildStatusEventSource {
   addEventListener(_: 'build-status', cbk: (e: BuildSnapshotEvent) => void): void;
-  addEventListener(_: 'error', cbk: (e: unknown) => void): void;
+  addEventListener(_: 'error', cbk: (e: ErrorEvent) => void): void;
   close(): void;
 }
 
@@ -101,7 +106,7 @@ export async function putFiles(
 // The standard EventSource however does not support custom fetch function that we need.
 export function createBuildStatusEventSource(): BuildStatusEventSource {
   const listeners: Array<(e: BuildSnapshotEvent) => void> = [];
-  const errorListeners: Array<(e: unknown) => void> = [];
+  const errorListeners: Array<(e: ErrorEvent) => void> = [];
   let cancelled = false;
   const controller = new AbortController();
 
@@ -138,20 +143,18 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
             }
           });
         }
-      } catch (err) {
-        if (cancelled) return;
+      } catch (err: unknown) {
         errorListeners.forEach((cbk) => {
           try {
-            cbk(err);
+            cbk({
+              message: (err as Error).message ?? '',
+              isAuthError: isAuthError(err),
+            });
           } catch (listenerErr) {
             console.error('BuildStatusEventSource error listener threw:', listenerErr);
           }
         });
-        if (isAuthError(err)) {
-          console.error('BuildStatusEventSource: stream unauthorized, not reconnecting', err);
-          return;
-        }
-        console.error('BuildStatusEventSource: stream error, reconnecting', err);
+        if (cancelled || isAuthError(err)) return;
       }
 
       if (!cancelled) {
@@ -165,7 +168,7 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
   return {
     addEventListener(
       event: 'build-status' | 'error',
-      cbk: ((e: BuildSnapshotEvent) => void) | ((e: unknown) => void),
+      cbk: ((e: BuildSnapshotEvent) => void) | ((e: ErrorEvent) => void),
     ) {
       if (event === 'build-status') {
         listeners.push(cbk as (e: BuildSnapshotEvent) => void);

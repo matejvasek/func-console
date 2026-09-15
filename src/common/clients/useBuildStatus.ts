@@ -12,15 +12,20 @@ import {
 export function useBuildStatus(
   connectionId = 0,
   eventSource?: BuildStatusEventSource,
-): Readonly<Record<string, BuildStatus>> {
+): { statuses: Readonly<Record<string, BuildStatus>>; error?: string } {
   const [statuses, setStatuses] = useState<Record<string, BuildStatus>>({});
+  const [error, setError] = useState<string>();
 
   useEffect(() => {
-    const es = eventSource ?? createBuildStatusEventSource();
+    const es: BuildStatusEventSource = eventSource ?? createBuildStatusEventSource();
 
     es.addEventListener('build-status', (e) => {
       const snap = JSON.parse(e.data) as BuildSnapshot;
       setStatuses(snap.functions);
+    });
+
+    es.addEventListener('error', (e) => {
+      setError(e.message);
     });
 
     return () => {
@@ -28,5 +33,5 @@ export function useBuildStatus(
     };
   }, [eventSource, connectionId]);
 
-  return statuses;
+  return { statuses, error };
 }

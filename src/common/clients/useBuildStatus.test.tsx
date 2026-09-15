@@ -11,10 +11,15 @@ interface BuildSnapshotEvent {
   readonly data: string;
 }
 
+interface ErrorEvent {
+  readonly message: string;
+  readonly isAuthError: boolean;
+}
+
 interface BuildStatusEventSource {
   addEventListener(
     event: 'build-status' | 'error',
-    cbk: ((e: BuildSnapshotEvent) => void) | ((e: unknown) => void),
+    cbk: ((e: BuildSnapshotEvent) => void) | ((e: ErrorEvent) => void),
   ): void;
   close(): void;
 }
@@ -25,13 +30,16 @@ describe('useBuildStatus', () => {
   });
 
   function createEventSourceMethods(listeners: Array<(e: BuildSnapshotEvent) => void>) {
+    const errorListeners: Array<(e: ErrorEvent) => void> = [];
     return {
       addEventListener(
         event: 'build-status' | 'error',
-        cbk: ((e: BuildSnapshotEvent) => void) | ((e: unknown) => void),
+        cbk: ((e: BuildSnapshotEvent) => void) | ((e: ErrorEvent) => void),
       ) {
         if (event === 'build-status') {
           listeners.push(cbk as (e: BuildSnapshotEvent) => void);
+        } else if (event === 'error') {
+          errorListeners.push(cbk as (e: ErrorEvent) => void);
         }
       },
       close() {
@@ -108,10 +116,10 @@ describe('useBuildStatus', () => {
 
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
-    await waitFor(() => expect(Object.keys(result.current).length).toBe(2));
-    expect(result.current['alice/fn']?.buildStatus).toBe('Building');
-    expect(result.current['alice/gn']?.buildStatus).toBe('Failed');
-    expect(result.current['alice/gn']?.runURL).toBe('u');
+    await waitFor(() => expect(Object.keys(result.current.statuses).length).toBe(2));
+    expect(result.current.statuses['alice/fn']?.buildStatus).toBe('Building');
+    expect(result.current.statuses['alice/gn']?.buildStatus).toBe('Failed');
+    expect(result.current.statuses['alice/gn']?.runURL).toBe('u');
   });
 
   it('closes the stream on unmount, stopping updates', async () => {
@@ -120,13 +128,13 @@ describe('useBuildStatus', () => {
     const { result, unmount } = renderHook(() => useBuildStatus(0, eventSource));
 
     emitSnapshot({ functions: { 'a/b': { buildStatus: 'Building' } } });
-    await waitFor(() => expect(Object.keys(result.current).length).toBe(1));
+    await waitFor(() => expect(Object.keys(result.current.statuses).length).toBe(1));
 
     unmount();
 
     emitSnapshot({ functions: { 'c/d': { buildStatus: 'Succeeded' } } });
 
-    expect(Object.keys(result.current).length).toBe(1);
+    expect(Object.keys(result.current.statuses).length).toBe(1);
   });
 
   it('updates state when event source emits', async () => {
@@ -139,8 +147,8 @@ describe('useBuildStatus', () => {
       },
     });
 
-    await waitFor(() => expect(Object.keys(result.current).length).toBe(1));
-    expect(result.current['bob/repo']?.buildStatus).toBe('Succeeded');
+    await waitFor(() => expect(Object.keys(result.current.statuses).length).toBe(1));
+    expect(result.current.statuses['bob/repo']?.buildStatus).toBe('Succeeded');
   });
 
   it('updates state multiple times as snapshots arrive over time', async () => {
@@ -153,10 +161,10 @@ describe('useBuildStatus', () => {
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
     await vi.advanceTimersByTimeAsync(15);
-    expect(result.current['x/y']?.buildStatus).toBe('Building');
+    expect(result.current.statuses['x/y']?.buildStatus).toBe('Building');
 
     await vi.advanceTimersByTimeAsync(15);
-    expect(result.current['x/y']?.buildStatus).toBe('Succeeded');
+    expect(result.current.statuses['x/y']?.buildStatus).toBe('Succeeded');
   });
 
   it('closes the stream when connectionId changes', async () => {
@@ -173,10 +181,72 @@ describe('useBuildStatus', () => {
     });
 
     emitSnapshot({ functions: { 'a/b': { buildStatus: 'Building' } } });
-    await waitFor(() => expect(Object.keys(result.current).length).toBe(1));
+    await waitFor(() => expect(Object.keys(result.current.statuses).length).toBe(1));
 
     rerender({ connId: 1 });
 
     expect(closeCalled).toBe(true);
   });
+
+  it('captures error events from the event source', async () => {
+    const { eventSource, emitError } = createErrorCapturingStubEventSource();
+    const { result } = renderHook(() => useBuildStatus(0, eventSource));
+
+    emitError({ message: 'Connection failed' } as ErrorEvent);
+
+    await waitFor(() => expect(result.current.error).toBe('Connection failed'));
+  });
+
+  it('preserves statuses while error is present', async () => {
+    const { eventSource, emitSnapshot, emitError } = createErrorCapturingStubEventSource();
+    const { result } = renderHook(() => useBuildStatus(0, eventSource));
+
+    emitSnapshot({ functions: { 'repo/owner': { buildStatus: 'Building' } } });
+    await waitFor(() => expect(Object.keys(result.current.statuses).length).toBe(1));
+
+    emitError({ message: 'Network error' } as ErrorEvent);
+    await waitFor(() => expect(result.current.error).toBe('Network error'));
+
+    // Statuses should still be present
+    expect(result.current.statuses['repo/owner']?.buildStatus).toBe('Building');
+  });
+
+  function createErrorCapturingStubEventSource(): {
+    eventSource: BuildStatusEventSource;
+    emitSnapshot: (snap: { functions: Record<string, unknown> }) => void;
+    emitError: (err: ErrorEvent) => void;
+  } {
+    const listeners: Array<(e: BuildSnapshotEvent) => void> = [];
+    const errorListeners: Array<(e: ErrorEvent) => void> = [];
+    let closed = false;
+
+    return {
+      eventSource: {
+        addEventListener(
+          event: 'build-status' | 'error',
+          cbk: ((e: BuildSnapshotEvent) => void) | ((e: ErrorEvent) => void),
+        ) {
+          if (event === 'build-status') {
+            listeners.push(cbk as (e: BuildSnapshotEvent) => void);
+          } else if (event === 'error') {
+            errorListeners.push(cbk as (e: ErrorEvent) => void);
+          }
+        },
+        close() {
+          closed = true;
+          listeners.length = 0;
+        },
+      },
+      emitSnapshot(snap: { functions: Record<string, unknown> }) {
+        if (!closed) {
+          listeners.forEach((cbk) => cbk({ data: JSON.stringify(snap) }));
+        }
+      },
+      emitError(err: ErrorEvent) {
+        if (!closed) {
+          errorListeners.forEach((cbk) => cbk(err));
+        }
+      },
+    };
+  }
 });
