@@ -1,8 +1,11 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router';
 import { authenticateGithubFake, logoutGithubFake } from '../../common/testing/authFake';
+import { BACKEND_API } from '../../common/testing/constants';
 import { listFunctionsStub } from '../../common/testing/functionsClientStub';
+import { server } from '../../common/testing/mswServer';
 import { FunctionListItem } from '../../common/types';
 import FunctionsListPage from './FunctionsListPage';
 
@@ -33,7 +36,8 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', async () => {
       </>
     ),
     consoleFetchJSON,
-    consoleFetch: sdkTestDoubles.consoleFetchStub,
+    consoleFetch: async (url: string, options?: RequestInit) =>
+      fetch(new URL(url, 'http://localhost').href, options),
     SuccessStatus: ({ title }: { title: string }) => `Success: ${title}`,
     ProgressStatus: ({ title }: { title: string }) => `Progress: ${title}`,
     ErrorStatus: ({ title }: { title: string }) => `Error: ${title}`,
@@ -52,16 +56,30 @@ describe('FunctionsListPage', () => {
   beforeEach(() => {
     logoutGithubFake();
     authenticateGithubFake();
-    sdkTestDoubles.resetStreamFrames();
   });
 
   afterEach(() => {
+    server.resetHandlers();
     act(() => sdkTestDoubles.reset());
   });
 
   afterAll(() => {
     logoutGithubFake();
   });
+
+  function buildStatusFrame(functions: Record<string, unknown>): string {
+    return `event: build-status\ndata: ${JSON.stringify({ functions })}\n\n`;
+  }
+
+  function setWatchResponse(frames: string[]) {
+    server.use(
+      http.get(`${BACKEND_API}/api/v1/func/build/watch`, () =>
+        HttpResponse.text(frames.join(''), {
+          headers: { 'Content-Type': 'text/event-stream' },
+        }),
+      ),
+    );
+  }
 
   it('renders a spinner while loading', () => {
     listFunctionsStub();
@@ -307,8 +325,8 @@ describe('FunctionsListPage', () => {
     // No cluster fixture, so the function is NotDeployed: the build status is the
     // most useful thing to show, so Building becomes the primary status.
     listFunctionsStub({ responses: [repoListItem(funcName)] });
-    sdkTestDoubles.setStreamFrames([
-      sdkTestDoubles.buildStatusFrame({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } }),
+    setWatchResponse([
+      buildStatusFrame({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } }),
     ]);
 
     render(
@@ -325,8 +343,8 @@ describe('FunctionsListPage', () => {
     // new revision builds; the build is surfaced only as a secondary spinner.
     listFunctionsStub({ responses: [repoListItem(funcName)] });
     sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
-    sdkTestDoubles.setStreamFrames([
-      sdkTestDoubles.buildStatusFrame({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } }),
+    setWatchResponse([
+      buildStatusFrame({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } }),
     ]);
 
     render(
@@ -343,8 +361,8 @@ describe('FunctionsListPage', () => {
   it('keeps Running with a build-failed indicator when the cluster is Running', async () => {
     listFunctionsStub({ responses: [repoListItem(funcName)] });
     sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
-    sdkTestDoubles.setStreamFrames([
-      sdkTestDoubles.buildStatusFrame({
+    setWatchResponse([
+      buildStatusFrame({
         [`twoGiants/${funcName}`]: {
           buildStatus: 'Failed',
           runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
@@ -375,8 +393,8 @@ describe('FunctionsListPage', () => {
       knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')],
       deps: [sdkTestDoubles.deploymentFixture(funcName, 0, 0)],
     });
-    sdkTestDoubles.setStreamFrames([
-      sdkTestDoubles.buildStatusFrame({
+    setWatchResponse([
+      buildStatusFrame({
         [`twoGiants/${funcName}`]: {
           buildStatus: 'Failed',
           runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
@@ -404,8 +422,8 @@ describe('FunctionsListPage', () => {
     // it had already passed on every redeploy.
     listFunctionsStub({ responses: [repoListItem(funcName)] });
     sdkTestDoubles.setWatchFixtures({ knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')] });
-    sdkTestDoubles.setStreamFrames([
-      sdkTestDoubles.buildStatusFrame({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } }),
+    setWatchResponse([
+      buildStatusFrame({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } }),
     ]);
 
     render(
@@ -427,8 +445,8 @@ describe('FunctionsListPage', () => {
       knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'False')],
       deps: [sdkTestDoubles.deploymentFixture(funcName, 1, 0)],
     });
-    sdkTestDoubles.setStreamFrames([
-      sdkTestDoubles.buildStatusFrame({
+    setWatchResponse([
+      buildStatusFrame({
         [`twoGiants/${funcName}`]: {
           buildStatus: 'Failed',
           runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
@@ -454,8 +472,8 @@ describe('FunctionsListPage', () => {
     // Error from FunctionListItem.err is not a cluster status, so the build
     // status still takes over as it does for NotDeployed.
     listFunctionsStub({ responses: [{ ...repoListItem(funcName), err: 'cannot read func.yaml' }] });
-    sdkTestDoubles.setStreamFrames([
-      sdkTestDoubles.buildStatusFrame({
+    setWatchResponse([
+      buildStatusFrame({
         [`twoGiants/${funcName}`]: {
           buildStatus: 'Failed',
           runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
@@ -474,8 +492,8 @@ describe('FunctionsListPage', () => {
 
   it('shows BuildFailed with a run link from the build stream', async () => {
     listFunctionsStub({ responses: [repoListItem(funcName)] });
-    sdkTestDoubles.setStreamFrames([
-      sdkTestDoubles.buildStatusFrame({
+    setWatchResponse([
+      buildStatusFrame({
         [`twoGiants/${funcName}`]: {
           buildStatus: 'Failed',
           runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
