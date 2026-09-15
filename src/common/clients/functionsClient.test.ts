@@ -214,4 +214,78 @@ describe('createBuildStatusEventSource', () => {
     eventSource.close();
     vi.useRealTimers();
   });
+
+  it('handles multiple sequential build-status events', async () => {
+    const sseFrames =
+      'event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Building"}}}\n\n' +
+      'event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Succeeded"}}}\n\n' +
+      'event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Failed"}}}\n\n';
+
+    server.use(
+      http.get('/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch', () =>
+        HttpResponse.text(sseFrames, { headers: { 'Content-Type': 'text/event-stream' } }),
+      ),
+    );
+
+    const eventSource = createBuildStatusEventSource();
+    const events: Array<{ functions: Record<string, { buildStatus: string }> }> = [];
+
+    await new Promise<void>((resolve) => {
+      eventSource.addEventListener('build-status', (e) => {
+        events.push(JSON.parse(e.data));
+        if (events.length === 3) resolve();
+      });
+
+      setTimeout(() => {
+        if (events.length < 3) resolve();
+      }, 500);
+    });
+
+    expect(events).toHaveLength(3);
+    expect(events[0].functions['a/b'].buildStatus).toBe('Building');
+    expect(events[1].functions['a/b'].buildStatus).toBe('Succeeded');
+    expect(events[2].functions['a/b'].buildStatus).toBe('Failed');
+
+    eventSource.close();
+  });
+
+  it('handles large payload in single frame', async () => {
+    // Large function map to ensure decoder handles bigger payloads
+    const largePayload = {
+      functions: Object.fromEntries(
+        Array.from({ length: 50 }, (_, i) => [
+          `fn${i}/repo${i}`,
+          { buildStatus: `Status${i}`, runURL: `http://example.com/${i}` },
+        ]),
+      ),
+    };
+    const sseFrame = `event: build-status\ndata: ${JSON.stringify(largePayload)}\n\n`;
+
+    server.use(
+      http.get('/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch', () =>
+        HttpResponse.text(sseFrame, { headers: { 'Content-Type': 'text/event-stream' } }),
+      ),
+    );
+
+    const eventSource = createBuildStatusEventSource();
+    const events: Array<{ functions: Record<string, unknown> }> = [];
+
+    await new Promise<void>((resolve) => {
+      eventSource.addEventListener('build-status', (e) => {
+        events.push(JSON.parse(e.data));
+        if (events.length === 1) resolve();
+      });
+
+      setTimeout(() => {
+        if (events.length === 0) resolve();
+      }, 500);
+    });
+
+    expect(events).toHaveLength(1);
+    expect(Object.keys(events[0].functions).length).toBe(50);
+    expect(events[0].functions['fn0/repo0']).toBeDefined();
+    expect(events[0].functions['fn49/repo49']).toBeDefined();
+
+    eventSource.close();
+  });
 });
