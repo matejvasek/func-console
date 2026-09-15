@@ -133,7 +133,6 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
         }
 
         if (res.body) {
-          // Connection succeeded; emit open event immediately to clear any prior errors
           if (!cancelled) {
             openListeners.forEach((cbk) => {
               try {
@@ -156,17 +155,19 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
           });
         }
       } catch (err: unknown) {
+        if (cancelled) return;
+        const message = (err instanceof Error && err.message) || String(err) || 'Unknown error';
         errorListeners.forEach((cbk) => {
           try {
             cbk({
-              message: (err as Error).message ?? '',
+              message,
               isAuthError: isAuthError(err),
             });
           } catch (listenerErr) {
             console.error('BuildStatusEventSource error listener threw:', listenerErr);
           }
         });
-        if (cancelled || isAuthError(err)) return;
+        if (isAuthError(err)) return;
       }
 
       if (!cancelled) {
@@ -179,6 +180,7 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
 
   return {
     addEventListener(event: 'build-status' | 'error' | 'open', cbk) {
+      if (cancelled) return;
       if (event === 'build-status') {
         listeners.push(cbk as (e: BuildSnapshotEvent) => void);
       } else if (event === 'error') {
@@ -190,6 +192,9 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
     close() {
       cancelled = true;
       controller.abort();
+      listeners.length = 0;
+      errorListeners.length = 0;
+      openListeners.length = 0;
     },
   };
 }
