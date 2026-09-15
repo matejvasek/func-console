@@ -110,6 +110,41 @@ describe('FunctionsListPage', () => {
     });
   });
 
+  it('clears build watcher error alert when stream recovers', async () => {
+    const functionItem = repoListItem('my-repo');
+    listFunctionsStub({ responses: [functionItem] });
+
+    // Initial endpoint response is an error
+    setWatchErrorResponse(503, 'Service Unavailable');
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    // Verify error alert is displayed
+    await waitFor(() => {
+      expect(screen.getByText('Error watching build statuses')).toBeInTheDocument();
+      expect(screen.getByText('HTTP 503: Service Unavailable')).toBeInTheDocument();
+    });
+
+    // Update MSW to return successful stream (reconnection will retry after RECONNECT_DELAY_MS)
+    setWatchResponse([
+      buildStatusFrame({
+        'twoGiants/my-repo': { buildStatus: 'Succeeded' },
+      }),
+    ]);
+
+    // Wait for reconnection (3000ms delay) and error to clear
+    await waitFor(
+      () => {
+        expect(screen.queryByText('Error watching build statuses')).not.toBeInTheDocument();
+      },
+      { timeout: 3500 },
+    );
+  });
+
   it('renders a spinner while loading', () => {
     listFunctionsStub();
     sdkTestDoubles.setWatchFixtures({ knLoaded: false, depLoaded: false });

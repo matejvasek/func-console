@@ -39,6 +39,7 @@ export interface ErrorEvent {
 export interface BuildStatusEventSource {
   addEventListener(_: 'build-status', cbk: (e: BuildSnapshotEvent) => void): void;
   addEventListener(_: 'error', cbk: (e: ErrorEvent) => void): void;
+  addEventListener(_: 'open', cbk: () => void): void;
   close(): void;
 }
 
@@ -107,6 +108,7 @@ export async function putFiles(
 export function createBuildStatusEventSource(): BuildStatusEventSource {
   const listeners: Array<(e: BuildSnapshotEvent) => void> = [];
   const errorListeners: Array<(e: ErrorEvent) => void> = [];
+  const openListeners: Array<() => void> = [];
   let cancelled = false;
   const controller = new AbortController();
 
@@ -131,6 +133,16 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
         }
 
         if (res.body) {
+          // Connection succeeded; emit open event immediately to clear any prior errors
+          if (!cancelled) {
+            openListeners.forEach((cbk) => {
+              try {
+                cbk();
+              } catch (err) {
+                console.error('BuildStatusEventSource open listener error:', err);
+              }
+            });
+          }
           await readStream(res.body, (jsonString) => {
             if (!cancelled) {
               listeners.forEach((cbk) => {
@@ -166,14 +178,13 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
   run(); // Fire and forget; runs until cancelled
 
   return {
-    addEventListener(
-      event: 'build-status' | 'error',
-      cbk: ((e: BuildSnapshotEvent) => void) | ((e: ErrorEvent) => void),
-    ) {
+    addEventListener(event: 'build-status' | 'error' | 'open', cbk) {
       if (event === 'build-status') {
         listeners.push(cbk as (e: BuildSnapshotEvent) => void);
       } else if (event === 'error') {
-        errorListeners.push(cbk as (e: unknown) => void);
+        errorListeners.push(cbk as (e: ErrorEvent) => void);
+      } else if (event === 'open') {
+        openListeners.push(cbk as () => void);
       }
     },
     close() {

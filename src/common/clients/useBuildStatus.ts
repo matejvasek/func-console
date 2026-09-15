@@ -28,6 +28,11 @@ export function useBuildStatus(
       setError(e.message);
     });
 
+    es.addEventListener('open', () => {
+      // clear the error on the re-connect
+      setError(undefined);
+    });
+
     return () => {
       es.close();
     };

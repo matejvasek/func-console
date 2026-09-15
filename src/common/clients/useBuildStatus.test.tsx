@@ -18,8 +18,8 @@ interface ErrorEvent {
 
 interface BuildStatusEventSource {
   addEventListener(
-    event: 'build-status' | 'error',
-    cbk: ((e: BuildSnapshotEvent) => void) | ((e: ErrorEvent) => void),
+    event: 'build-status' | 'error' | 'open',
+    cbk: ((e: BuildSnapshotEvent) => void) | ((e: ErrorEvent) => void) | (() => void),
   ): void;
   close(): void;
 }
@@ -31,20 +31,25 @@ describe('useBuildStatus', () => {
 
   function createEventSourceMethods(listeners: Array<(e: BuildSnapshotEvent) => void>) {
     const errorListeners: Array<(e: ErrorEvent) => void> = [];
+    const openListeners: Array<() => void> = [];
     return {
       addEventListener(
-        event: 'build-status' | 'error',
-        cbk: ((e: BuildSnapshotEvent) => void) | ((e: ErrorEvent) => void),
+        event: 'build-status' | 'error' | 'open',
+        cbk: ((e: BuildSnapshotEvent) => void) | ((e: ErrorEvent) => void) | (() => void),
       ) {
         if (event === 'build-status') {
           listeners.push(cbk as (e: BuildSnapshotEvent) => void);
         } else if (event === 'error') {
           errorListeners.push(cbk as (e: ErrorEvent) => void);
+        } else if (event === 'open') {
+          openListeners.push(cbk as () => void);
         }
       },
       close() {
         listeners.length = 0;
       },
+      errorListeners,
+      openListeners,
     };
   }
 
@@ -211,25 +216,40 @@ describe('useBuildStatus', () => {
     expect(result.current.statuses['repo/owner']?.buildStatus).toBe('Building');
   });
 
+  it('clears error when open event is emitted', async () => {
+    const { eventSource, emitError, emitOpen } = createErrorCapturingStubEventSource();
+    const { result } = renderHook(() => useBuildStatus(0, eventSource));
+
+    emitError({ message: 'Connection failed' } as ErrorEvent);
+    await waitFor(() => expect(result.current.error).toBe('Connection failed'));
+
+    emitOpen();
+    await waitFor(() => expect(result.current.error).toBeUndefined());
+  });
+
   function createErrorCapturingStubEventSource(): {
     eventSource: BuildStatusEventSource;
     emitSnapshot: (snap: { functions: Record<string, unknown> }) => void;
     emitError: (err: ErrorEvent) => void;
+    emitOpen: () => void;
   } {
     const listeners: Array<(e: BuildSnapshotEvent) => void> = [];
     const errorListeners: Array<(e: ErrorEvent) => void> = [];
+    const openListeners: Array<() => void> = [];
     let closed = false;
 
     return {
       eventSource: {
         addEventListener(
-          event: 'build-status' | 'error',
-          cbk: ((e: BuildSnapshotEvent) => void) | ((e: ErrorEvent) => void),
+          event: 'build-status' | 'error' | 'open',
+          cbk: ((e: BuildSnapshotEvent) => void) | ((e: ErrorEvent) => void) | (() => void),
         ) {
           if (event === 'build-status') {
             listeners.push(cbk as (e: BuildSnapshotEvent) => void);
           } else if (event === 'error') {
             errorListeners.push(cbk as (e: ErrorEvent) => void);
+          } else if (event === 'open') {
+            openListeners.push(cbk as () => void);
           }
         },
         close() {
@@ -245,6 +265,11 @@ describe('useBuildStatus', () => {
       emitError(err: ErrorEvent) {
         if (!closed) {
           errorListeners.forEach((cbk) => cbk(err));
+        }
+      },
+      emitOpen() {
+        if (!closed) {
+          openListeners.forEach((cbk) => cbk());
         }
       },
     };
