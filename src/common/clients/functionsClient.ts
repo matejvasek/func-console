@@ -117,6 +117,14 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
           0, // no timeout; the default ~60s would abort this long-lived stream
         );
 
+        if (!res.ok) {
+          const err = new Error(`HTTP ${res.status}: ${res.statusText}`) as Error & {
+            code?: number;
+          };
+          err.code = res.status;
+          throw err;
+        }
+
         if (res.body) {
           await readStream(res.body, (jsonString) => {
             if (!cancelled) {

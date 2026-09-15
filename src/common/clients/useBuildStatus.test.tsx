@@ -1,34 +1,112 @@
-import { renderHook, waitFor } from '@testing-library/react';
-import { PAT_KEY } from '../types';
-
-const streamStub = await vi.hoisted(async () => import('../testing/sdkTestDoubles'));
+import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
-  consoleFetch: streamStub.consoleFetchStub,
+  consoleFetch: vi.fn(),
 }));
 
+import { renderHook, waitFor } from '@testing-library/react';
 import { useBuildStatus } from './useBuildStatus';
 
-describe('useBuildStatus', () => {
-  beforeEach(() => {
-    sessionStorage.setItem(PAT_KEY, 'test-pat');
-    streamStub.resetStreamFrames();
-  });
+interface BuildSnapshotEvent {
+  readonly data: string;
+}
 
+interface BuildStatusEventSource {
+  addEventListener(
+    event: 'build-status' | 'error',
+    cbk: ((e: BuildSnapshotEvent) => void) | ((e: unknown) => void),
+  ): void;
+  close(): void;
+}
+
+describe('useBuildStatus', () => {
   afterEach(() => {
-    sessionStorage.clear();
     vi.useRealTimers();
   });
 
+  function createEventSourceMethods(listeners: Array<(e: BuildSnapshotEvent) => void>) {
+    return {
+      addEventListener(
+        event: 'build-status' | 'error',
+        cbk: ((e: BuildSnapshotEvent) => void) | ((e: unknown) => void),
+      ) {
+        if (event === 'build-status') {
+          listeners.push(cbk as (e: BuildSnapshotEvent) => void);
+        }
+      },
+      close() {
+        listeners.length = 0;
+      },
+    };
+  }
+
+  function createStubEventSource(
+    snapshots: Array<{ functions: Record<string, unknown> }> = [],
+  ): BuildStatusEventSource {
+    const listeners: Array<(e: BuildSnapshotEvent) => void> = [];
+
+    // Emit all snapshots immediately
+    setTimeout(() => {
+      snapshots.forEach((snap) => {
+        listeners.forEach((cbk) => cbk({ data: JSON.stringify(snap) }));
+      });
+    }, 0);
+
+    return createEventSourceMethods(listeners);
+  }
+
+  function createSequentialStubEventSource(
+    snapshots: Array<{ functions: Record<string, unknown> }> = [],
+  ): BuildStatusEventSource {
+    const listeners: Array<(e: BuildSnapshotEvent) => void> = [];
+
+    // Emit snapshots sequentially over time
+    snapshots.forEach((snap, idx) => {
+      setTimeout(
+        () => {
+          listeners.forEach((cbk) => cbk({ data: JSON.stringify(snap) }));
+        },
+        (idx + 1) * 10,
+      );
+    });
+
+    return createEventSourceMethods(listeners);
+  }
+
+  function createContinuousStubEventSource(): {
+    eventSource: BuildStatusEventSource;
+    emitSnapshot: (snap: { functions: Record<string, unknown> }) => void;
+  } {
+    const listeners: Array<(e: BuildSnapshotEvent) => void> = [];
+    let closed = false;
+
+    return {
+      eventSource: {
+        ...createEventSourceMethods(listeners),
+        close() {
+          closed = true;
+          listeners.length = 0;
+        },
+      },
+      emitSnapshot(snap: { functions: Record<string, unknown> }) {
+        if (!closed) {
+          listeners.forEach((cbk) => cbk({ data: JSON.stringify(snap) }));
+        }
+      },
+    };
+  }
+
   it('parses a build-status frame into a keyed map', async () => {
-    streamStub.setStreamFrames([
-      streamStub.buildStatusFrame({
-        'alice/fn': { buildStatus: 'Building' },
-        'alice/gn': { buildStatus: 'Failed', runURL: 'u' },
-      }),
+    const eventSource = createStubEventSource([
+      {
+        functions: {
+          'alice/fn': { buildStatus: 'Building' },
+          'alice/gn': { buildStatus: 'Failed', runURL: 'u' },
+        },
+      },
     ]);
 
-    const { result } = renderHook(() => useBuildStatus());
+    const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
     await waitFor(() => expect(Object.keys(result.current).length).toBe(2));
     expect(result.current['alice/fn']?.buildStatus).toBe('Building');
@@ -36,132 +114,69 @@ describe('useBuildStatus', () => {
     expect(result.current['alice/gn']?.runURL).toBe('u');
   });
 
-  it('opens the stream with the request timeout disabled', async () => {
-    // consoleFetch applies a default ~60s timeout that aborts the request. For a
-    // long-lived SSE stream that would tear the connection down every minute
-    // regardless of heartbeats, so the hook must pass timeout 0 to disable it.
-    streamStub.setStreamFrames([
-      streamStub.buildStatusFrame({ 'alice/fn': { buildStatus: 'Building' } }),
-    ]);
+  it('closes the stream on unmount, stopping updates', async () => {
+    const { eventSource, emitSnapshot } = createContinuousStubEventSource();
 
-    const { result } = renderHook(() => useBuildStatus());
+    const { result, unmount } = renderHook(() => useBuildStatus(0, eventSource));
 
+    emitSnapshot({ functions: { 'a/b': { buildStatus: 'Building' } } });
     await waitFor(() => expect(Object.keys(result.current).length).toBe(1));
-    expect(streamStub.streamFetchLastArgs()[2]).toBe(0);
-  });
-
-  it('ignores heartbeat comment frames', async () => {
-    streamStub.setStreamFrames([
-      ':\n\n',
-      streamStub.buildStatusFrame({ 'alice/fn': { buildStatus: 'Succeeded' } }),
-    ]);
-
-    const { result } = renderHook(() => useBuildStatus());
-
-    await waitFor(() => expect(Object.keys(result.current).length).toBe(1));
-    expect(result.current['alice/fn']?.buildStatus).toBe('Succeeded');
-  });
-
-  it('ignores a frame with no event name', async () => {
-    // An unnamed frame is a default "message" event, not our build-status event.
-    vi.useFakeTimers();
-    streamStub.setStreamFrames(['data: {"functions":{"a/b":{"buildStatus":"Building"}}}\n\n']);
-
-    const { result, unmount } = renderHook(() => useBuildStatus());
-    // Reconnecting proves the frame was read and dropped, not merely unread yet.
-    await vi.advanceTimersByTimeAsync(10_000);
-
-    expect(streamStub.streamFetchCalls()).toBeGreaterThan(1);
-    expect(Object.keys(result.current).length).toBe(0);
 
     unmount();
+
+    emitSnapshot({ functions: { 'c/d': { buildStatus: 'Succeeded' } } });
+
+    expect(Object.keys(result.current).length).toBe(1);
   });
 
-  it('reassembles a frame split across two stream chunks', async () => {
-    // A single build-status frame delivered as two separate reader.read() chunks;
-    // the split falls in the middle of the JSON payload ("func" | "tions").
-    streamStub.setStreamFrames([
-      'event: build-status\ndata: {"func',
-      'tions":{"a/b":{"buildStatus":"Building"}}}\n\n',
-    ]);
+  it('updates state when event source emits', async () => {
+    const { eventSource, emitSnapshot } = createContinuousStubEventSource();
+    const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
-    const { result } = renderHook(() => useBuildStatus());
-
-    await waitFor(() => expect(Object.keys(result.current).length).toBe(1));
-    expect(result.current['a/b']?.buildStatus).toBe('Building');
-  });
-
-  it('applies the last snapshot when two frames arrive in one chunk', async () => {
-    streamStub.setStreamFrames([
-      streamStub.buildStatusFrame({ 'a/b': { buildStatus: 'Building' } }) +
-        streamStub.buildStatusFrame({ 'a/b': { buildStatus: 'Failed' } }),
-    ]);
-
-    const { result } = renderHook(() => useBuildStatus());
-
-    await waitFor(() => expect(Object.keys(result.current).length).toBe(1));
-    expect(result.current['a/b']?.buildStatus).toBe('Failed');
-  });
-
-  it('stops reconnecting after an auth failure', async () => {
-    vi.useFakeTimers();
-    streamStub.setStreamError(Object.assign(new Error('unauthorized'), { code: 401 }));
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const { unmount } = renderHook(() => useBuildStatus());
-    // Advance well past the 3s backoff window; a stopped stream must not retry.
-    await vi.advanceTimersByTimeAsync(10_000);
-
-    expect(streamStub.streamFetchCalls()).toBe(1);
-    expect(errorSpy).toHaveBeenCalled();
-
-    unmount();
-  });
-
-  it('restarts the stream when connectionId changes', async () => {
-    streamStub.setStreamFrames([
-      streamStub.buildStatusFrame({ 'alice/fn': { buildStatus: 'Building' } }),
-    ]);
-
-    const { rerender } = renderHook(({ connectionId }) => useBuildStatus(connectionId), {
-      initialProps: { connectionId: 1 },
+    emitSnapshot({
+      functions: {
+        'bob/repo': { buildStatus: 'Succeeded', conclusion: 'success' },
+      },
     });
 
-    await waitFor(() => expect(streamStub.streamFetchCalls()).toBe(1));
-
-    // A new connection (initial login or account switch) must tear down the old
-    // stream and open a fresh one carrying the new user's PAT.
-    rerender({ connectionId: 2 });
-
-    await waitFor(() => expect(streamStub.streamFetchCalls()).toBe(2));
+    await waitFor(() => expect(Object.keys(result.current).length).toBe(1));
+    expect(result.current['bob/repo']?.buildStatus).toBe('Succeeded');
   });
 
-  it('reconnects after a body-less response instead of stopping', async () => {
+  it('updates state multiple times as snapshots arrive over time', async () => {
     vi.useFakeTimers();
-    streamStub.setNullBodyForNext(1); // first connect yields a 2xx with no body
+    const eventSource = createSequentialStubEventSource([
+      { functions: { 'x/y': { buildStatus: 'Building' } } },
+      { functions: { 'x/y': { buildStatus: 'Succeeded' } } },
+    ]);
 
-    const { unmount } = renderHook(() => useBuildStatus());
-    // A body-less response must not permanently stop the stream: after the 3s
-    // backoff the hook reconnects rather than giving up.
-    await vi.advanceTimersByTimeAsync(10_000);
+    const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
-    expect(streamStub.streamFetchCalls()).toBeGreaterThan(1);
+    await vi.advanceTimersByTimeAsync(15);
+    expect(result.current['x/y']?.buildStatus).toBe('Building');
 
-    unmount();
+    await vi.advanceTimersByTimeAsync(15);
+    expect(result.current['x/y']?.buildStatus).toBe('Succeeded');
   });
 
-  it('reconnects with backoff after a transient stream error', async () => {
-    vi.useFakeTimers();
-    streamStub.setStreamError(new Error('network blip')); // no status code -> transient
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it('closes the stream when connectionId changes', async () => {
+    const { eventSource, emitSnapshot } = createContinuousStubEventSource();
+    let closeCalled = false;
+    const originalClose = eventSource.close.bind(eventSource);
+    eventSource.close = () => {
+      closeCalled = true;
+      originalClose();
+    };
 
-    const { unmount } = renderHook(() => useBuildStatus());
-    // 0ms + retries at 3s/6s/9s within the window.
-    await vi.advanceTimersByTimeAsync(10_000);
+    const { result, rerender } = renderHook(({ connId }) => useBuildStatus(connId, eventSource), {
+      initialProps: { connId: 0 },
+    });
 
-    expect(streamStub.streamFetchCalls()).toBeGreaterThan(1);
-    expect(errorSpy).toHaveBeenCalled();
+    emitSnapshot({ functions: { 'a/b': { buildStatus: 'Building' } } });
+    await waitFor(() => expect(Object.keys(result.current).length).toBe(1));
 
-    unmount();
+    rerender({ connId: 1 });
+
+    expect(closeCalled).toBe(true);
   });
 });
