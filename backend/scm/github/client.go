@@ -22,6 +22,12 @@ type Option func(*ghClient)
 // each repo's latest run is polled, and how often the repo set is rediscovered.
 // Both must be positive.
 func WithWatchIntervals(poll, rediscover time.Duration) Option {
+	if poll <= 0 {
+		panic(fmt.Sprintf("poll must be positive, got %v", poll))
+	}
+	if rediscover <= 0 {
+		panic(fmt.Sprintf("rediscover must be positive, got %v", rediscover))
+	}
 	return func(c *ghClient) {
 		c.pollInterval = poll
 		c.rediscoverInterval = rediscover
@@ -67,13 +73,6 @@ func NewWithBaseURL(pat, baseURL string, opts ...Option) scm.Client {
 	}
 	for _, opt := range opts {
 		opt(c)
-	}
-	if c.pollInterval <= 0 || c.rediscoverInterval <= 0 {
-		// A wiring mistake, caught here rather than by a panicking
-		// time.NewTicker inside the watch goroutine, which would take down the
-		// process instead of failing the call that caused it.
-		panic(fmt.Sprintf("github.NewWithBaseURL: watch intervals must be positive, got poll=%s rediscover=%s",
-			c.pollInterval, c.rediscoverInterval))
 	}
 	return c
 }

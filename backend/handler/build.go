@@ -41,11 +41,6 @@ func BuildWatch(opts ...WatchOption) http.HandlerFunc {
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	if cfg.heartbeat <= 0 {
-		// A wiring mistake, caught once at construction rather than by a
-		// panicking time.NewTicker on every request.
-		panic(fmt.Sprintf("handler.BuildWatch: heartbeat must be positive, got %s", cfg.heartbeat))
-	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		handleBuildWatch(w, r, cfg.newSCMClient, cfg.heartbeat)
 	}
@@ -143,6 +138,9 @@ func WithSCMFactory(f scm.ClientFactory) WatchOption {
 
 // WithHeartbeat overrides the SSE heartbeat cadence. It must be positive.
 func WithHeartbeat(d time.Duration) WatchOption {
+	if d <= 0 {
+		panic(fmt.Sprintf("heartbeat must be positive, got %v", d))
+	}
 	return func(c *watchConfig) { c.heartbeat = d }
 }
 
