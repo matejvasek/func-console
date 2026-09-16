@@ -244,11 +244,26 @@ describe('useBuildStatus', () => {
     expect(result.current.error).toBeUndefined();
   });
 
+  it('sets error when build-status event data is malformed JSON', async () => {
+    const { eventSource, emitSnapshot, emitRaw } = createErrorCapturingStubEventSource();
+    const { result } = renderHook(() => useBuildStatus(0, eventSource));
+
+    emitSnapshot({ functions: { 'a/b': { buildStatus: 'Building' } } });
+    await waitFor(() => expect(Object.keys(result.current.statuses).length).toBe(1));
+
+    emitRaw('invalid json data');
+    await waitFor(() => expect(result.current.error).toBe('Invalid build status data'));
+
+    // Statuses are preserved
+    expect(Object.keys(result.current.statuses).length).toBe(1);
+  });
+
   function createErrorCapturingStubEventSource(): {
     eventSource: BuildStatusEventSource;
     emitSnapshot: (snap: { functions: Record<string, unknown> }) => void;
     emitError: (err: ErrorEvent) => void;
     emitOpen: () => void;
+    emitRaw: (data: string) => void;
   } {
     const listeners: Array<(e: BuildSnapshotEvent) => void> = [];
     const errorListeners: Array<(e: ErrorEvent) => void> = [];
@@ -287,6 +302,11 @@ describe('useBuildStatus', () => {
       emitOpen() {
         if (!closed) {
           openListeners.forEach((cbk) => cbk());
+        }
+      },
+      emitRaw(data: string) {
+        if (!closed) {
+          listeners.forEach((cbk) => cbk({ data }));
         }
       },
     };

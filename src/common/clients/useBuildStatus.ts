@@ -23,8 +23,12 @@ export function useBuildStatus(
     const es: BuildStatusEventSource = eventSource ?? createBuildStatusEventSource();
 
     es.addEventListener('build-status', (e) => {
-      const snap = JSON.parse(e.data) as BuildSnapshot;
-      setStatuses(snap.functions);
+      try {
+        const snap = JSON.parse(e.data) as BuildSnapshot;
+        setStatuses(snap.functions);
+      } catch {
+        setError('Invalid build status data');
+      }
     });
 
     es.addEventListener('error', (e) => {
