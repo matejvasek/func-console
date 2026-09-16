@@ -2,21 +2,25 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 
 // Prevent loading SDK components (which have .scss imports that fail in test env)
 // but keep the exported functions by providing mocked implementations.
-// consoleFetch will delegate to real fetch, which MSW can intercept.
 vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
-  consoleFetch: (url: string, options?: RequestInit) => fetch(url, options),
+  consoleFetch: vi.fn((url: string, options?: RequestInit) => fetch(url, options)),
   consoleFetchJSON: vi.fn(),
   isAllNamespacesKey: vi.fn(),
 }));
 
 import { http, HttpResponse } from 'msw';
 import { server } from '../testing/mswServer';
+import { consoleFetch } from '@openshift-console/dynamic-plugin-sdk';
 import { createBuildStatusEventSource } from './functionsClient';
 
 describe('createBuildStatusEventSource', () => {
   afterEach(() => {
-    server.resetHandlers();
     vi.useRealTimers();
+    server.resetHandlers();
+    // Reset to default behavior (delegate to fetch) after tests that override it
+    vi.mocked(consoleFetch).mockImplementation((url: string, options?: RequestInit) =>
+      fetch(url, options),
+    );
   });
 
   it('emits parsed build-status events from SSE stream', async () => {
@@ -326,5 +330,59 @@ describe('createBuildStatusEventSource', () => {
     expect(events[0].functions['fn49/repo49']).toBeDefined();
 
     eventSource.close();
+  });
+
+  it('passes timeout: 0 to prevent default ~60s timeout on long-lived stream', async () => {
+    vi.useFakeTimers();
+
+    const sseFrame =
+      'event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Building"}}}\n\n';
+
+    vi.mocked(consoleFetch).mockImplementation(
+      (_url: string, _options?: RequestInit, timeout?: number) => {
+        // Contract: timeout: 0 means no timeout, any other number means close after that duration
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            const encoder = new TextEncoder();
+            controller.enqueue(encoder.encode(sseFrame));
+
+            // If timeout is not 0, simulate the stream closing after that duration
+            if (timeout) {
+              setTimeout(() => controller.error(new Error('Request timeout')), timeout);
+            }
+          },
+        });
+
+        return Promise.resolve(
+          new Response(stream, {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' },
+          }),
+        );
+      },
+    );
+
+    const eventSource = createBuildStatusEventSource();
+
+    let gotBuildStatus = false;
+    let gotError = false;
+
+    eventSource.addEventListener('build-status', () => {
+      gotBuildStatus = true;
+    });
+
+    eventSource.addEventListener('error', () => {
+      gotError = true;
+    });
+
+    // Advance time past the 60-second default timeout threshold.
+    // If timeout: 0 was not passed, the stream would error and data would be cleared.
+    await vi.advanceTimersByTimeAsync(65000);
+
+    eventSource.close();
+
+    // Verify the stream succeeded (didn't timeout)
+    expect(gotBuildStatus).toBe(true);
+    expect(gotError).toBe(false);
   });
 });

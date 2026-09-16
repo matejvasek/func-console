@@ -125,7 +125,7 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
         }
       } catch (err: unknown) {
         if (cancelled) return;
-        const message = (err instanceof Error && err.message) || String(err) || 'Unknown error';
+        const message = (err instanceof Error && err.message) || String(err) || 'WTF Unknown error';
         invokeListeners(errorListeners, { message, isAuthError: isAuthError(err) }, 'error');
         if (isAuthError(err)) return;
       }
