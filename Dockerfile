@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/nodejs-24:latest@sha256:3f9a88954bdc197c910f233d04b2071fad68f69dde598691ee92e5193300266f AS nodebuilder
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/nodejs-24:latest@sha256:8feecc79fd5e66134b5b71ebba38bd117f4527ee13c8748e8ff38e8b698eb6eb AS nodebuilder
 USER root
 
 WORKDIR /usr/src/app
@@ -13,7 +13,7 @@ COPY locales/ locales/
 COPY config/ config/
 RUN if [ -f /cachi2/cachi2.env ]; then . /cachi2/cachi2.env; fi && node ./.yarn/releases/yarn-4.18.0.cjs build
 
-FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.26.7-1787774815@sha256:1a755651ffe1a438f137418d183f18ebad527ec929206c17804f93490a97869e AS gobuilder
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.26.7-1789040808@sha256:685ccca486cc2c82b0818d835abecb1aed7a396e76ba416cfc47c28067f5d365 AS gobuilder
 ARG TARGETOS TARGETARCH
 ENV GOOS=$TARGETOS GOARCH=$TARGETARCH
 WORKDIR /opt/app-root/src
@@ -31,5 +31,16 @@ FROM registry.access.redhat.com/ubi9-micro:latest@sha256:f332c99eb8f798a8486821c
 COPY --from=gobuilder /opt/app-root/src/bin/plugin-backend /usr/bin/plugin-backend
 COPY --from=gobuilder /etc/pki/tls/certs/ca-bundle.crt /etc/pki/tls/certs/ca-bundle.crt
 USER 1001
+
+LABEL name="openshift-serverless-tech-preview/functions-console-plugin-rhel9" \
+      com.redhat.component="openshift-serverless-faas-console-plugin-container" \
+      version="2.0" \
+      release="1" \
+      summary="OpenShift Serverless Functions Console Plugin" \
+      description="A Functions-as-a-Service UI for the OpenShift Web Console" \
+      io.k8s.display-name="OpenShift Serverless Functions Console Plugin" \
+      io.k8s.description="A Functions-as-a-Service UI for the OpenShift Web Console" \
+      io.openshift.tags="openshift,serverless,functions,faas,console,plugin" \
+      maintainer="serverless-support@redhat.com"
 
 ENTRYPOINT ["plugin-backend"]

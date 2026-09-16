@@ -11,6 +11,11 @@ kind: Namespace
 metadata:
   name: openshift-serverless
 ---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: knative-serving
+---
 apiVersion: operators.coreos.com/v1
 kind: OperatorGroup
 metadata:
@@ -30,6 +35,7 @@ spec:
   sourceNamespace: openshift-marketplace
 ---
 # --- Serverless Functions operator ---
+---
 apiVersion: operators.coreos.com/v1alpha1
 kind: CatalogSource
 metadata:
@@ -37,7 +43,7 @@ metadata:
   namespace: openshift-marketplace
 spec:
   sourceType: grpc
-  image: quay.io/redhat-user-workloads/ocp-serverless-tenant/serverless-functions-fbc-422:latest
+  image: quay.io/redhat-user-workloads/ocp-serverless-tenant/serverless-functions-fbc-422-ci:latest
   displayName: Serverless Functions
   publisher: Red Hat
   updateStrategy:
