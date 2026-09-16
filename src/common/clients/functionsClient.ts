@@ -30,7 +30,7 @@ export interface BuildSnapshotEvent {
   readonly data: string;
 }
 
-export interface ErrorEvent {
+export interface BuildWatchErrorEvent {
   readonly message: string;
   readonly isAuthError: boolean;
 }
@@ -38,7 +38,7 @@ export interface ErrorEvent {
 // BuildStatusEventSource is a minimal subset of the standard EventSource interface we require.
 export interface BuildStatusEventSource {
   addEventListener(_: 'build-status', cbk: (e: BuildSnapshotEvent) => void): void;
-  addEventListener(_: 'error', cbk: (e: ErrorEvent) => void): void;
+  addEventListener(_: 'error', cbk: (e: BuildWatchErrorEvent) => void): void;
   addEventListener(_: 'open', cbk: () => void): void;
   close(): void;
 }
@@ -107,7 +107,7 @@ export async function putFiles(
 // The standard EventSource however does not support custom fetch function that we need.
 export function createBuildStatusEventSource(): BuildStatusEventSource {
   const listeners: Array<(e: BuildSnapshotEvent) => void> = [];
-  const errorListeners: Array<(e: ErrorEvent) => void> = [];
+  const errorListeners: Array<(e: BuildWatchErrorEvent) => void> = [];
   const openListeners: Array<() => void> = [];
   let cancelled = false;
   const controller = new AbortController();
@@ -153,7 +153,7 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
       if (event === 'build-status') {
         listeners.push(cbk as (e: BuildSnapshotEvent) => void);
       } else if (event === 'error') {
-        errorListeners.push(cbk as (e: ErrorEvent) => void);
+        errorListeners.push(cbk as (e: BuildWatchErrorEvent) => void);
       } else if (event === 'open') {
         openListeners.push(cbk as () => void);
       }

@@ -11,7 +11,7 @@ interface BuildSnapshotEvent {
   readonly data: string;
 }
 
-interface ErrorEvent {
+interface BuildWatchErrorEvent {
   readonly message: string;
   readonly isAuthError: boolean;
 }
@@ -19,7 +19,7 @@ interface ErrorEvent {
 interface BuildStatusEventSource {
   addEventListener(
     event: 'build-status' | 'error' | 'open',
-    cbk: ((e: BuildSnapshotEvent) => void) | ((e: ErrorEvent) => void) | (() => void),
+    cbk: ((e: BuildSnapshotEvent) => void) | ((e: BuildWatchErrorEvent) => void) | (() => void),
   ): void;
   close(): void;
 }
@@ -30,17 +30,17 @@ describe('useBuildStatus', () => {
   });
 
   function createEventSourceMethods(listeners: Array<(e: BuildSnapshotEvent) => void>) {
-    const errorListeners: Array<(e: ErrorEvent) => void> = [];
+    const errorListeners: Array<(e: BuildWatchErrorEvent) => void> = [];
     const openListeners: Array<() => void> = [];
     return {
       addEventListener(
         event: 'build-status' | 'error' | 'open',
-        cbk: ((e: BuildSnapshotEvent) => void) | ((e: ErrorEvent) => void) | (() => void),
+        cbk: ((e: BuildSnapshotEvent) => void) | ((e: BuildWatchErrorEvent) => void) | (() => void),
       ) {
         if (event === 'build-status') {
           listeners.push(cbk as (e: BuildSnapshotEvent) => void);
         } else if (event === 'error') {
-          errorListeners.push(cbk as (e: ErrorEvent) => void);
+          errorListeners.push(cbk as (e: BuildWatchErrorEvent) => void);
         } else if (event === 'open') {
           openListeners.push(cbk as () => void);
         }
@@ -197,7 +197,7 @@ describe('useBuildStatus', () => {
     const { eventSource, emitError } = createErrorCapturingStubEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
-    emitError({ message: 'Connection failed' } as ErrorEvent);
+    emitError({ message: 'Connection failed' } as BuildWatchErrorEvent);
 
     await waitFor(() => expect(result.current.error).toBe('Connection failed'));
   });
@@ -209,7 +209,7 @@ describe('useBuildStatus', () => {
     emitSnapshot({ functions: { 'repo/owner': { buildStatus: 'Building' } } });
     await waitFor(() => expect(Object.keys(result.current.statuses).length).toBe(1));
 
-    emitError({ message: 'Network error' } as ErrorEvent);
+    emitError({ message: 'Network error' } as BuildWatchErrorEvent);
     await waitFor(() => expect(result.current.error).toBe('Network error'));
 
     // Statuses should still be present
@@ -220,7 +220,7 @@ describe('useBuildStatus', () => {
     const { eventSource, emitError, emitOpen } = createErrorCapturingStubEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
-    emitError({ message: 'Connection failed' } as ErrorEvent);
+    emitError({ message: 'Connection failed' } as BuildWatchErrorEvent);
     await waitFor(() => expect(result.current.error).toBe('Connection failed'));
 
     emitOpen();
@@ -261,12 +261,12 @@ describe('useBuildStatus', () => {
   function createErrorCapturingStubEventSource(): {
     eventSource: BuildStatusEventSource;
     emitSnapshot: (snap: { functions: Record<string, unknown> }) => void;
-    emitError: (err: ErrorEvent) => void;
+    emitError: (err: BuildWatchErrorEvent) => void;
     emitOpen: () => void;
     emitRaw: (data: string) => void;
   } {
     const listeners: Array<(e: BuildSnapshotEvent) => void> = [];
-    const errorListeners: Array<(e: ErrorEvent) => void> = [];
+    const errorListeners: Array<(e: BuildWatchErrorEvent) => void> = [];
     const openListeners: Array<() => void> = [];
     let closed = false;
 
@@ -274,12 +274,13 @@ describe('useBuildStatus', () => {
       eventSource: {
         addEventListener(
           event: 'build-status' | 'error' | 'open',
-          cbk: ((e: BuildSnapshotEvent) => void) | ((e: ErrorEvent) => void) | (() => void),
+          cbk:
+            ((e: BuildSnapshotEvent) => void) | ((e: BuildWatchErrorEvent) => void) | (() => void),
         ) {
           if (event === 'build-status') {
             listeners.push(cbk as (e: BuildSnapshotEvent) => void);
           } else if (event === 'error') {
-            errorListeners.push(cbk as (e: ErrorEvent) => void);
+            errorListeners.push(cbk as (e: BuildWatchErrorEvent) => void);
           } else if (event === 'open') {
             openListeners.push(cbk as () => void);
           }
@@ -294,7 +295,7 @@ describe('useBuildStatus', () => {
           listeners.forEach((cbk) => cbk({ data: JSON.stringify(snap) }));
         }
       },
-      emitError(err: ErrorEvent) {
+      emitError(err: BuildWatchErrorEvent) {
         if (!closed) {
           errorListeners.forEach((cbk) => cbk(err));
         }
