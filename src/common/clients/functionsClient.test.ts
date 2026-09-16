@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 
 // Prevent loading SDK components (which have .scss imports that fail in test env)
 // but keep the exported functions by providing mocked implementations.
@@ -10,19 +10,12 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
 }));
 
 import { http, HttpResponse } from 'msw';
-import { setupServer } from 'msw/node';
+import { server } from '../testing/mswServer';
 import { createBuildStatusEventSource } from './functionsClient';
 
-const server = setupServer();
-
 describe('createBuildStatusEventSource', () => {
-  beforeEach(() => {
-    server.listen();
-  });
-
   afterEach(() => {
     server.resetHandlers();
-    server.close();
     vi.useRealTimers();
   });
 
