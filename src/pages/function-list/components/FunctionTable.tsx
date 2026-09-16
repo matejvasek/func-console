@@ -25,7 +25,6 @@ export interface FunctionTableItem {
   source: FunctionSource;
   mainResource?: K8sResourceCommon;
   buildRunURL?: string;
-  // Set only when the primary status is one the build status must not overwrite.
   buildActivity?: 'Building' | 'Failed';
 }
 
@@ -113,9 +112,6 @@ function StatusCell({
   buildActivity?: 'Building' | 'Failed';
 }) {
   switch (status) {
-    // A function the cluster knows about keeps its cluster status; a rebuild
-    // only ever adds a secondary indicator, so the cluster state is never
-    // misrepresented.
     case 'Running':
       return withBuildActivity(<SuccessStatus title={status} />, buildActivity, buildRunURL);
     case 'ScaledToZero':
@@ -124,13 +120,9 @@ function StatusCell({
       return withBuildActivity(<ProgressStatus title={status} />, buildActivity, buildRunURL);
     case 'Error':
       return withBuildActivity(<ErrorStatus title={status} />, buildActivity, buildRunURL);
-    // Only reached when the cluster knows nothing about the function, so there
-    // is never a secondary indicator to add.
     case 'Building':
       return <ProgressStatus title={status} />;
     case 'BuildFailed': {
-      // The badge is a block-level flex box that would otherwise fill the cell
-      // and make the whole width clickable. Inline-flex shrink-wraps it.
       const badge = <ErrorStatus title={status} className="pf-v6-u-display-inline-flex" />;
       return buildRunURL ? <RunLink url={buildRunURL}>{badge}</RunLink> : badge;
     }
@@ -141,8 +133,6 @@ function StatusCell({
   }
 }
 
-// Pass ariaLabel when the content has no visible text of its own (e.g. an icon)
-// so the link still has an accessible name.
 function RunLink({
   url,
   ariaLabel,
@@ -173,8 +163,6 @@ function withBuildActivity(
   );
 }
 
-// The tooltips say "latest build" so it stays clear the function itself is
-// still running and only the rebuild is affected.
 function BuildActivityIndicator({
   buildActivity,
   buildRunURL,
@@ -185,10 +173,6 @@ function BuildActivityIndicator({
   const { t } = useTranslation('plugin__console-functions-plugin');
 
   if (buildActivity === 'Building') {
-    // The tooltip triggers off the wrapper, not the spinner: it attaches a focus
-    // listener to its trigger, and Blink makes an <svg> with focus listeners
-    // focusable, so clicking the bare spinner drew a focus ring that then
-    // rotated along with it. A span with the same listener stays unfocusable.
     return (
       <Tooltip content={t('Build in progress')}>
         <span className="pf-v6-u-display-inline-flex">
@@ -198,8 +182,6 @@ function BuildActivityIndicator({
     );
   }
   if (buildActivity === 'Failed') {
-    // status="danger" keeps the icon red inside the run link, which would
-    // otherwise tint it link-blue via inherited anchor color.
     const icon = (
       <Icon status="danger">
         <ExclamationTriangleIcon />
