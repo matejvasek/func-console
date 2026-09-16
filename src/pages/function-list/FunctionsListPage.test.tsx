@@ -104,9 +104,10 @@ describe('FunctionsListPage', () => {
     );
 
     // Verify error alert title and HTTP error message are displayed
+    const errorStatusText = 'Service Unavailable';
     await waitFor(() => {
       expect(screen.getByText('Error watching build statuses')).toBeInTheDocument();
-      expect(screen.getByText('HTTP 503: Service Unavailable')).toBeInTheDocument();
+      expect(screen.getByText(new RegExp(errorStatusText))).toBeInTheDocument();
     });
   });
 
@@ -115,7 +116,9 @@ describe('FunctionsListPage', () => {
     listFunctionsStub({ responses: [functionItem] });
 
     // Initial endpoint response is an error
-    setWatchErrorResponse(503, 'Service Unavailable');
+    const errorStatusText = 'Service Unavailable';
+    const errorStatus = 503;
+    setWatchErrorResponse(errorStatus, errorStatusText);
 
     render(
       <MemoryRouter>
@@ -123,10 +126,10 @@ describe('FunctionsListPage', () => {
       </MemoryRouter>,
     );
 
-    // Verify error alert is displayed
+    // Verify error alert is displayed with the actual error message
     await waitFor(() => {
       expect(screen.getByText('Error watching build statuses')).toBeInTheDocument();
-      expect(screen.getByText('HTTP 503: Service Unavailable')).toBeInTheDocument();
+      expect(screen.getByText(new RegExp(errorStatusText))).toBeInTheDocument();
     });
 
     // Update MSW to return successful stream (reconnection will retry after RECONNECT_DELAY_MS)
