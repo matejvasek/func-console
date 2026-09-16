@@ -227,6 +227,23 @@ describe('useBuildStatus', () => {
     await waitFor(() => expect(result.current.error).toBeUndefined());
   });
 
+  it('does not set up stream when connectionId is undefined', () => {
+    const eventSource = {
+      addEventListener: vi.fn(),
+      close: vi.fn(),
+    } as unknown as BuildStatusEventSource;
+
+    const { result } = renderHook(() => useBuildStatus(undefined, eventSource));
+
+    // Event source should not be registered with
+    expect(eventSource.addEventListener).not.toHaveBeenCalled();
+    expect(eventSource.close).not.toHaveBeenCalled();
+
+    // Hook returns empty state
+    expect(result.current.statuses).toEqual({});
+    expect(result.current.error).toBeUndefined();
+  });
+
   function createErrorCapturingStubEventSource(): {
     eventSource: BuildStatusEventSource;
     emitSnapshot: (snap: { functions: Record<string, unknown> }) => void;

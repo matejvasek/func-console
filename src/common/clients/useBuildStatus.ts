@@ -9,14 +9,17 @@ import {
 // useBuildStatus streams GitHub Actions build status over SSE, keyed by
 // "owner/repo". Pass the auth connectionId so the stream tears down and
 // reconnects with the current PAT on in-place login and account switch.
+// If connectionId is undefined, no stream is created (unauthenticated).
 export function useBuildStatus(
-  connectionId = 0,
+  connectionId?: number,
   eventSource?: BuildStatusEventSource,
 ): { statuses: Readonly<Record<string, BuildStatus>>; error?: string } {
   const [statuses, setStatuses] = useState<Record<string, BuildStatus>>({});
   const [error, setError] = useState<string>();
 
   useEffect(() => {
+    if (connectionId === undefined) return;
+
     const es: BuildStatusEventSource = eventSource ?? createBuildStatusEventSource();
 
     es.addEventListener('build-status', (e) => {

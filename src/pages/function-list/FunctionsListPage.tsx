@@ -218,7 +218,9 @@ function useFunctionListPage(): {
     // to 'get resources from all namespaces'
     isAllNamespacesKey(namespace) ? undefined : namespace,
   );
-  const { statuses: buildStatuses, error: buildWatchError } = useBuildStatus(connectionId);
+  const { statuses: buildStatuses, error: buildWatchError } = useBuildStatus(
+    isAuthenticated ? connectionId : undefined,
+  );
 
   const functions = useMemo(
     () =>
