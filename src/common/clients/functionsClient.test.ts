@@ -215,6 +215,48 @@ describe('createBuildStatusEventSource', () => {
     vi.useRealTimers();
   });
 
+  it('reconnects when response has no body', async () => {
+    vi.useFakeTimers();
+    let callCount = 0;
+    server.use(
+      http.get('/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch', () => {
+        callCount++;
+        if (callCount === 1) {
+          // First call: 200 with no body
+          return new HttpResponse(null, { status: 200 });
+        }
+        // Subsequent calls succeed with SSE frame
+        const sseFrame =
+          'event: build-status\ndata: {"functions":{"c/d":{"buildStatus":"Succeeded"}}}\n\n';
+        return HttpResponse.text(sseFrame, {
+          headers: { 'Content-Type': 'text/event-stream' },
+        });
+      }),
+    );
+
+    const eventSource = createBuildStatusEventSource();
+    const events: Array<{ functions: Record<string, { buildStatus: string }> }> = [];
+
+    eventSource.addEventListener('build-status', (e) => {
+      events.push(JSON.parse(e.data));
+      // Close after first successful event to prevent further retries
+      eventSource.close();
+    });
+
+    // Advance past reconnect delay (first request is made immediately)
+    await vi.advanceTimersByTimeAsync(3100);
+
+    // Wait for second request to complete
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Should have made two requests: first returned no body, second succeeded
+    expect(callCount).toBe(2);
+    expect(events.length).toBe(1);
+    expect(events[0].functions['c/d'].buildStatus).toBe('Succeeded');
+
+    vi.useRealTimers();
+  });
+
   it('handles multiple sequential build-status events', async () => {
     const sseFrames =
       'event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Building"}}}\n\n' +

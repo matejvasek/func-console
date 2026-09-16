@@ -116,7 +116,7 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
     while (!cancelled) {
       try {
         const res = await connectBuildWatch(controller.signal);
-        if (!res.body) return;
+        if (!res.body) continue;
         invokeListeners(openListeners, undefined, 'open');
         for await (const event of readEventStream(res.body)) {
           if (event.type === 'build-status' && !cancelled) {
