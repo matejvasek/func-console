@@ -115,65 +115,34 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
   async function run() {
     while (!cancelled) {
       try {
-        const res = await consoleFetch(
-          `${PROXY_BASE}/api/v1/func/build/watch`,
-          {
-            headers: scmHeaders(),
-            signal: controller.signal,
-          },
-          0, // no timeout; the default ~60s would abort this long-lived stream
-        );
-
-        if (!res.ok) {
-          const err = new Error(`HTTP ${res.status}: ${res.statusText}`) as Error & {
-            code?: number;
-          };
-          err.code = res.status;
-          throw err;
-        }
-
-        if (res.body) {
-          if (!cancelled) {
-            openListeners.forEach((cbk) => {
-              try {
-                cbk();
-              } catch (err) {
-                console.error('BuildStatusEventSource open listener error:', err);
-              }
-            });
+        const res = await connectBuildWatch(controller.signal);
+        if (!res.body) return;
+        invokeListeners(openListeners, undefined, 'open');
+        for await (const event of readEventStream(res.body)) {
+          if (event.type === 'build-status' && !cancelled) {
+            invokeListeners(listeners, { data: event.data }, 'build-status');
           }
-          await readStream(res.body, (jsonString) => {
-            if (!cancelled) {
-              listeners.forEach((cbk) => {
-                try {
-                  cbk({ data: jsonString });
-                } catch (err) {
-                  console.error('BuildStatusEventSource listener error:', err);
-                }
-              });
-            }
-          });
         }
       } catch (err: unknown) {
         if (cancelled) return;
         const message = (err instanceof Error && err.message) || String(err) || 'Unknown error';
-        errorListeners.forEach((cbk) => {
-          try {
-            cbk({
-              message,
-              isAuthError: isAuthError(err),
-            });
-          } catch (listenerErr) {
-            console.error('BuildStatusEventSource error listener threw:', listenerErr);
-          }
-        });
+        invokeListeners(errorListeners, { message, isAuthError: isAuthError(err) }, 'error');
         if (isAuthError(err)) return;
       }
-
       if (!cancelled) {
         await delay(RECONNECT_DELAY_MS, controller.signal);
       }
     }
+  }
+  function invokeListeners<T>(listeners: Array<(arg: T) => void>, arg: T, label = 'listener') {
+    if (cancelled) return;
+    listeners.forEach((cbk) => {
+      try {
+        cbk(arg);
+      } catch (err) {
+        console.error(`BuildStatusEventSource ${label} listener error:`, err);
+      }
+    });
   }
 
   run(); // Fire and forget; runs until cancelled
@@ -199,13 +168,33 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
   };
 }
 
-async function readStream(
+async function connectBuildWatch(abortSignal: AbortSignal): Promise<Response> {
+  const res = await consoleFetch(
+    `${PROXY_BASE}/api/v1/func/build/watch`,
+    {
+      headers: scmHeaders(),
+      signal: abortSignal,
+    },
+    0, // no timeout; the default ~60s would abort this long-lived stream
+  );
+
+  if (!res.ok) {
+    const err = new Error(`HTTP ${res.status}: ${res.statusText}`) as Error & {
+      code?: number;
+    };
+    err.code = res.status;
+    throw err;
+  }
+
+  return res;
+}
+
+async function* readEventStream(
   body: ReadableStream<Uint8Array>,
-  onSnapshot: (jsonString: string) => void,
-): Promise<void> {
-  const reader = body.getReader();
+): AsyncGenerator<{ type: string; data: string }> {
   const decoder = new TextDecoder();
   let buffer = '';
+  const reader = body.getReader();
   for (;;) {
     const { done, value } = await reader.read();
     if (done) return;
@@ -214,28 +203,27 @@ async function readStream(
     while ((idx = buffer.indexOf('\n\n')) !== -1) {
       const frame = buffer.slice(0, idx);
       buffer = buffer.slice(idx + 2);
-      const jsonString = parseFrame(frame);
-      if (jsonString) onSnapshot(jsonString);
+      const event = deserializeFrame(frame);
+      if (event) yield event;
     }
   }
-}
 
-function parseFrame(frame: string): string | null {
-  let event = '';
-  const dataLines: string[] = [];
-  for (const line of frame.split('\n')) {
-    if (line.startsWith(':')) continue; // heartbeat / comment
-    if (line.startsWith('event:')) event = line.slice('event:'.length).trim();
-    else if (line.startsWith('data:')) dataLines.push(line.slice('data:'.length).trim());
-  }
-  if (event !== 'build-status') return null;
-  if (dataLines.length === 0) return null;
-  const jsonString = dataLines.join('\n');
-  try {
-    JSON.parse(jsonString); // Validate it's valid JSON
-    return jsonString;
-  } catch {
-    return null;
+  function deserializeFrame(frame: string): { type: string; data: string } | null {
+    let event = '';
+    const dataLines: string[] = [];
+    for (const line of frame.split('\n')) {
+      if (line.startsWith(':')) continue; // heartbeat / comment
+      if (line.startsWith('event:')) event = line.slice('event:'.length).trim();
+      else if (line.startsWith('data:')) dataLines.push(line.slice('data:'.length).trim());
+    }
+    if (!event || dataLines.length === 0) return null;
+    const jsonString = dataLines.join('\n');
+    try {
+      JSON.parse(jsonString); // Validate it's valid JSON
+      return { type: event, data: jsonString };
+    } catch {
+      return null;
+    }
   }
 }
 
