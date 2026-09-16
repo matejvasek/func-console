@@ -7,7 +7,15 @@ import {
   SuccessStatus,
   useDeleteModal,
 } from '@openshift-console/dynamic-plugin-sdk';
-import { ActionList, ActionListItem, Button, Icon, Spinner, Tooltip } from '@patternfly/react-core';
+import {
+  ActionList,
+  ActionListItem,
+  Button,
+  Flex,
+  Icon,
+  Spinner,
+  Tooltip,
+} from '@patternfly/react-core';
 import { ExclamationTriangleIcon, PencilAltIcon, TrashIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useTranslation } from 'react-i18next';
@@ -156,10 +164,10 @@ function withBuildActivity(
 ) {
   if (!buildActivity) return <>{badge}</>;
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+    <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapSm' }}>
       {badge}
       <BuildActivityIndicator buildActivity={buildActivity} buildRunURL={buildRunURL} />
-    </span>
+    </Flex>
   );
 }
 
