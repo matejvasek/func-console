@@ -133,7 +133,9 @@ describe('createBuildStatusEventSource', () => {
   });
 
   it('does not reconnect after 401 auth error', async () => {
+    vi.useFakeTimers();
     let callCount = 0;
+    let errorCount = 0;
     server.use(
       http.get('/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch', () => {
         callCount++;
@@ -142,21 +144,23 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-
-    await new Promise<void>((resolve) => {
-      eventSource.addEventListener('error', () => {
-        resolve();
-      });
-
-      setTimeout(() => {
-        resolve();
-      }, 500);
+    eventSource.addEventListener('error', () => {
+      errorCount++;
     });
 
-    eventSource.close();
-
-    // Should only have called once, not retried
+    // Advance past first error
+    await vi.advanceTimersByTimeAsync(100);
     expect(callCount).toBe(1);
+    expect(errorCount).toBe(1);
+
+    // Advance past reconnect delay (3000ms) — should NOT make second request
+    await vi.advanceTimersByTimeAsync(3100);
+
+    expect(callCount).toBe(1);
+    expect(errorCount).toBe(1);
+
+    eventSource.close();
+    vi.useRealTimers();
   });
 
   it('reconnects on transient (5xx) errors', async () => {
