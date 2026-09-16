@@ -332,6 +332,56 @@ describe('createBuildStatusEventSource', () => {
     eventSource.close();
   });
 
+  it('handles SSE frames split across multiple chunks, including split in delimiter', async () => {
+    // Simulate frames arriving fragmented, with the split in the middle of '\n\n' delimiter
+    server.use(
+      http.get('/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch', () => {
+        const chunks = [
+          'event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Building"}}}\n',
+          '\nevent: build-',
+          'status\ndata: {"functions":{"c/d":{"buildStatus":"Succeeded"',
+          '}}}\n\n',
+        ];
+
+        const stream = new ReadableStream<Uint8Array>({
+          async start(controller) {
+            const encoder = new TextEncoder();
+            for (const chunk of chunks) {
+              controller.enqueue(encoder.encode(chunk));
+              // Small delay between chunks to simulate network jitter
+              await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+            controller.close();
+          },
+        });
+
+        return new Response(stream, {
+          headers: { 'Content-Type': 'text/event-stream' },
+        });
+      }),
+    );
+
+    const eventSource = createBuildStatusEventSource();
+    const events: Array<{ functions: Record<string, { buildStatus: string }> }> = [];
+
+    await new Promise<void>((resolve) => {
+      eventSource.addEventListener('build-status', (e) => {
+        events.push(JSON.parse(e.data));
+        if (events.length === 2) resolve();
+      });
+
+      setTimeout(() => {
+        if (events.length < 2) resolve();
+      }, 500);
+    });
+
+    expect(events).toHaveLength(2);
+    expect(events[0].functions['a/b'].buildStatus).toBe('Building');
+    expect(events[1].functions['c/d'].buildStatus).toBe('Succeeded');
+
+    eventSource.close();
+  });
+
   it('passes timeout: 0 to prevent default ~60s timeout on long-lived stream', async () => {
     vi.useFakeTimers();
 
