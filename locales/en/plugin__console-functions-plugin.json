@@ -32,6 +32,7 @@
   "Environment Variables": "Environment Variables",
   "Error creating function": "Error creating function",
   "Error listing functions": "Error listing functions",
+  "Error watching build statuses": "Error watching build statuses",
   "Follow these steps to create and deploy your serverless function.": "Follow these steps to create and deploy your serverless function.",
   "Function Settings": "Function Settings",
   "Functions": "Functions",
