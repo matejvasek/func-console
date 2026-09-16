@@ -217,13 +217,7 @@ async function* readEventStream(
       else if (line.startsWith('data:')) dataLines.push(line.slice('data:'.length).trim());
     }
     if (!event || dataLines.length === 0) return null;
-    const jsonString = dataLines.join('\n');
-    try {
-      JSON.parse(jsonString); // Validate it's valid JSON
-      return { type: event, data: jsonString };
-    } catch {
-      return null;
-    }
+    return { type: event, data: dataLines.join('\n') };
   }
 }
 
