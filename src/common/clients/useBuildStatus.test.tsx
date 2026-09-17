@@ -29,97 +29,17 @@ describe('useBuildStatus', () => {
     vi.useRealTimers();
   });
 
-  function createEventSourceMethods(listeners: Array<(e: BuildSnapshotEvent) => void>) {
-    const errorListeners: Array<(e: BuildWatchErrorEvent) => void> = [];
-    const openListeners: Array<() => void> = [];
-    return {
-      addEventListener(
-        event: 'build-status' | 'error' | 'open',
-        cbk: ((e: BuildSnapshotEvent) => void) | ((e: BuildWatchErrorEvent) => void) | (() => void),
-      ) {
-        if (event === 'build-status') {
-          listeners.push(cbk as (e: BuildSnapshotEvent) => void);
-        } else if (event === 'error') {
-          errorListeners.push(cbk as (e: BuildWatchErrorEvent) => void);
-        } else if (event === 'open') {
-          openListeners.push(cbk as () => void);
-        }
-      },
-      close() {
-        listeners.length = 0;
-      },
-      errorListeners,
-      openListeners,
-    };
-  }
-
-  function createStubEventSource(
-    snapshots: Array<{ functions: Record<string, unknown> }> = [],
-  ): BuildStatusEventSource {
-    const listeners: Array<(e: BuildSnapshotEvent) => void> = [];
-
-    // Emit all snapshots immediately
-    setTimeout(() => {
-      snapshots.forEach((snap) => {
-        listeners.forEach((cbk) => cbk({ data: JSON.stringify(snap) }));
-      });
-    }, 0);
-
-    return createEventSourceMethods(listeners);
-  }
-
-  function createSequentialStubEventSource(
-    snapshots: Array<{ functions: Record<string, unknown> }> = [],
-  ): BuildStatusEventSource {
-    const listeners: Array<(e: BuildSnapshotEvent) => void> = [];
-
-    // Emit snapshots sequentially over time
-    snapshots.forEach((snap, idx) => {
-      setTimeout(
-        () => {
-          listeners.forEach((cbk) => cbk({ data: JSON.stringify(snap) }));
-        },
-        (idx + 1) * 10,
-      );
-    });
-
-    return createEventSourceMethods(listeners);
-  }
-
-  function createContinuousStubEventSource(): {
-    eventSource: BuildStatusEventSource;
-    emitSnapshot: (snap: { functions: Record<string, unknown> }) => void;
-  } {
-    const listeners: Array<(e: BuildSnapshotEvent) => void> = [];
-    let closed = false;
-
-    return {
-      eventSource: {
-        ...createEventSourceMethods(listeners),
-        close() {
-          closed = true;
-          listeners.length = 0;
-        },
-      },
-      emitSnapshot(snap: { functions: Record<string, unknown> }) {
-        if (!closed) {
-          listeners.forEach((cbk) => cbk({ data: JSON.stringify(snap) }));
-        }
-      },
-    };
-  }
-
   it('parses a build-status frame into a keyed map', async () => {
-    const eventSource = createStubEventSource([
-      {
-        functions: {
-          'alice/fn': { buildStatus: 'Building' },
-          'alice/gn': { buildStatus: 'Failed', runURL: 'u' },
-        },
-      },
-    ]);
+    const { eventSource, emitSnapshot } = createMockEventSource();
 
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
+
+    emitSnapshot({
+      functions: {
+        'alice/fn': { buildStatus: 'Building' },
+        'alice/gn': { buildStatus: 'Failed', runURL: 'u' },
+      },
+    });
 
     await waitFor(() => expect(Object.keys(result.current.statuses).length).toBe(2));
     expect(result.current.statuses['alice/fn']?.buildStatus).toBe('Building');
@@ -128,7 +48,7 @@ describe('useBuildStatus', () => {
   });
 
   it('closes the stream on unmount, stopping updates', async () => {
-    const { eventSource, emitSnapshot } = createContinuousStubEventSource();
+    const { eventSource, emitSnapshot } = createMockEventSource();
 
     const { result, unmount } = renderHook(() => useBuildStatus(0, eventSource));
 
@@ -143,7 +63,7 @@ describe('useBuildStatus', () => {
   });
 
   it('updates state when event source emits', async () => {
-    const { eventSource, emitSnapshot } = createContinuousStubEventSource();
+    const { eventSource, emitSnapshot } = createMockEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
     emitSnapshot({
@@ -156,24 +76,19 @@ describe('useBuildStatus', () => {
     expect(result.current.statuses['bob/repo']?.buildStatus).toBe('Succeeded');
   });
 
-  it('updates state multiple times as snapshots arrive over time', async () => {
-    vi.useFakeTimers();
-    const eventSource = createSequentialStubEventSource([
-      { functions: { 'x/y': { buildStatus: 'Building' } } },
-      { functions: { 'x/y': { buildStatus: 'Succeeded' } } },
-    ]);
-
+  it('updates state multiple times as snapshots arrive', async () => {
+    const { eventSource, emitSnapshot } = createMockEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
-    await vi.advanceTimersByTimeAsync(15);
-    expect(result.current.statuses['x/y']?.buildStatus).toBe('Building');
+    emitSnapshot({ functions: { 'x/y': { buildStatus: 'Building' } } });
+    await waitFor(() => expect(result.current.statuses['x/y']?.buildStatus).toBe('Building'));
 
-    await vi.advanceTimersByTimeAsync(15);
-    expect(result.current.statuses['x/y']?.buildStatus).toBe('Succeeded');
+    emitSnapshot({ functions: { 'x/y': { buildStatus: 'Succeeded' } } });
+    await waitFor(() => expect(result.current.statuses['x/y']?.buildStatus).toBe('Succeeded'));
   });
 
   it('closes the stream when connectionId changes', async () => {
-    const { eventSource, emitSnapshot } = createContinuousStubEventSource();
+    const { eventSource, emitSnapshot } = createMockEventSource();
     let closeCalled = false;
     const originalClose = eventSource.close.bind(eventSource);
     eventSource.close = () => {
@@ -194,7 +109,7 @@ describe('useBuildStatus', () => {
   });
 
   it('captures error events from the event source', async () => {
-    const { eventSource, emitError } = createErrorCapturingStubEventSource();
+    const { eventSource, emitError } = createMockEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
     emitError({ message: 'Connection failed' } as BuildWatchErrorEvent);
@@ -203,7 +118,7 @@ describe('useBuildStatus', () => {
   });
 
   it('preserves statuses while error is present', async () => {
-    const { eventSource, emitSnapshot, emitError } = createErrorCapturingStubEventSource();
+    const { eventSource, emitSnapshot, emitError } = createMockEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
     emitSnapshot({ functions: { 'repo/owner': { buildStatus: 'Building' } } });
@@ -217,7 +132,7 @@ describe('useBuildStatus', () => {
   });
 
   it('clears error when open event is emitted', async () => {
-    const { eventSource, emitError, emitOpen } = createErrorCapturingStubEventSource();
+    const { eventSource, emitError, emitOpen } = createMockEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
     emitError({ message: 'Connection failed' } as BuildWatchErrorEvent);
@@ -245,7 +160,7 @@ describe('useBuildStatus', () => {
   });
 
   it('sets error when build-status event data is malformed JSON', async () => {
-    const { eventSource, emitSnapshot, emitRaw } = createErrorCapturingStubEventSource();
+    const { eventSource, emitSnapshot, emitRaw } = createMockEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
     emitSnapshot({ functions: { 'a/b': { buildStatus: 'Building' } } });
@@ -258,7 +173,7 @@ describe('useBuildStatus', () => {
     expect(Object.keys(result.current.statuses).length).toBe(1);
   });
 
-  function createErrorCapturingStubEventSource(): {
+  function createMockEventSource(): {
     eventSource: BuildStatusEventSource;
     emitSnapshot: (snap: { functions: Record<string, unknown> }) => void;
     emitError: (err: BuildWatchErrorEvent) => void;
@@ -268,7 +183,7 @@ describe('useBuildStatus', () => {
     const listeners: Array<(e: BuildSnapshotEvent) => void> = [];
     const errorListeners: Array<(e: BuildWatchErrorEvent) => void> = [];
     const openListeners: Array<() => void> = [];
-    let closed = false;
+    let open = true;
 
     return {
       eventSource: {
@@ -286,27 +201,29 @@ describe('useBuildStatus', () => {
           }
         },
         close() {
-          closed = true;
+          open = false;
           listeners.length = 0;
+          errorListeners.length = 0;
+          openListeners.length = 0;
         },
       },
       emitSnapshot(snap: { functions: Record<string, unknown> }) {
-        if (!closed) {
+        if (open) {
           listeners.forEach((cbk) => cbk({ data: JSON.stringify(snap) }));
         }
       },
       emitError(err: BuildWatchErrorEvent) {
-        if (!closed) {
+        if (open) {
           errorListeners.forEach((cbk) => cbk(err));
         }
       },
       emitOpen() {
-        if (!closed) {
+        if (open) {
           openListeners.forEach((cbk) => cbk());
         }
       },
       emitRaw(data: string) {
-        if (!closed) {
+        if (open) {
           listeners.forEach((cbk) => cbk({ data }));
         }
       },
