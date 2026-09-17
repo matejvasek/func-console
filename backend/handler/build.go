@@ -130,8 +130,6 @@ func defaultSCMClient(pat string) scm.Client {
 	return config.SCMRegistry.Client(scm.DefaultPlatform, pat)
 }
 
-// toSnapshot maps repo runs into the wire DTO. The map is always non-nil, so an
-// empty snapshot encodes as {} rather than null.
 func toSnapshot(runs []scm.RepoRun) buildSnapshot {
 	items := make(map[string]buildStatusItem, len(runs))
 	for _, rr := range runs {
@@ -155,6 +153,7 @@ func deriveBuildStatus(run *scm.WorkflowRun) string {
 		return "None"
 	}
 	switch run.Status {
+	// "waiting", "requested", "pending" mean a run exists but has not finished.
 	case "queued", "in_progress", "waiting", "requested", "pending":
 		return "Building"
 	case "completed":
@@ -164,6 +163,8 @@ func deriveBuildStatus(run *scm.WorkflowRun) string {
 		case "failure", "cancelled", "timed_out":
 			return "Failed"
 		default:
+			// "skipped", "neutral", "stale" and "action_required" are not
+			// failures, report no signal.
 			return "None"
 		}
 	default:
