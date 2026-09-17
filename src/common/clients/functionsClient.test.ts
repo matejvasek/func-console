@@ -146,23 +146,24 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const errors: unknown[] = [];
+    const errors: Array<{ message: string; isAuthError: boolean }> = [];
 
     await new Promise<void>((resolve) => {
       eventSource.addEventListener('error', (e) => {
         errors.push(e);
-        if (errors.length === 1) resolve();
+        resolve();
       });
 
       // Give the error listener time to fire
       setTimeout(() => {
-        if (errors.length === 0) resolve();
+        resolve();
       }, 500);
     });
 
     eventSource.close();
 
-    expect(errors.length).toBeGreaterThan(0);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].isAuthError).toBe(true);
   });
 
   it('does not reconnect after 401 auth error', async () => {
@@ -215,7 +216,7 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const errors: unknown[] = [];
+    const errors: Array<{ message: string; isAuthError: boolean }> = [];
     const events: Array<{ functions: Record<string, { buildStatus: string }> }> = [];
 
     eventSource.addEventListener('error', (e) => {
@@ -229,7 +230,8 @@ describe('createBuildStatusEventSource', () => {
     // Advance past first 500 error
     await vi.advanceTimersByTimeAsync(100);
     expect(callCount).toBe(1);
-    expect(errors.length).toBe(1);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].isAuthError).toBe(false);
 
     // Advance past reconnect delay (3000ms)
     await vi.advanceTimersByTimeAsync(3100);

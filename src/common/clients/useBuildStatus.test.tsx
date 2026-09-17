@@ -231,7 +231,7 @@ describe('useBuildStatus', () => {
     const eventSource = {
       addEventListener: vi.fn(),
       close: vi.fn(),
-    } as unknown as BuildStatusEventSource;
+    };
 
     const { result } = renderHook(() => useBuildStatus(undefined, eventSource));
 
