@@ -195,17 +195,21 @@ async function* readEventStream(
   const decoder = new TextDecoder();
   let buffer = '';
   const reader = body.getReader();
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) return;
-    buffer += decoder.decode(value, { stream: true });
-    let idx: number;
-    while ((idx = buffer.indexOf('\n\n')) !== -1) {
-      const frame = buffer.slice(0, idx);
-      buffer = buffer.slice(idx + 2);
-      const event = deserializeFrame(frame);
-      if (event) yield event;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      buffer += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buffer.indexOf('\n\n')) !== -1) {
+        const frame = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        const event = deserializeFrame(frame);
+        if (event) yield event;
+      }
     }
+  } finally {
+    reader.releaseLock();
   }
 
   function deserializeFrame(frame: string): { type: string; data: string } | null {
