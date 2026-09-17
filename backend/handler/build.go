@@ -103,7 +103,6 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 	}
 }
 
-// watchConfig holds the tunables of a BuildWatch handler.
 type watchConfig struct {
 	newSCMClient scm.ClientFactory
 	heartbeat    time.Duration
