@@ -40,37 +40,39 @@ var _ = Describe("BuildWatch", func() {
 		return bufio.NewReader(resp.Body)
 	}
 
-	It("returns 401 without an SCM token", func() {
-		req := httptest.NewRequest(http.MethodGet, "/watch", nil)
-		w := httptest.NewRecorder()
-		buildWatchWithStub(&scm.ClientStub{})(w, req)
-		Expect(w.Code).To(Equal(http.StatusUnauthorized))
-	})
+	Describe("failures before stream starts", func() {
+		It("returns 401 without an SCM token", func() {
+			req := httptest.NewRequest(http.MethodGet, "/watch", nil)
+			w := httptest.NewRecorder()
+			buildWatchWithStub(&scm.ClientStub{})(w, req)
+			Expect(w.Code).To(Equal(http.StatusUnauthorized))
+		})
 
-	It("returns 401 when the SCM token is rejected during discovery", func() {
-		stub := &scm.ClientStub{
-			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
-				return nil, scm.ErrUnauthorized
-			},
-		}
-		req := httptest.NewRequest(http.MethodGet, "/watch", nil)
-		req.Header.Set("X-SCM-Token", "pat")
-		w := httptest.NewRecorder()
-		buildWatchWithStub(stub)(w, req)
-		Expect(w.Code).To(Equal(http.StatusUnauthorized))
-	})
+		It("returns 401 when the SCM token is rejected during discovery", func() {
+			stub := &scm.ClientStub{
+				OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
+					return nil, scm.ErrUnauthorized
+				},
+			}
+			req := httptest.NewRequest(http.MethodGet, "/watch", nil)
+			req.Header.Set("X-SCM-Token", "pat")
+			w := httptest.NewRecorder()
+			buildWatchWithStub(stub)(w, req)
+			Expect(w.Code).To(Equal(http.StatusUnauthorized))
+		})
 
-	It("returns 502 when discovery fails with a non-auth error", func() {
-		stub := &scm.ClientStub{
-			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
-				return nil, errors.New("github unreachable")
-			},
-		}
-		req := httptest.NewRequest(http.MethodGet, "/watch", nil)
-		req.Header.Set("X-SCM-Token", "pat")
-		w := httptest.NewRecorder()
-		buildWatchWithStub(stub)(w, req)
-		Expect(w.Code).To(Equal(http.StatusBadGateway))
+		It("returns 502 when discovery fails with a non-auth error", func() {
+			stub := &scm.ClientStub{
+				OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
+					return nil, errors.New("github unreachable")
+				},
+			}
+			req := httptest.NewRequest(http.MethodGet, "/watch", nil)
+			req.Header.Set("X-SCM-Token", "pat")
+			w := httptest.NewRecorder()
+			buildWatchWithStub(stub)(w, req)
+			Expect(w.Code).To(Equal(http.StatusBadGateway))
+		})
 	})
 
 	It("emits a heartbeat comment on the heartbeat interval", func() {
