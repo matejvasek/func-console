@@ -36,17 +36,14 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const events: Array<{ functions: Record<string, { buildStatus: string }> }> = [];
+    const eventQueue = new AsyncQueue<{ functions: Record<string, { buildStatus: string }> }>();
 
-    await new Promise<void>((resolve) => {
-      eventSource.addEventListener('build-status', (e) => {
-        events.push(JSON.parse(e.data));
-        if (events.length === 1) resolve();
-      });
+    eventSource.addEventListener('build-status', (e) => {
+      eventQueue.enqueue(JSON.parse(e.data));
     });
 
-    expect(events).toHaveLength(1);
-    expect(events[0].functions['a/b'].buildStatus).toBe('Building');
+    const event = await eventQueue.dequeue();
+    expect(event.functions['a/b'].buildStatus).toBe('Building');
 
     eventSource.close();
   });
@@ -65,17 +62,14 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const events: Array<{ functions: Record<string, { buildStatus: string }> }> = [];
+    const eventQueue = new AsyncQueue<{ functions: Record<string, { buildStatus: string }> }>();
 
-    await new Promise<void>((resolve) => {
-      eventSource.addEventListener('build-status', (e) => {
-        events.push(JSON.parse(e.data));
-        if (events.length === 1) resolve();
-      });
+    eventSource.addEventListener('build-status', (e) => {
+      eventQueue.enqueue(JSON.parse(e.data));
     });
 
-    expect(events).toHaveLength(1);
-    expect(events[0].functions['a/b'].buildStatus).toBe('Succeeded');
+    const event = await eventQueue.dequeue();
+    expect(event.functions['a/b'].buildStatus).toBe('Succeeded');
 
     eventSource.close();
   });
@@ -94,17 +88,14 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const events: Array<{ functions: Record<string, { buildStatus: string }> }> = [];
+    const eventQueue = new AsyncQueue<{ functions: Record<string, { buildStatus: string }> }>();
 
-    await new Promise<void>((resolve) => {
-      eventSource.addEventListener('build-status', (e) => {
-        events.push(JSON.parse(e.data));
-        if (events.length === 1) resolve();
-      });
+    eventSource.addEventListener('build-status', (e) => {
+      eventQueue.enqueue(JSON.parse(e.data));
     });
 
-    expect(events).toHaveLength(1);
-    expect(events[0].functions['c/d'].buildStatus).toBe('Succeeded');
+    const event = await eventQueue.dequeue();
+    expect(event.functions['c/d'].buildStatus).toBe('Succeeded');
 
     eventSource.close();
   });
@@ -122,17 +113,14 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const events: Array<{ functions: Record<string, { buildStatus: string }> }> = [];
+    const eventQueue = new AsyncQueue<{ functions: Record<string, { buildStatus: string }> }>();
 
-    await new Promise<void>((resolve) => {
-      eventSource.addEventListener('build-status', (e) => {
-        events.push(JSON.parse(e.data));
-        if (events.length === 1) resolve();
-      });
+    eventSource.addEventListener('build-status', (e) => {
+      eventQueue.enqueue(JSON.parse(e.data));
     });
 
-    expect(events).toHaveLength(1);
-    expect(events[0].functions['x/y'].buildStatus).toBe('Failed');
+    const event = await eventQueue.dequeue();
+    expect(event.functions['x/y'].buildStatus).toBe('Failed');
 
     eventSource.close();
   });
@@ -146,24 +134,16 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const errors: Array<{ message: string; isAuthError: boolean }> = [];
+    const errorQueue = new AsyncQueue<{ message: string; isAuthError: boolean }>();
 
-    await new Promise<void>((resolve) => {
-      eventSource.addEventListener('error', (e) => {
-        errors.push(e);
-        resolve();
-      });
-
-      // Give the error listener time to fire
-      setTimeout(() => {
-        resolve();
-      }, 500);
+    eventSource.addEventListener('error', (e) => {
+      errorQueue.enqueue(e);
     });
 
-    eventSource.close();
+    const error = await errorQueue.dequeue();
+    expect(error.isAuthError).toBe(true);
 
-    expect(errors).toHaveLength(1);
-    expect(errors[0].isAuthError).toBe(true);
+    eventSource.close();
   });
 
   it('does not reconnect after 401 auth error', async () => {
@@ -302,23 +282,19 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const events: Array<{ functions: Record<string, { buildStatus: string }> }> = [];
+    const eventQueue = new AsyncQueue<{ functions: Record<string, { buildStatus: string }> }>();
 
-    await new Promise<void>((resolve) => {
-      eventSource.addEventListener('build-status', (e) => {
-        events.push(JSON.parse(e.data));
-        if (events.length === 3) resolve();
-      });
-
-      setTimeout(() => {
-        if (events.length < 3) resolve();
-      }, 500);
+    eventSource.addEventListener('build-status', (e) => {
+      eventQueue.enqueue(JSON.parse(e.data));
     });
 
-    expect(events).toHaveLength(3);
-    expect(events[0].functions['a/b'].buildStatus).toBe('Building');
-    expect(events[1].functions['a/b'].buildStatus).toBe('Succeeded');
-    expect(events[2].functions['a/b'].buildStatus).toBe('Failed');
+    const event1 = await eventQueue.dequeue();
+    const event2 = await eventQueue.dequeue();
+    const event3 = await eventQueue.dequeue();
+
+    expect(event1.functions['a/b'].buildStatus).toBe('Building');
+    expect(event2.functions['a/b'].buildStatus).toBe('Succeeded');
+    expect(event3.functions['a/b'].buildStatus).toBe('Failed');
 
     eventSource.close();
   });
@@ -342,23 +318,17 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const events: Array<{ functions: Record<string, unknown> }> = [];
+    const eventQueue = new AsyncQueue<{ functions: Record<string, unknown> }>();
 
-    await new Promise<void>((resolve) => {
-      eventSource.addEventListener('build-status', (e) => {
-        events.push(JSON.parse(e.data));
-        if (events.length === 1) resolve();
-      });
-
-      setTimeout(() => {
-        if (events.length === 0) resolve();
-      }, 500);
+    eventSource.addEventListener('build-status', (e) => {
+      eventQueue.enqueue(JSON.parse(e.data));
     });
 
-    expect(events).toHaveLength(1);
-    expect(Object.keys(events[0].functions).length).toBe(50);
-    expect(events[0].functions['fn0/repo0']).toBeDefined();
-    expect(events[0].functions['fn49/repo49']).toBeDefined();
+    const event = await eventQueue.dequeue();
+
+    expect(Object.keys(event.functions).length).toBe(50);
+    expect(event.functions['fn0/repo0']).toBeDefined();
+    expect(event.functions['fn49/repo49']).toBeDefined();
 
     eventSource.close();
   });
@@ -393,22 +363,17 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const events: Array<{ functions: Record<string, { buildStatus: string }> }> = [];
+    const eventQueue = new AsyncQueue<{ functions: Record<string, { buildStatus: string }> }>();
 
-    await new Promise<void>((resolve) => {
-      eventSource.addEventListener('build-status', (e) => {
-        events.push(JSON.parse(e.data));
-        if (events.length === 2) resolve();
-      });
-
-      setTimeout(() => {
-        if (events.length < 2) resolve();
-      }, 500);
+    eventSource.addEventListener('build-status', (e) => {
+      eventQueue.enqueue(JSON.parse(e.data));
     });
 
-    expect(events).toHaveLength(2);
-    expect(events[0].functions['a/b'].buildStatus).toBe('Building');
-    expect(events[1].functions['c/d'].buildStatus).toBe('Succeeded');
+    const event1 = await eventQueue.dequeue();
+    const event2 = await eventQueue.dequeue();
+
+    expect(event1.functions['a/b'].buildStatus).toBe('Building');
+    expect(event2.functions['c/d'].buildStatus).toBe('Succeeded');
 
     eventSource.close();
   });
@@ -467,3 +432,31 @@ describe('createBuildStatusEventSource', () => {
     expect(gotError).toBe(false);
   });
 });
+
+class AsyncQueue<T> {
+  private queue: T[] = [];
+  private waiters: ((value: T) => void)[] = [];
+
+  enqueue(value: T): void {
+    if (this.waiters.length > 0) {
+      const waiter = this.waiters.shift()!;
+      waiter(value);
+    } else {
+      this.queue.push(value);
+    }
+  }
+
+  async dequeue(timeout = 500): Promise<T> {
+    if (this.queue.length > 0) {
+      return this.queue.shift()!;
+    }
+    return Promise.race([
+      new Promise<T>((resolve) => {
+        this.waiters.push(resolve);
+      }),
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error('AsyncQueue timeout')), timeout),
+      ),
+    ]);
+  }
+}
