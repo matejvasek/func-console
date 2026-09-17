@@ -80,6 +80,35 @@ describe('createBuildStatusEventSource', () => {
     eventSource.close();
   });
 
+  it('ignores a frame with no event name', async () => {
+    const sseFrames =
+      'data: {"irrelevant":"not a build-status event"}\n\n' +
+      'event: build-status\ndata: {"functions":{"c/d":{"buildStatus":"Succeeded"}}}\n\n';
+
+    server.use(
+      http.get('/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch', () =>
+        HttpResponse.text(sseFrames, {
+          headers: { 'Content-Type': 'text/event-stream' },
+        }),
+      ),
+    );
+
+    const eventSource = createBuildStatusEventSource();
+    const events: Array<{ functions: Record<string, { buildStatus: string }> }> = [];
+
+    await new Promise<void>((resolve) => {
+      eventSource.addEventListener('build-status', (e) => {
+        events.push(JSON.parse(e.data));
+        if (events.length === 1) resolve();
+      });
+    });
+
+    expect(events).toHaveLength(1);
+    expect(events[0].functions['c/d'].buildStatus).toBe('Succeeded');
+
+    eventSource.close();
+  });
+
   it('handles heartbeat comment frames', async () => {
     const sseFrames =
       ':\n\nevent: build-status\ndata: {"functions":{"x/y":{"buildStatus":"Failed"}}}\n\n';
