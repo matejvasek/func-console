@@ -19,20 +19,11 @@ import (
 )
 
 var _ = Describe("BuildWatch", func() {
-	// The poll and rediscover loops are owned by scm.Client.WatchWorkflowRuns
-	// (exercised in the github package); the handler only owns SSE transport.
-	// noHeartbeat pushes the heartbeat out so it never interleaves with the
-	// assertions; fastHeartbeat is for the test that wants to see one. Every
-	// spec that reads the stream names its cadence, so changing the default
-	// cannot make them flaky.
 	const (
 		noHeartbeat   = time.Hour
 		fastHeartbeat = 10 * time.Millisecond
 	)
 
-	// startWatchStream mounts a handler backed by stub on a test server with the
-	// given heartbeat cadence, opens the SSE stream, asserts the event-stream
-	// content type, and returns a reader over the response body.
 	startWatchStream := func(stub scm.Client, heartbeat time.Duration) *bufio.Reader {
 		mux := http.NewServeMux()
 		mux.HandleFunc("GET /watch", buildWatchWithStub(stub, handler.WithHeartbeat(heartbeat)))
@@ -49,8 +40,6 @@ var _ = Describe("BuildWatch", func() {
 		return bufio.NewReader(resp.Body)
 	}
 
-	// The next three fail before the stream starts, so their cadence never
-	// matters and they take the default.
 	It("returns 401 without an SCM token", func() {
 		req := httptest.NewRequest(http.MethodGet, "/watch", nil)
 		w := httptest.NewRecorder()
@@ -132,9 +121,6 @@ var _ = Describe("BuildWatch", func() {
 		Expect(second).To(ContainSubstring(`"runURL":"https://github.com/alice/fn/actions/runs/1"`))
 	})
 
-	// The status mapping itself is covered by the table below; this pins the
-	// frame's shape, that a repo with no run carries no empty conclusion, runURL
-	// or headSHA keys.
 	It("omits the optional fields for a repo with no run", func() {
 		ch := make(chan scm.WorkflowRunsOrErr, 1)
 		stub := &scm.ClientStub{

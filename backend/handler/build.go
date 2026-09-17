@@ -14,8 +14,6 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
-// defaultHeartbeat is the SSE heartbeat cadence of a handler built without
-// options. It is short enough to keep proxies from closing an idle connection.
 const defaultHeartbeat = 15 * time.Second
 
 type buildStatusItem struct {
@@ -25,17 +23,10 @@ type buildStatusItem struct {
 	HeadSHA     string `json:"headSHA,omitempty"`
 }
 
-// buildSnapshot is keyed by "owner/name", the identifier the frontend correlates
-// on. encoding/json emits map keys sorted, so an unchanged snapshot always
-// serializes to the same bytes.
 type buildSnapshot struct {
 	Functions map[string]buildStatusItem `json:"functions"`
 }
 
-// BuildWatch returns the build-status SSE handler, which builds an SCM client
-// per request from the caller's token. Unlike its siblings it needs no cluster
-// configuration, so it is a plain function rather than a method on Handlers,
-// and both of its tunables have defaults.
 func BuildWatch(opts ...WatchOption) http.HandlerFunc {
 	cfg := watchConfig{newSCMClient: defaultSCMClient, heartbeat: defaultHeartbeat}
 	for _, opt := range opts {
@@ -60,8 +51,6 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 	client := newSCMClient(pat)
 	ctx := r.Context()
 
-	// WatchWorkflowRuns discovers repos synchronously, so auth failures surface
-	// here, as a normal HTTP status, before the response switches to SSE.
 	watch, err := client.WatchWorkflowRuns(ctx, functions.WorkflowFilename)
 	if err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
@@ -79,8 +68,6 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
-	// Flush the head so the client's request completes and it can start reading,
-	// rather than blocking until the first snapshot frame.
 	flusher.Flush()
 
 	beat := time.NewTicker(heartbeat)
@@ -97,15 +84,10 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 			flusher.Flush()
 		case event, ok := <-watch.ResultChan():
 			if !ok {
-				// Watch ended (cancelled, or the token was revoked mid-stream).
-				// End the stream so the client reconnects, hits a 401 on its
-				// initial request, and takes its re-auth path.
 				return
 			}
 			if event.Err != nil {
 				slog.Error("build watch: stream error", "err", event.Err)
-				// End the stream so the client reconnects and takes its re-auth path.
-				// We could also potentially push error event to the stream.
 				return
 			}
 			data, err := json.Marshal(toSnapshot(event.Runs))
@@ -174,8 +156,6 @@ func deriveBuildStatus(run *scm.WorkflowRun) string {
 		return "None"
 	}
 	switch run.Status {
-	// The gated "waiting"/"requested"/"pending" states also mean a run exists
-	// but has not finished.
 	case "queued", "in_progress", "waiting", "requested", "pending":
 		return "Building"
 	case "completed":
@@ -185,9 +165,6 @@ func deriveBuildStatus(run *scm.WorkflowRun) string {
 		case "failure", "cancelled", "timed_out":
 			return "Failed"
 		default:
-			// "skipped", "neutral", "stale" and "action_required" are not
-			// failures; report no signal so the frontend falls back to the
-			// cluster-derived status instead of a red "Build failed" badge.
 			return "None"
 		}
 	default:
