@@ -109,33 +109,33 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
   const listeners: Array<(e: BuildSnapshotEvent) => void> = [];
   const errorListeners: Array<(e: BuildWatchErrorEvent) => void> = [];
   const openListeners: Array<() => void> = [];
-  let cancelled = false;
+  let streaming = true;
   const controller = new AbortController();
 
   async function run() {
-    while (!cancelled) {
+    while (streaming) {
       try {
         const res = await connectBuildWatch(controller.signal);
         if (!res.body) continue;
         invokeListeners(openListeners, undefined, 'open');
         for await (const event of readEventStream(res.body)) {
-          if (event.type === 'build-status' && !cancelled) {
+          if (event.type === 'build-status' && streaming) {
             invokeListeners(listeners, { data: event.data }, 'build-status');
           }
         }
       } catch (err: unknown) {
-        if (cancelled) return;
+        if (!streaming) return;
         const message = (err instanceof Error && err.message) || String(err) || 'Unknown error';
         invokeListeners(errorListeners, { message, isAuthError: isAuthError(err) }, 'error');
         if (isAuthError(err)) return;
       }
-      if (!cancelled) {
+      if (streaming) {
         await delay(RECONNECT_DELAY_MS, controller.signal);
       }
     }
   }
   function invokeListeners<T>(listeners: Array<(arg: T) => void>, arg: T, label = 'listener') {
-    if (cancelled) return;
+    if (!streaming) return;
     listeners.forEach((cbk) => {
       try {
         cbk(arg);
@@ -145,11 +145,11 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
     });
   }
 
-  run(); // Fire and forget; runs until cancelled
+  run(); // Fire and forget; runs until close() is called
 
   return {
     addEventListener(event: 'build-status' | 'error' | 'open', cbk) {
-      if (cancelled) return;
+      if (!streaming) return;
       if (event === 'build-status') {
         listeners.push(cbk as (e: BuildSnapshotEvent) => void);
       } else if (event === 'error') {
@@ -159,7 +159,7 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
       }
     },
     close() {
-      cancelled = true;
+      streaming = false;
       controller.abort();
       listeners.length = 0;
       errorListeners.length = 0;
