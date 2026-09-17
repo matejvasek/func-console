@@ -33,6 +33,7 @@ func BuildWatch(opts ...WatchOption) http.HandlerFunc {
 			return config.SCMRegistry.Client(scm.DefaultPlatform, pat)
 		},
 		heartbeat: defaultHeartbeat,
+	}
 	for _, opt := range opts {
 		opt(&cfg)
 	}
@@ -114,13 +115,10 @@ type watchConfig struct {
 
 type WatchOption func(*watchConfig)
 
-// WithSCMFactory overrides how the handler builds an SCM client from the
-// caller's token.
 func WithSCMFactory(f scm.ClientFactory) WatchOption {
 	return func(c *watchConfig) { c.newSCMClient = f }
 }
 
-// WithHeartbeat overrides the SSE heartbeat cadence. It must be positive.
 func WithHeartbeat(d time.Duration) WatchOption {
 	if d <= 0 {
 		panic(fmt.Sprintf("heartbeat must be positive, got %v", d))
@@ -161,8 +159,7 @@ func deriveBuildStatus(run *scm.WorkflowRun) string {
 		case "failure", "cancelled", "timed_out":
 			return "Failed"
 		default:
-			// "skipped", "neutral", "stale" and "action_required" are not
-			// failures, report no signal.
+			// "skipped", "neutral", "stale" and "action_required" are not failures, report no signal.
 			return "None"
 		}
 	default:
