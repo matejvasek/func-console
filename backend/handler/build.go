@@ -109,7 +109,6 @@ type watchConfig struct {
 	heartbeat    time.Duration
 }
 
-// WatchOption customizes the handler returned by BuildWatch.
 type WatchOption func(*watchConfig)
 
 // WithSCMFactory overrides how the handler builds an SCM client from the
