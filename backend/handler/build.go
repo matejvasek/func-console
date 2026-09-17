@@ -28,7 +28,11 @@ type buildSnapshot struct {
 }
 
 func BuildWatch(opts ...WatchOption) http.HandlerFunc {
-	cfg := watchConfig{newSCMClient: defaultSCMClient, heartbeat: defaultHeartbeat}
+	cfg := watchConfig{
+		newSCMClient: func(pat string) scm.Client {
+			return config.SCMRegistry.Client(scm.DefaultPlatform, pat)
+		},
+		heartbeat: defaultHeartbeat,
 	for _, opt := range opts {
 		opt(&cfg)
 	}
@@ -122,11 +126,6 @@ func WithHeartbeat(d time.Duration) WatchOption {
 		panic(fmt.Sprintf("heartbeat must be positive, got %v", d))
 	}
 	return func(c *watchConfig) { c.heartbeat = d }
-}
-
-// defaultSCMClient builds a client for the platform the registry is wired to.
-func defaultSCMClient(pat string) scm.Client {
-	return config.SCMRegistry.Client(scm.DefaultPlatform, pat)
 }
 
 func toSnapshot(runs []scm.RepoRun) buildSnapshot {
