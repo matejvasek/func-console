@@ -185,6 +185,12 @@ describe('useBuildStatus', () => {
     const openListeners: Array<() => void> = [];
     let open = true;
 
+    function forEachDeferred<T>(a: T[], f: (x: T) => void) {
+      queueMicrotask(() => {
+        a.forEach(f);
+      });
+    }
+
     return {
       eventSource: {
         addEventListener(
@@ -209,22 +215,22 @@ describe('useBuildStatus', () => {
       },
       emitSnapshot(snap: { functions: Record<string, unknown> }) {
         if (open) {
-          listeners.forEach((cbk) => cbk({ data: JSON.stringify(snap) }));
+          forEachDeferred(listeners, (cbk) => cbk({ data: JSON.stringify(snap) }));
         }
       },
       emitError(err: BuildWatchErrorEvent) {
         if (open) {
-          errorListeners.forEach((cbk) => cbk(err));
+          forEachDeferred(errorListeners, (cbk) => cbk(err));
         }
       },
       emitOpen() {
         if (open) {
-          openListeners.forEach((cbk) => cbk());
+          forEachDeferred(openListeners, (cbk) => cbk());
         }
       },
       emitRaw(data: string) {
         if (open) {
-          listeners.forEach((cbk) => cbk({ data }));
+          forEachDeferred(listeners, (cbk) => cbk({ data }));
         }
       },
     };
