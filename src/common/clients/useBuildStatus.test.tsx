@@ -112,7 +112,7 @@ describe('useBuildStatus', () => {
     const { eventSource, emitError } = createMockEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
-    emitError({ message: 'Connection failed' } as BuildWatchErrorEvent);
+    emitError({ message: 'Connection failed', isAuthError: false });
 
     await waitFor(() => expect(result.current.error).toBe('Connection failed'));
   });
@@ -124,7 +124,7 @@ describe('useBuildStatus', () => {
     emitSnapshot({ functions: { 'repo/owner': { buildStatus: 'Building' } } });
     await waitFor(() => expect(Object.keys(result.current.statuses).length).toBe(1));
 
-    emitError({ message: 'Network error' } as BuildWatchErrorEvent);
+    emitError({ message: 'Network error', isAuthError: false });
     await waitFor(() => expect(result.current.error).toBe('Network error'));
 
     // Statuses should still be present
@@ -135,7 +135,7 @@ describe('useBuildStatus', () => {
     const { eventSource, emitError, emitOpen } = createMockEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
-    emitError({ message: 'Connection failed' } as BuildWatchErrorEvent);
+    emitError({ message: 'Connection failed', isAuthError: false });
     await waitFor(() => expect(result.current.error).toBe('Connection failed'));
 
     emitOpen();
