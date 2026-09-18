@@ -16,17 +16,13 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/openshift/faas-console-plugin/backend/handler"
 	"github.com/openshift/faas-console-plugin/backend/scm"
+	"github.com/openshift/faas-console-plugin/backend/ticker"
 )
 
 var _ = Describe("BuildWatch", func() {
-	const (
-		noHeartbeat   = time.Hour
-		fastHeartbeat = 10 * time.Millisecond
-	)
-
-	startWatchStream := func(stub scm.Client, heartbeat time.Duration) *bufio.Reader {
+	startWatchStream := func(stub scm.Client, factory ticker.Factory) *bufio.Reader {
 		mux := http.NewServeMux()
-		mux.HandleFunc("GET /watch", buildWatchWithStub(stub, handler.WithHeartbeat(heartbeat)))
+		mux.HandleFunc("GET /watch", buildWatchWithStub(stub, handler.WithHeartbeatTickerFactory(factory)))
 		ts := httptest.NewServer(mux)
 		DeferCleanup(ts.Close)
 
@@ -75,9 +71,7 @@ var _ = Describe("BuildWatch", func() {
 		})
 	})
 
-	It("emits a heartbeat comment on the heartbeat interval", func() {
-		// The watch never emits a snapshot, so the only output is the heartbeat
-		// that keeps the SSE connection alive.
+	It("emits a heartbeat comment on demand", func() {
 		ch := make(chan scm.WorkflowRunsOrErr)
 		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
@@ -85,8 +79,10 @@ var _ = Describe("BuildWatch", func() {
 			},
 		}
 
-		reader := startWatchStream(stub, fastHeartbeat)
+		beat, factory := ticker.CreateFakeTickerFactory()
+		reader := startWatchStream(stub, factory)
 
+		go beat()
 		line, ok := readLineWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a heartbeat line")
 		Expect(line).To(Equal(":"))
@@ -100,7 +96,7 @@ var _ = Describe("BuildWatch", func() {
 			},
 		}
 
-		reader := startWatchStream(stub, noHeartbeat)
+		reader := startWatchStream(stub, ticker.SilentTickerFactory())
 
 		ch <- scm.WorkflowRunsOrErr{Runs: []scm.RepoRun{{
 			Repo: scm.Repo{Owner: "alice", Name: "fn"},
@@ -131,7 +127,7 @@ var _ = Describe("BuildWatch", func() {
 			},
 		}
 
-		reader := startWatchStream(stub, noHeartbeat)
+		reader := startWatchStream(stub, ticker.SilentTickerFactory())
 
 		ch <- scm.WorkflowRunsOrErr{Runs: []scm.RepoRun{{Repo: scm.Repo{Owner: "alice", Name: "fn"}, Run: nil}}}
 		frame, ok := readSSEDataWithin(reader, 2*time.Second)
@@ -148,7 +144,7 @@ var _ = Describe("BuildWatch", func() {
 			},
 		}
 
-		reader := startWatchStream(stub, noHeartbeat)
+		reader := startWatchStream(stub, ticker.SilentTickerFactory())
 
 		ch <- scm.WorkflowRunsOrErr{Runs: []scm.RepoRun{{
 			Repo: scm.Repo{Owner: "alice", Name: "fn"},
@@ -182,7 +178,7 @@ var _ = Describe("BuildWatch", func() {
 			},
 		}
 
-		reader := startWatchStream(stub, noHeartbeat)
+		reader := startWatchStream(stub, ticker.SilentTickerFactory())
 
 		errCh := make(chan error, 1)
 		go func() {
@@ -203,10 +199,8 @@ var _ = Describe("BuildWatch", func() {
 
 	It("calls watch.Stop() when the request context is cancelled to halt polling", func() {
 		stopCalled := make(chan bool)
-
 		ch := make(chan scm.WorkflowRunsOrErr, 1)
 
-		// Create a mock watch that tracks if Stop() is called
 		mockWatch := &trackingWatch{
 			ch:         ch,
 			stopCalled: stopCalled,
@@ -218,8 +212,9 @@ var _ = Describe("BuildWatch", func() {
 			},
 		}
 
+		beat, factory := ticker.CreateFakeTickerFactory()
 		mux := http.NewServeMux()
-		mux.HandleFunc("GET /watch", buildWatchWithStub(stub, handler.WithHeartbeat(fastHeartbeat)))
+		mux.HandleFunc("GET /watch", buildWatchWithStub(stub, handler.WithHeartbeatTickerFactory(factory)))
 		ts := httptest.NewServer(mux)
 		DeferCleanup(ts.Close)
 
@@ -232,15 +227,13 @@ var _ = Describe("BuildWatch", func() {
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() { resp.Body.Close() })
 
-		// Let the stream start
 		reader := bufio.NewReader(resp.Body)
+		go beat()
 		_, err = reader.ReadString('\n')
 		Expect(err).NotTo(HaveOccurred())
 
-		// Cancel the request context
 		cancel()
 
-		// The handler should call watch.Stop() to properly clean up the polling goroutine
 		select {
 		case <-stopCalled:
 			// Success: Stop was called
@@ -261,7 +254,7 @@ var _ = Describe("BuildWatch", func() {
 				},
 			}
 
-			reader := startWatchStream(stub, noHeartbeat)
+			reader := startWatchStream(stub, ticker.SilentTickerFactory())
 			ch <- scm.WorkflowRunsOrErr{Runs: []scm.RepoRun{{Repo: scm.Repo{Owner: "alice", Name: "fn"}, Run: run}}}
 			data, ok := readSSEDataWithin(reader, 2*time.Second)
 			Expect(ok).To(BeTrue(), "expected a frame for the snapshot")
@@ -396,3 +389,4 @@ func readSSEData(reader *bufio.Reader) string {
 		}
 	}
 }
+

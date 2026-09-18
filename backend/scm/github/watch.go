@@ -75,16 +75,16 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFile string) (
 			return
 		}
 
-		poll := time.NewTicker(c.pollInterval)
+		poll := c.pollTickerFactory()
 		defer poll.Stop()
-		rediscover := time.NewTicker(c.rediscoverInterval)
+		rediscover := c.rediscoverTickerFactory()
 		defer rediscover.Stop()
 
 		for {
 			select {
 			case <-pollCtx.Done():
 				return
-			case <-rediscover.C:
+			case <-rediscover.Chan():
 				latest, err := c.ListRepos(pollCtx)
 				if err != nil {
 					if !emitWithErr(prevSnapshot, fmt.Errorf("repository rediscovery failed: %w", err)) {
@@ -94,7 +94,7 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFile string) (
 					continue
 				}
 				repos = latest
-			case <-poll.C:
+			case <-poll.Chan():
 				if !pollAndEmit() {
 					return
 				}

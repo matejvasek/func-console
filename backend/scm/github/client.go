@@ -13,24 +13,24 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/openshift/faas-console-plugin/backend/scm"
+	"github.com/openshift/faas-console-plugin/backend/ticker"
 )
 
 // Option customizes a client returned by New or NewWithBaseURL.
 type Option func(*ghClient)
 
-// WithWatchIntervals sets the cadence of the WatchWorkflowRuns loop: how often
-// each repo's latest run is polled, and how often the repo set is rediscovered.
-// Both must be positive.
-func WithWatchIntervals(poll, rediscover time.Duration) Option {
-	if poll <= 0 {
-		panic(fmt.Sprintf("poll must be positive, got %v", poll))
+// WithWatchTickerFactories sets the factories for poll and rediscover tickers
+// in the WatchWorkflowRuns loop. Both must be non-nil.
+func WithWatchTickerFactories(poll, rediscover ticker.Factory) Option {
+	if poll == nil {
+		panic("poll factory must not be nil")
 	}
-	if rediscover <= 0 {
-		panic(fmt.Sprintf("rediscover must be positive, got %v", rediscover))
+	if rediscover == nil {
+		panic("rediscover factory must not be nil")
 	}
 	return func(c *ghClient) {
-		c.pollInterval = poll
-		c.rediscoverInterval = rediscover
+		c.pollTickerFactory = poll
+		c.rediscoverTickerFactory = rediscover
 	}
 }
 
@@ -67,9 +67,13 @@ func NewWithBaseURL(pat, baseURL string, opts ...Option) scm.Client {
 		panic(fmt.Sprintf("github.NewWithBaseURL: invalid baseURL %q: %v", baseURL, err))
 	}
 	c := &ghClient{
-		client:             client,
-		pollInterval:       defaultWatchPollInterval,
-		rediscoverInterval: defaultWatchRediscoverInterval,
+		client: client,
+		pollTickerFactory: func() ticker.Ticker {
+			return ticker.New(defaultWatchPollInterval)
+		},
+		rediscoverTickerFactory: func() ticker.Ticker {
+			return ticker.New(defaultWatchRediscoverInterval)
+		},
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -132,10 +136,10 @@ func (d drainOnClose) Close() error {
 
 type ghClient struct {
 	client *ghlib.Client
-	// Cadence of the WatchWorkflowRuns loop. Set once at construction and only
-	// read afterwards, including by the watch goroutine.
-	pollInterval       time.Duration
-	rediscoverInterval time.Duration
+	// Ticker factories for the WatchWorkflowRuns loop. Set once at construction
+	// and only read afterwards, including by the watch goroutine.
+	pollTickerFactory       ticker.Factory
+	rediscoverTickerFactory ticker.Factory
 }
 
 func mapErr(err error) error {

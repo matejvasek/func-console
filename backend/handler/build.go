@@ -12,6 +12,7 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/config"
 	"github.com/openshift/faas-console-plugin/backend/functions"
 	"github.com/openshift/faas-console-plugin/backend/scm"
+	"github.com/openshift/faas-console-plugin/backend/ticker"
 )
 
 const defaultHeartbeat = 15 * time.Second
@@ -32,17 +33,19 @@ func BuildWatch(opts ...WatchOption) http.HandlerFunc {
 		newSCMClient: func(pat string) scm.Client {
 			return config.SCMRegistry.Client(scm.DefaultPlatform, pat)
 		},
-		heartbeat: defaultHeartbeat,
+		heartbeatFactory: func() ticker.Ticker {
+			return ticker.New(defaultHeartbeat)
+		},
 	}
 	for _, opt := range opts {
 		opt(&cfg)
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		handleBuildWatch(w, r, cfg.newSCMClient, cfg.heartbeat)
+		handleBuildWatch(w, r, cfg.newSCMClient, cfg.heartbeatFactory)
 	}
 }
 
-func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.ClientFactory, heartbeat time.Duration) {
+func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.ClientFactory, heartbeatFactory ticker.Factory) {
 	pat, ok := extractSCMToken(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "X-SCM-Token header is required")
@@ -75,14 +78,14 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
-	beat := time.NewTicker(heartbeat)
+	beat := heartbeatFactory()
 	defer beat.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-beat.C:
+		case <-beat.Chan():
 			if _, err := io.WriteString(w, ":\n\n"); err != nil {
 				return
 			}
@@ -109,8 +112,8 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 }
 
 type watchConfig struct {
-	newSCMClient scm.ClientFactory
-	heartbeat    time.Duration
+	newSCMClient     scm.ClientFactory
+	heartbeatFactory ticker.Factory
 }
 
 type WatchOption func(*watchConfig)
@@ -119,11 +122,11 @@ func WithSCMFactory(f scm.ClientFactory) WatchOption {
 	return func(c *watchConfig) { c.newSCMClient = f }
 }
 
-func WithHeartbeat(d time.Duration) WatchOption {
-	if d <= 0 {
-		panic(fmt.Sprintf("heartbeat must be positive, got %v", d))
+func WithHeartbeatTickerFactory(f ticker.Factory) WatchOption {
+	if f == nil {
+		panic("heartbeat factory must not be nil")
 	}
-	return func(c *watchConfig) { c.heartbeat = d }
+	return func(c *watchConfig) { c.heartbeatFactory = f }
 }
 
 func toSnapshot(runs []scm.RepoRun) buildSnapshot {
