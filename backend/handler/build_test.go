@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -19,14 +20,9 @@ import (
 )
 
 var _ = Describe("BuildWatch", func() {
-	const (
-		noHeartbeat   = time.Hour
-		fastHeartbeat = 10 * time.Millisecond
-	)
-
-	startWatchStream := func(stub scm.Client, heartbeat time.Duration) *bufio.Reader {
+	startWatchStream := func(stub scm.Client, factory handler.TickerFactory) *bufio.Reader {
 		mux := http.NewServeMux()
-		mux.HandleFunc("GET /watch", buildWatchWithStub(stub, handler.WithHeartbeat(heartbeat)))
+		mux.HandleFunc("GET /watch", buildWatchWithStub(stub, handler.WithHeartbeatTickerFactory(factory)))
 		ts := httptest.NewServer(mux)
 		DeferCleanup(ts.Close)
 
@@ -75,9 +71,7 @@ var _ = Describe("BuildWatch", func() {
 		})
 	})
 
-	It("emits a heartbeat comment on the heartbeat interval", func() {
-		// The watch never emits a snapshot, so the only output is the heartbeat
-		// that keeps the SSE connection alive.
+	It("emits a heartbeat comment on demand", func() {
 		ch := make(chan scm.WorkflowRunsOrErr)
 		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
@@ -85,8 +79,10 @@ var _ = Describe("BuildWatch", func() {
 			},
 		}
 
-		reader := startWatchStream(stub, fastHeartbeat)
+		fire, factory := newManualTickerFactory()
+		reader := startWatchStream(stub, factory)
 
+		go fire()
 		line, ok := readLineWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a heartbeat line")
 		Expect(line).To(Equal(":"))
@@ -100,7 +96,7 @@ var _ = Describe("BuildWatch", func() {
 			},
 		}
 
-		reader := startWatchStream(stub, noHeartbeat)
+		reader := startWatchStream(stub, newNoTickFactory())
 
 		ch <- scm.WorkflowRunsOrErr{Runs: []scm.RepoRun{{
 			Repo: scm.Repo{Owner: "alice", Name: "fn"},
@@ -131,7 +127,7 @@ var _ = Describe("BuildWatch", func() {
 			},
 		}
 
-		reader := startWatchStream(stub, noHeartbeat)
+		reader := startWatchStream(stub, newNoTickFactory())
 
 		ch <- scm.WorkflowRunsOrErr{Runs: []scm.RepoRun{{Repo: scm.Repo{Owner: "alice", Name: "fn"}, Run: nil}}}
 		frame, ok := readSSEDataWithin(reader, 2*time.Second)
@@ -148,7 +144,7 @@ var _ = Describe("BuildWatch", func() {
 			},
 		}
 
-		reader := startWatchStream(stub, noHeartbeat)
+		reader := startWatchStream(stub, newNoTickFactory())
 
 		ch <- scm.WorkflowRunsOrErr{Runs: []scm.RepoRun{{
 			Repo: scm.Repo{Owner: "alice", Name: "fn"},
@@ -182,7 +178,7 @@ var _ = Describe("BuildWatch", func() {
 			},
 		}
 
-		reader := startWatchStream(stub, noHeartbeat)
+		reader := startWatchStream(stub, newNoTickFactory())
 
 		errCh := make(chan error, 1)
 		go func() {
@@ -203,10 +199,8 @@ var _ = Describe("BuildWatch", func() {
 
 	It("calls watch.Stop() when the request context is cancelled to halt polling", func() {
 		stopCalled := make(chan bool)
-
 		ch := make(chan scm.WorkflowRunsOrErr, 1)
 
-		// Create a mock watch that tracks if Stop() is called
 		mockWatch := &trackingWatch{
 			ch:         ch,
 			stopCalled: stopCalled,
@@ -218,8 +212,9 @@ var _ = Describe("BuildWatch", func() {
 			},
 		}
 
+		fire, factory := newManualTickerFactory()
 		mux := http.NewServeMux()
-		mux.HandleFunc("GET /watch", buildWatchWithStub(stub, handler.WithHeartbeat(fastHeartbeat)))
+		mux.HandleFunc("GET /watch", buildWatchWithStub(stub, handler.WithHeartbeatTickerFactory(factory)))
 		ts := httptest.NewServer(mux)
 		DeferCleanup(ts.Close)
 
@@ -232,15 +227,13 @@ var _ = Describe("BuildWatch", func() {
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() { resp.Body.Close() })
 
-		// Let the stream start
 		reader := bufio.NewReader(resp.Body)
+		go fire()
 		_, err = reader.ReadString('\n')
 		Expect(err).NotTo(HaveOccurred())
 
-		// Cancel the request context
 		cancel()
 
-		// The handler should call watch.Stop() to properly clean up the polling goroutine
 		select {
 		case <-stopCalled:
 			// Success: Stop was called
@@ -261,7 +254,7 @@ var _ = Describe("BuildWatch", func() {
 				},
 			}
 
-			reader := startWatchStream(stub, noHeartbeat)
+			reader := startWatchStream(stub, newNoTickFactory())
 			ch <- scm.WorkflowRunsOrErr{Runs: []scm.RepoRun{{Repo: scm.Repo{Owner: "alice", Name: "fn"}, Run: run}}}
 			data, ok := readSSEDataWithin(reader, 2*time.Second)
 			Expect(ok).To(BeTrue(), "expected a frame for the snapshot")
@@ -395,4 +388,57 @@ func readSSEData(reader *bufio.Reader) string {
 			data = append(data, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
 		}
 	}
+}
+
+type mockTicker struct {
+	c    chan time.Time
+	done chan struct{}
+}
+
+func (m *mockTicker) Chan() <-chan time.Time {
+	return m.c
+}
+
+func (m *mockTicker) Stop() {
+	close(m.done)
+}
+
+func (m *mockTicker) Fire() {
+	select {
+	case m.c <- time.Now():
+	case <-m.done:
+		panic("fire on closed ticker")
+	}
+}
+
+func newNoTickFactory() handler.TickerFactory {
+	return func() handler.Ticker {
+		return &mockTicker{
+			c:    nil,
+			done: make(chan struct{}),
+		}
+	}
+}
+
+// newManualTickerFactory returns a fire function and ticker factory
+// for tests that need explicit control over heartbeat timing.
+//
+// Example:
+//
+//	fire, factory := newManualTickerFactory()
+//	reader := startWatchStream(stub, factory)
+//	fire()  // Emit heartbeat on demand
+func newManualTickerFactory() (func(), handler.TickerFactory) {
+	ticker := &mockTicker{c: make(chan time.Time), done: make(chan struct{})}
+	var factoryInvoked int32
+	fire := func() {
+		ticker.Fire()
+	}
+	factory := func() handler.Ticker {
+		if !atomic.CompareAndSwapInt32(&factoryInvoked, 0, 1) {
+			panic("factory invoked multiple times")
+		}
+		return ticker
+	}
+	return fire, factory
 }
