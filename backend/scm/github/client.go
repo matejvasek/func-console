@@ -18,19 +18,18 @@ import (
 // Option customizes a client returned by New or NewWithBaseURL.
 type Option func(*ghClient)
 
-// WithWatchIntervals sets the cadence of the WatchWorkflowRuns loop: how often
-// each repo's latest run is polled, and how often the repo set is rediscovered.
-// Both must be positive.
-func WithWatchIntervals(poll, rediscover time.Duration) Option {
-	if poll <= 0 {
-		panic(fmt.Sprintf("poll must be positive, got %v", poll))
+// WithWatchTickerFactories sets the factories for poll and rediscover tickers
+// in the WatchWorkflowRuns loop. Both must be non-nil.
+func WithWatchTickerFactories(poll, rediscover TickerFactory) Option {
+	if poll == nil {
+		panic("poll factory must not be nil")
 	}
-	if rediscover <= 0 {
-		panic(fmt.Sprintf("rediscover must be positive, got %v", rediscover))
+	if rediscover == nil {
+		panic("rediscover factory must not be nil")
 	}
 	return func(c *ghClient) {
-		c.pollInterval = poll
-		c.rediscoverInterval = rediscover
+		c.pollTickerFactory = poll
+		c.rediscoverTickerFactory = rediscover
 	}
 }
 
@@ -67,14 +66,33 @@ func NewWithBaseURL(pat, baseURL string, opts ...Option) scm.Client {
 		panic(fmt.Sprintf("github.NewWithBaseURL: invalid baseURL %q: %v", baseURL, err))
 	}
 	c := &ghClient{
-		client:             client,
-		pollInterval:       defaultWatchPollInterval,
-		rediscoverInterval: defaultWatchRediscoverInterval,
+		client: client,
+		pollTickerFactory: func() Ticker {
+			return &realTicker{time.NewTicker(defaultWatchPollInterval)}
+		},
+		rediscoverTickerFactory: func() Ticker {
+			return &realTicker{time.NewTicker(defaultWatchRediscoverInterval)}
+		},
 	}
 	for _, opt := range opts {
 		opt(c)
 	}
 	return c
+}
+
+type Ticker interface {
+	Chan() <-chan time.Time
+	Stop()
+}
+
+type TickerFactory func() Ticker
+
+type realTicker struct {
+	*time.Ticker
+}
+
+func (t *realTicker) Chan() <-chan time.Time {
+	return t.C
 }
 
 // forceRevalidate sets Cache-Control: max-age=0 on every request so the
@@ -132,10 +150,10 @@ func (d drainOnClose) Close() error {
 
 type ghClient struct {
 	client *ghlib.Client
-	// Cadence of the WatchWorkflowRuns loop. Set once at construction and only
-	// read afterwards, including by the watch goroutine.
-	pollInterval       time.Duration
-	rediscoverInterval time.Duration
+	// Ticker factories for the WatchWorkflowRuns loop. Set once at construction
+	// and only read afterwards, including by the watch goroutine.
+	pollTickerFactory       TickerFactory
+	rediscoverTickerFactory TickerFactory
 }
 
 func mapErr(err error) error {

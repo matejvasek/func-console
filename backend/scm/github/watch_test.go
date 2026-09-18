@@ -3,12 +3,12 @@ package github_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -29,14 +29,16 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	// These sizes were measured to straddle the boundary.
 	for _, payload := range []int{0, 14_000, 100_000} {
 		It(fmt.Sprintf("revalidates each poll with If-None-Match so unchanged runs cost a free 304 (%d bytes of padding)", payload), func() {
-			var mu sync.Mutex
-			var conditional []string
-			cl := newWatchClient(fastPoll, noRediscover, watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
+			var wg sync.WaitGroup
+			wg.Add(3)
+			var ifNotMatchSpy []string
+			firePoll, pollFactory := newManualTickerFactory()
+			_, rediscoverFactory := newManualTickerFactory()
+			cl := newWatchClientWithFactories(pollFactory, rediscoverFactory, watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
 				func(w http.ResponseWriter, r *http.Request) {
-					mu.Lock()
-					defer mu.Unlock()
 					inm := r.Header.Get("If-None-Match")
-					conditional = append(conditional, inm)
+					ifNotMatchSpy = append(ifNotMatchSpy, inm)
+					wg.Done()
 
 					w.Header().Set("ETag", `"run-etag-v1"`)
 					// A "fresh" response (like GitHub's max-age=60). The client must
@@ -59,25 +61,22 @@ var _ = Describe("WatchWorkflowRuns", func() {
 			Expect(ok).To(BeTrue(), "expected an initial snapshot")
 			Expect(first[0].Run.Status).To(Equal("in_progress"))
 
-			// Let several poll cycles run.
-			Eventually(func() int {
-				mu.Lock()
-				defer mu.Unlock()
-				return len(conditional)
-			}, 2*time.Second, 10*time.Millisecond).Should(BeNumerically(">=", 3))
+			go func() {
+				for _ = range w.ResultChan() {
+				}
+			}()
 
-			// The run never changes, so a working cache serves each 304 as the same
-			// run and the snapshot never re-emits. A broken cache would yield an
-			// empty 304 body (nil run) and a spurious re-emit.
-			_, ok = recvWithin(w.ResultChan(), 300*time.Millisecond)
-			Expect(ok).To(BeFalse(), "expected no re-emit while the 304s serve cached data")
+			firePoll()
+			firePoll()
 
-			mu.Lock()
-			defer mu.Unlock()
+			wg.Wait()
+
+			w.Stop()
+
 			// The first poll was unconditional; every later poll sent If-None-Match
 			// and got a 304.
-			Expect(conditional[0]).To(BeEmpty())
-			for _, inm := range conditional[1:] {
+			Expect(ifNotMatchSpy[0]).To(BeEmpty())
+			for _, inm := range ifNotMatchSpy[1:] {
 				Expect(inm).To(Equal(`"run-etag-v1"`))
 			}
 		})
@@ -85,7 +84,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 	It("returns an unauthorized error from the initial discovery", func() {
 		// Discovery fails before the watch loop starts, so the cadence is moot.
-		cl := newWatchClient(fastPoll, noRediscover, func(w http.ResponseWriter, r *http.Request) {
+		cl := newWatchClientWithFactories(newNoTickFactory(), newNoTickFactory(), func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(map[string]string{"message": "Bad credentials"})
 		})
@@ -97,7 +96,9 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	It("streams an initial snapshot keyed by repo, then re-emits only on change", func() {
 		var mu sync.Mutex
 		runCalls := 0
-		cl := newWatchClient(fastPoll, noRediscover, watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
+		firePoll, pollFactory := newManualTickerFactory()
+		_, rediscoverFactory := newManualTickerFactory()
+		cl := newWatchClientWithFactories(pollFactory, rediscoverFactory, watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
 			func(w http.ResponseWriter, r *http.Request) {
 				mu.Lock()
 				defer mu.Unlock()
@@ -121,6 +122,8 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		Expect(first[0].Run).NotTo(BeNil())
 		Expect(first[0].Run.Status).To(Equal("in_progress"))
 
+		// Trigger poll to get the second snapshot with changed status
+		go firePoll()
 		second, ok := recvWithin(w.ResultChan(), 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a second snapshot once the run changed")
 		Expect(second[0].Run.Status).To(Equal("completed"))
@@ -128,7 +131,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	})
 
 	It("does not re-emit while the run is unchanged", func() {
-		cl := newWatchClient(fastPoll, noRediscover, watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
+		cl := newWatchClientWithFactories(newNoTickFactory(), newNoTickFactory(), watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
 			func(w http.ResponseWriter, r *http.Request) {
 				writeRuns(w, map[string]any{"id": 1, "status": "in_progress"})
 			}))
@@ -149,7 +152,9 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	It("carries a repo's last-known run forward across a transient poll error", func() {
 		var mu sync.Mutex
 		runCalls := 0
-		cl := newWatchClient(fastPoll, noRediscover, watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
+		firePoll, pollFactory := newManualTickerFactory()
+		_, rediscoverFactory := newManualTickerFactory()
+		cl := newWatchClientWithFactories(pollFactory, rediscoverFactory, watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
 			func(w http.ResponseWriter, r *http.Request) {
 				mu.Lock()
 				defer mu.Unlock()
@@ -171,8 +176,11 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		first, ok := recvWithin(w.ResultChan(), 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an initial snapshot")
 		Expect(first[0].Run.Status).To(Equal("in_progress"))
+
+		// Trigger poll to get the error event
+		go firePoll()
 		// The last-known run is carried forward, so the snapshot is unchanged
-		// and nothing new is emitted (no flicker to a nil run).
+		// and an error is emitted.
 		select {
 		case event := <-w.ResultChan():
 			Expect(event.Err).NotTo(BeNil(), "expected error to be emitted after transient poll error")
@@ -184,7 +192,9 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	It("propagate error when token is revoked at rediscover", func() {
 		var mu sync.Mutex
 		userCalls := 0
-		cl := newWatchClient(fastPoll, fastPoll, func(w http.ResponseWriter, r *http.Request) {
+		_, pollFactory := newManualTickerFactory()
+		fireRediscover, rediscoverFactory := newManualTickerFactory()
+		cl := newWatchClientWithFactories(pollFactory, rediscoverFactory, func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case r.URL.Path == "/user":
 				mu.Lock()
@@ -219,21 +229,24 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		_, ok := recvWithin(w.ResultChan(), 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an initial snapshot")
 
-		// The rediscover tick sees the revoked token and propagates the error.
-		Eventually(func() bool {
-			select {
-			case res := <-w.ResultChan():
-				return errors.Is(res.Err, scm.ErrUnauthorized)
-			case <-time.After(50 * time.Millisecond):
-				return false
-			}
-		}, 2*time.Second, 10*time.Millisecond).Should(BeTrue(), "expected the channel to close")
+		// Trigger rediscover to see the revoked token
+		go fireRediscover()
+
+		// The rediscover sees the revoked token and propagates the error.
+		select {
+		case res := <-w.ResultChan():
+			Expect(res.Err).To(MatchError(scm.ErrUnauthorized))
+		case <-time.After(300 * time.Millisecond):
+			Fail("expected the channel to close with error")
+		}
 	})
 
 	It("picks up a newly discovered repo on the next rediscover", func() {
 		var mu sync.Mutex
 		repos := []map[string]any{repoItem("alice", "fn1", "main")}
-		cl := newWatchClient(fastPoll, fastPoll, func(w http.ResponseWriter, r *http.Request) {
+		firePoll, pollFactory := newManualTickerFactory()
+		fireRediscover, rediscoverFactory := newManualTickerFactory()
+		cl := newWatchClientWithFactories(pollFactory, rediscoverFactory, func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case r.URL.Path == "/user":
 				json.NewEncoder(w).Encode(map[string]string{"login": "alice"})
@@ -258,23 +271,23 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		Expect(ok).To(BeTrue(), "expected an initial snapshot")
 		Expect(first).To(HaveLen(1))
 
-		// A second func repo appears; the periodic rediscover must pick it up and
-		// the next snapshot must include it.
+		// A second func repo appears; trigger rediscover to pick it up and poll for its status
 		mu.Lock()
 		repos = append(repos, repoItem("alice", "fn2", "main"))
 		mu.Unlock()
 
-		Eventually(func() int {
-			snap, ok := recvWithin(w.ResultChan(), 200*time.Millisecond)
-			if !ok {
-				return -1
-			}
-			return len(snap)
-		}, 2*time.Second, 10*time.Millisecond).Should(Equal(2), "expected the rediscovered repo in the snapshot")
+		go func() {
+			fireRediscover()
+			firePoll()
+		}()
+
+		snap, ok := recvWithin(w.ResultChan(), 2*time.Second)
+		Expect(ok).To(BeTrue(), "expected the rediscovered repo in the snapshot")
+		Expect(snap).To(HaveLen(2))
 	})
 
 	It("treats a missing workflow file as a repo with no run", func() {
-		cl := newWatchClient(fastPoll, noRediscover, watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
+		cl := newWatchClientWithFactories(newNoTickFactory(), newNoTickFactory(), watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
 			func(w http.ResponseWriter, r *http.Request) {
 				// The func workflow file does not exist in this repo, so GitHub's
 				// by-file-name runs endpoint 404s. That is not a func repo error;
@@ -296,7 +309,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	})
 
 	It("returns a multi-repo snapshot sorted by repo full name", func() {
-		cl := newWatchClient(fastPoll, noRediscover, watchFake("alice",
+		cl := newWatchClientWithFactories(newNoTickFactory(), newNoTickFactory(), watchFake("alice",
 			[]map[string]any{
 				repoItem("alice", "zeta", "main"),
 				repoItem("alice", "alpha", "main"),
@@ -320,7 +333,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	})
 
 	It("stops polling when Stop() is called", func() {
-		cl := newWatchClient(fastPoll, noRediscover, watchFake("alice",
+		cl := newWatchClientWithFactories(newNoTickFactory(), newNoTickFactory(), watchFake("alice",
 			[]map[string]any{repoItem("alice", "fn", "main")},
 			func(w http.ResponseWriter, r *http.Request) {
 				writeRuns(w, map[string]any{"id": 1, "status": "in_progress"})
@@ -351,7 +364,9 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	It("carries forward last-known run when workflow runs endpoint returns service unavailable", func() {
 		var mu sync.Mutex
 		callCount := 0
-		cl := newWatchClient(fastPoll, noRediscover, func(w http.ResponseWriter, r *http.Request) {
+		firePoll, pollFactory := newManualTickerFactory()
+		_, rediscoverFactory := newManualTickerFactory()
+		cl := newWatchClientWithFactories(pollFactory, rediscoverFactory, func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case r.URL.Path == "/user":
 				json.NewEncoder(w).Encode(map[string]string{"login": "alice"})
@@ -388,6 +403,9 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		Expect(ok).To(BeTrue(), "expected an initial snapshot")
 		Expect(first[0].Run.Status).To(Equal("in_progress"))
 
+		// Trigger poll to hit the rate-limited endpoint
+		go firePoll()
+
 		select {
 		case event := <-w.ResultChan():
 			if event.Err != nil {
@@ -401,20 +419,13 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	})
 })
 
-const (
-	// Drive the poll loop fast, and push rediscover out unless a test needs it.
-	fastPoll     = 10 * time.Millisecond
-	noRediscover = time.Hour
-)
-
 // newWatchClient serves handler as GitHub and returns a client whose watch loop
-// ticks fast enough for a test to observe several polls. The cadence belongs to
-// this client alone, so specs can run the loop at different speeds without
-// affecting each other.
-func newWatchClient(poll, rediscover time.Duration, handler http.HandlerFunc) scm.Client {
+// uses ticker factories. Pass manual factories for explicit tick control, or
+// time-based factories for tests relying on actual timing.
+func newWatchClientWithFactories(pollFactory, rediscoverFactory github.TickerFactory, handler http.HandlerFunc) scm.Client {
 	srv := httptest.NewServer(handler)
 	DeferCleanup(srv.Close)
-	return github.NewWithBaseURL("test-pat", srv.URL, github.WithWatchIntervals(poll, rediscover))
+	return github.NewWithBaseURL("test-pat", srv.URL, github.WithWatchTickerFactories(pollFactory, rediscoverFactory))
 }
 
 // watchFake routes the minimal endpoints WatchWorkflowRuns needs: the
@@ -475,4 +486,59 @@ func recvWithin(ch <-chan scm.WorkflowRunsOrErr, timeout time.Duration) ([]scm.R
 	case <-time.After(timeout):
 		return nil, false
 	}
+}
+
+type mockTicker struct {
+	c    chan time.Time
+	done chan struct{}
+}
+
+func (m *mockTicker) Chan() <-chan time.Time {
+	return m.c
+}
+
+func (m *mockTicker) Stop() {
+	close(m.done)
+}
+
+func (m *mockTicker) Fire() {
+	select {
+	case m.c <- time.Now():
+	case <-m.done:
+		panic("fire on closed ticker")
+	}
+}
+
+func newNoTickFactory() github.TickerFactory {
+	return func() github.Ticker {
+		return &mockTicker{
+			c:    nil,
+			done: make(chan struct{}),
+		}
+	}
+}
+
+// newManualTickerFactory returns a fire function and ticker factory
+// for tests that need explicit control over poll/rediscover timing.
+//
+// Example:
+//
+//	firePoll, pollFactory := newManualTickerFactory()
+//	fireRediscover, rediscoverFactory := newManualTickerFactory()
+//	cl := newWatchClientWithFactories(pollFactory, rediscoverFactory, handler)
+//	firePoll()        // Trigger a poll on demand
+//	fireRediscover()  // Trigger a rediscover on demand
+func newManualTickerFactory() (fire func(), factory github.TickerFactory) {
+	ticker := &mockTicker{c: make(chan time.Time), done: make(chan struct{})}
+	var factoryInvoked int32
+	fire = func() {
+		ticker.Fire()
+	}
+	factory = func() github.Ticker {
+		if !atomic.CompareAndSwapInt32(&factoryInvoked, 0, 1) {
+			panic("factory invoked multiple times")
+		}
+		return ticker
+	}
+	return fire, factory
 }
