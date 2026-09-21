@@ -56,8 +56,8 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	// 10-20 KB, and grows whenever GitHub adds a field, so a cache that works
 	// only at the size of a tiny fixture would break silently in production.
 	// These sizes were measured to straddle the boundary.
-	for _, payload := range []int{0, 14_000, 100_000} {
-		It(fmt.Sprintf("revalidates each poll with If-None-Match so unchanged runs cost a free 304 (%d bytes of padding)", payload), func() {
+	DescribeTable("revalidates each poll with If-None-Match so unchanged runs cost a free 304",
+		func(payload int) {
 			tickPoll, pollFactory := ticker.CreateFakeTickerFactory()
 			_, rediscoverFactory := ticker.CreateFakeTickerFactory()
 			var counter atomic.Int32
@@ -117,8 +117,11 @@ var _ = Describe("WatchWorkflowRuns", func() {
 			second, ok := recvWithin(w.ResultChan(), 2*time.Second)
 			Expect(ok).To(BeTrue(), "expected an updated snapshot")
 			Expect(second[0].Run.Status).To(Equal("completed"))
-		})
-	}
+		},
+		Entry("0 bytes of padding", 0),
+		Entry("14_000 bytes of padding", 14_000),
+		Entry("100_000 bytes of padding", 100_000),
+	)
 
 	It("returns an unauthorized error from the initial discovery", func() {
 		// Discovery fails before the watch loop starts, so the cadence is moot.
