@@ -95,6 +95,15 @@ type WorkflowWatch interface {
 	Stop()
 }
 
+type stubWatch struct {
+	ch chan WorkflowRunsOrErr
+}
+
+func (w *stubWatch) ResultChan() <-chan WorkflowRunsOrErr { return w.ch }
+func (w *stubWatch) Stop() {
+	close(w.ch)
+}
+
 // WorkflowRun is the latest GitHub Actions run of a specific workflow file on a
 // repo branch. A nil *WorkflowRun means the workflow has no runs on that branch
 // (including when the workflow file does not exist in the repo).
@@ -200,13 +209,4 @@ func (s *ClientStub) WatchWorkflowRuns(ctx context.Context, workflowFile string)
 	ch := make(chan WorkflowRunsOrErr)
 	close(ch)
 	return &stubWatch{ch: ch}, nil
-}
-
-type stubWatch struct {
-	ch chan WorkflowRunsOrErr
-}
-
-func (w *stubWatch) ResultChan() <-chan WorkflowRunsOrErr { return w.ch }
-func (w *stubWatch) Stop() {
-	close(w.ch)
 }
