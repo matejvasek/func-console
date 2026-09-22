@@ -119,8 +119,14 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
         if (!res.body) continue;
         invokeListeners(openListeners, undefined, 'open');
         for await (const event of readEventStream(res.body)) {
-          if (event.type === 'build-status' && streaming) {
-            invokeListeners(listeners, { data: event.data }, 'build-status');
+          if (!streaming) continue; // not return or break, read generator to the end
+          switch (event.type) {
+            case 'build-status':
+              invokeListeners(listeners, { data: event.data }, 'build-status');
+              break;
+            case 'error':
+              invokeListeners(errorListeners, { message: event.data, isAuthError: false }, 'error');
+              break;
           }
         }
       } catch (err: unknown) {

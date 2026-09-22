@@ -125,6 +125,31 @@ describe('createBuildStatusEventSource', () => {
     eventSource.close();
   });
 
+  it('emits error event from SSE stream', async () => {
+    const sseFrames = 'event: error\ndata: github API rate limited\n\n';
+
+    server.use(
+      http.get('/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch', () =>
+        HttpResponse.text(sseFrames, {
+          headers: { 'Content-Type': 'text/event-stream' },
+        }),
+      ),
+    );
+
+    const eventSource = createBuildStatusEventSource();
+    const errorQueue = new AsyncQueue<{ message: string; isAuthError: boolean }>();
+
+    eventSource.addEventListener('error', (e) => {
+      errorQueue.enqueue(e);
+    });
+
+    const error = await errorQueue.dequeue();
+    expect(error.message).toBe('github API rate limited');
+    expect(error.isAuthError).toBe(false);
+
+    eventSource.close();
+  });
+
   it('emits error on 401 auth failure', async () => {
     server.use(
       http.get(
