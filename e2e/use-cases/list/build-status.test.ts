@@ -1,7 +1,7 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToFunctionsList } from '../../helpers/navigation';
 import { deleteRepoOnFakeGithub, seedRepo, setWorkflowRun } from '../../helpers/fakegithub';
-import { E2E_USER } from '../../helpers/constants';
+import { E2E_USER, PRESEEDED_FUNC_NAMESPACE } from '../../helpers/constants';
 
 const FUNC_NAME = 'build-status-func';
 const BRANCH = 'main';
@@ -17,7 +17,7 @@ test.describe('Build status', () => {
         {
           path: 'func.yaml',
           mode: '100644',
-          content: `name: ${FUNC_NAME}\nruntime: node\nnamespace: default\n`,
+          content: `name: ${FUNC_NAME}\nruntime: node\nnamespace: ${PRESEEDED_FUNC_NAMESPACE}\n`,
         },
       ],
     );
