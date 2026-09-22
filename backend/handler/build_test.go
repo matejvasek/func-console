@@ -389,4 +389,3 @@ func readSSEData(reader *bufio.Reader) string {
 		}
 	}
 }
-
