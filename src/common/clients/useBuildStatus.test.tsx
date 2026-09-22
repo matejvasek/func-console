@@ -30,7 +30,7 @@ describe('useBuildStatus', () => {
   });
 
   it('parses a build-status frame into a keyed map', async () => {
-    const { eventSource, emitSnapshot } = createMockEventSource();
+    const { eventSource, emitSnapshot } = createFakeEventSource();
 
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
@@ -48,7 +48,7 @@ describe('useBuildStatus', () => {
   });
 
   it('closes the stream on unmount, stopping updates', async () => {
-    const { eventSource, emitSnapshot } = createMockEventSource();
+    const { eventSource, emitSnapshot } = createFakeEventSource();
 
     const { result, unmount } = renderHook(() => useBuildStatus(0, eventSource));
 
@@ -63,7 +63,7 @@ describe('useBuildStatus', () => {
   });
 
   it('updates state when event source emits', async () => {
-    const { eventSource, emitSnapshot } = createMockEventSource();
+    const { eventSource, emitSnapshot } = createFakeEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
     emitSnapshot({
@@ -77,7 +77,7 @@ describe('useBuildStatus', () => {
   });
 
   it('updates state multiple times as snapshots arrive', async () => {
-    const { eventSource, emitSnapshot } = createMockEventSource();
+    const { eventSource, emitSnapshot } = createFakeEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
     emitSnapshot({ functions: { 'x/y': { buildStatus: 'Building' } } });
@@ -88,7 +88,7 @@ describe('useBuildStatus', () => {
   });
 
   it('closes the stream when connectionId changes', async () => {
-    const { eventSource, emitSnapshot } = createMockEventSource();
+    const { eventSource, emitSnapshot } = createFakeEventSource();
     let closeCalled = false;
     const originalClose = eventSource.close.bind(eventSource);
     eventSource.close = () => {
@@ -109,7 +109,7 @@ describe('useBuildStatus', () => {
   });
 
   it('captures error events from the event source', async () => {
-    const { eventSource, emitError } = createMockEventSource();
+    const { eventSource, emitError } = createFakeEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
     emitError({ message: 'Connection failed', isAuthError: false });
@@ -118,7 +118,7 @@ describe('useBuildStatus', () => {
   });
 
   it('preserves statuses while error is present', async () => {
-    const { eventSource, emitSnapshot, emitError } = createMockEventSource();
+    const { eventSource, emitSnapshot, emitError } = createFakeEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
     emitSnapshot({ functions: { 'repo/owner': { buildStatus: 'Building' } } });
@@ -132,7 +132,7 @@ describe('useBuildStatus', () => {
   });
 
   it('clears error when open event is emitted', async () => {
-    const { eventSource, emitError, emitOpen } = createMockEventSource();
+    const { eventSource, emitError, emitOpen } = createFakeEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
     emitError({ message: 'Connection failed', isAuthError: false });
@@ -160,7 +160,7 @@ describe('useBuildStatus', () => {
   });
 
   it('sets error when build-status event data is malformed JSON', async () => {
-    const { eventSource, emitSnapshot, emitRaw } = createMockEventSource();
+    const { eventSource, emitSnapshot, emitRaw } = createFakeEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
     emitSnapshot({ functions: { 'a/b': { buildStatus: 'Building' } } });
@@ -173,7 +173,7 @@ describe('useBuildStatus', () => {
     expect(Object.keys(result.current.statuses).length).toBe(1);
   });
 
-  function createMockEventSource(): {
+  function createFakeEventSource(): {
     eventSource: BuildStatusEventSource;
     emitSnapshot: (snap: { functions: Record<string, unknown> }) => void;
     emitError: (err: BuildWatchErrorEvent) => void;
