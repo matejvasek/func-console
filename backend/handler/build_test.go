@@ -170,7 +170,7 @@ var _ = Describe("BuildWatch", func() {
 		}
 	})
 
-	It("exits the stream when an error is emitted from the watch", func() {
+	It("sends an SSE error event and exits the stream when the watch fails", func() {
 		ch := make(chan scm.WorkflowRunsOrErr, 1)
 		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
@@ -180,20 +180,30 @@ var _ = Describe("BuildWatch", func() {
 
 		reader := startWatchStream(stub, ticker.SilentTickerFactory())
 
+		// Emit an error from the watch
+		watchErr := errors.New("github API rate limited")
+		ch <- scm.WorkflowRunsOrErr{Err: watchErr}
+
+		// Verify the error event is sent
+		line, ok := readLineWithin(reader, 2*time.Second)
+		Expect(ok).To(BeTrue(), "expected an error event line")
+		Expect(line).To(Equal("event: error"))
+
+		dataLine, ok := readLineWithin(reader, 2*time.Second)
+		Expect(ok).To(BeTrue(), "expected a data line")
+		Expect(dataLine).To(Equal("data: github API rate limited"))
+
+		// Verify the stream closes after the error event
 		errCh := make(chan error, 1)
 		go func() {
 			_, err := io.Copy(io.Discard, reader)
 			errCh <- err
 		}()
-
-		// Emit an error from the watch
-		ch <- scm.WorkflowRunsOrErr{Err: errors.New("watch error")}
-
 		select {
 		case err := <-errCh:
 			Expect(err).To(BeNil())
 		case <-time.After(2 * time.Second):
-			Fail("expected the stream to close after an error is emitted")
+			Fail("expected the stream to close after the error event")
 		}
 	})
 

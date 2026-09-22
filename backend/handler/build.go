@@ -96,6 +96,11 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 			}
 			if event.Err != nil {
 				slog.Error("build watch: stream error", "err", event.Err)
+				if err := writeErrorEvent(w, event.Err); err != nil {
+					slog.Error("build watch: failed to write error event", "err", err)
+					return
+				}
+				flusher.Flush()
 				return
 			}
 			data, err := json.Marshal(toSnapshot(event.Runs))
@@ -174,6 +179,13 @@ func deriveBuildStatus(run *scm.WorkflowRun) string {
 func writeSnapshotEvent(w io.Writer, data []byte) error {
 	if _, err := fmt.Fprintf(w, "event: build-status\ndata: %s\n\n", data); err != nil {
 		return fmt.Errorf("write build-status event: %w", err)
+	}
+	return nil
+}
+
+func writeErrorEvent(w io.Writer, err error) error {
+	if _, writeErr := fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error()); writeErr != nil {
+		return fmt.Errorf("write error event: %w", writeErr)
 	}
 	return nil
 }
