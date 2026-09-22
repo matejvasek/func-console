@@ -6,6 +6,7 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
 
 import { renderHook, waitFor } from '@testing-library/react';
 import { useBuildStatus } from './useBuildStatus';
+import { BuildSnapshot } from './functionsClient';
 
 interface BuildSnapshotEvent {
   readonly data: string;
@@ -171,7 +172,7 @@ describe('useBuildStatus', () => {
 
   function createFakeEventSource(): {
     eventSource: BuildStatusEventSource;
-    emitSnapshot: (snap: { functions: Record<string, unknown> }) => void;
+    emitSnapshot: (snap: BuildSnapshot) => void;
     emitError: (err: BuildWatchErrorEvent) => void;
     emitOpen: () => void;
     emitRaw: (data: string) => void;
@@ -209,7 +210,7 @@ describe('useBuildStatus', () => {
           openListeners.length = 0;
         },
       },
-      emitSnapshot(snap: { functions: Record<string, unknown> }) {
+      emitSnapshot(snap: BuildSnapshot) {
         if (open) {
           forEachDeferred(listeners, (cbk) => cbk({ data: JSON.stringify(snap) }));
         }
