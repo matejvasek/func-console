@@ -25,10 +25,6 @@ interface BuildStatusEventSource {
 }
 
 describe('useBuildStatus', () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   it('parses a build-status frame into a keyed map', async () => {
     const { eventSource, emitSnapshot } = createFakeEventSource();
 
