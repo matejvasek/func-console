@@ -162,7 +162,8 @@ func deriveBuildStatus(run *scm.WorkflowRun) string {
 		case "failure", "cancelled", "timed_out":
 			return "Failed"
 		default:
-			// "skipped", "neutral", "stale" and "action_required" are not failures, report no signal.
+			// GitHub conclusions "skipped", "neutral", "stale", "action_required"
+			// do not indicate success or failure, so report no build status change.
 			return "None"
 		}
 	default:

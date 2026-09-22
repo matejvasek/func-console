@@ -243,9 +243,6 @@ var _ = Describe("BuildWatch", func() {
 	})
 
 	Describe("build status vocabulary", func() {
-		// buildStatusFor drives one workflow run through the handler and returns
-		// the buildStatus its SSE frame carries, so the mapping is pinned at the
-		// wire contract the frontend consumes.
 		buildStatusFor := func(run *scm.WorkflowRun) string {
 			ch := make(chan scm.WorkflowRunsOrErr, 1)
 			stub := &scm.ClientStub{
@@ -259,8 +256,6 @@ var _ = Describe("BuildWatch", func() {
 			data, ok := readSSEDataWithin(reader, 2*time.Second)
 			Expect(ok).To(BeTrue(), "expected a frame for the snapshot")
 
-			// Decoded into a local mirror of the DTO, so a change to the JSON
-			// tags the frontend reads fails here.
 			var frame struct {
 				Functions map[string]struct {
 					BuildStatus string `json:"buildStatus"`
@@ -283,8 +278,6 @@ var _ = Describe("BuildWatch", func() {
 			Entry("completed+failure -> Failed", "completed", "failure", "Failed"),
 			Entry("completed+cancelled -> Failed", "completed", "cancelled", "Failed"),
 			Entry("completed+timed_out -> Failed", "completed", "timed_out", "Failed"),
-			// Not failures: the frontend must fall back to the cluster-derived
-			// status instead of showing a red "Build failed" badge.
 			Entry("completed+skipped -> None", "completed", "skipped", "None"),
 			Entry("completed+neutral -> None", "completed", "neutral", "None"),
 			Entry("completed+stale -> None", "completed", "stale", "None"),
