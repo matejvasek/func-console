@@ -26,6 +26,8 @@ interface BuildStatusEventSource {
 }
 
 describe('useBuildStatus', () => {
+  const CLOSED_ERROR = 'emit on closed fake EventSource';
+
   it('parses a build-status frame into a keyed map', async () => {
     const { eventSource, emitSnapshot } = createFakeEventSource();
 
@@ -54,9 +56,9 @@ describe('useBuildStatus', () => {
 
     unmount();
 
-    emitSnapshot({ functions: { 'c/d': { buildStatus: 'Succeeded' } } });
-
-    expect(Object.keys(result.current.statuses).length).toBe(1);
+    expect(() => {
+      emitSnapshot({ functions: { 'c/d': { buildStatus: 'Succeeded' } } });
+    }).toThrow(CLOSED_ERROR);
   });
 
   it('updates state when event source emits', async () => {
@@ -183,6 +185,7 @@ describe('useBuildStatus', () => {
     let open = true;
 
     function invokeListeners<T>(listeners: Array<(e: T) => void>, val: T) {
+      if (!open) throw new Error(CLOSED_ERROR);
       queueMicrotask(() => {
         if (!open) return;
         listeners.forEach((cbk) => {
