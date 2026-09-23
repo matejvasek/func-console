@@ -11,7 +11,7 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
 import { http, HttpResponse } from 'msw';
 import { server } from '../testing/mswServer';
 import { consoleFetch } from '@openshift-console/dynamic-plugin-sdk';
-import { createBuildStatusEventSource } from './functionsClient';
+import { BuildSnapshot, createBuildStatusEventSource } from './functionsClient';
 
 describe('createBuildStatusEventSource', () => {
   afterEach(() => {
@@ -36,7 +36,7 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const eventQueue = new AsyncQueue<{ functions: Record<string, { buildStatus: string }> }>();
+    const eventQueue = new AsyncQueue<BuildSnapshot>();
 
     eventSource.addEventListener('build-status', (e) => {
       eventQueue.enqueue(JSON.parse(e.data));
@@ -62,7 +62,7 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const eventQueue = new AsyncQueue<{ functions: Record<string, { buildStatus: string }> }>();
+    const eventQueue = new AsyncQueue<BuildSnapshot>();
 
     eventSource.addEventListener('build-status', (e) => {
       eventQueue.enqueue(JSON.parse(e.data));
@@ -88,7 +88,7 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const eventQueue = new AsyncQueue<{ functions: Record<string, { buildStatus: string }> }>();
+    const eventQueue = new AsyncQueue<BuildSnapshot>();
 
     eventSource.addEventListener('build-status', (e) => {
       eventQueue.enqueue(JSON.parse(e.data));
@@ -113,7 +113,7 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const eventQueue = new AsyncQueue<{ functions: Record<string, { buildStatus: string }> }>();
+    const eventQueue = new AsyncQueue<BuildSnapshot>();
 
     eventSource.addEventListener('build-status', (e) => {
       eventQueue.enqueue(JSON.parse(e.data));
@@ -222,7 +222,7 @@ describe('createBuildStatusEventSource', () => {
 
     const eventSource = createBuildStatusEventSource();
     const errors: Array<{ message: string; isAuthError: boolean }> = [];
-    const events: Array<{ functions: Record<string, { buildStatus: string }> }> = [];
+    const events: Array<BuildSnapshot> = [];
 
     eventSource.addEventListener('error', (e) => {
       errors.push(e);
@@ -272,7 +272,7 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const events: Array<{ functions: Record<string, { buildStatus: string }> }> = [];
+    const events: Array<BuildSnapshot> = [];
 
     eventSource.addEventListener('build-status', (e) => {
       events.push(JSON.parse(e.data));
@@ -307,7 +307,7 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const eventQueue = new AsyncQueue<{ functions: Record<string, { buildStatus: string }> }>();
+    const eventQueue = new AsyncQueue<BuildSnapshot>();
 
     eventSource.addEventListener('build-status', (e) => {
       eventQueue.enqueue(JSON.parse(e.data));
@@ -343,7 +343,7 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const eventQueue = new AsyncQueue<{ functions: Record<string, unknown> }>();
+    const eventQueue = new AsyncQueue<BuildSnapshot>();
 
     eventSource.addEventListener('build-status', (e) => {
       eventQueue.enqueue(JSON.parse(e.data));
@@ -388,7 +388,7 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const eventQueue = new AsyncQueue<{ functions: Record<string, { buildStatus: string }> }>();
+    const eventQueue = new AsyncQueue<BuildSnapshot>();
 
     eventSource.addEventListener('build-status', (e) => {
       eventQueue.enqueue(JSON.parse(e.data));
