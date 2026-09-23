@@ -8,6 +8,7 @@ import { listFunctionsStub } from '../../common/testing/functionsClientStub';
 import { server } from '../../common/testing/mswServer';
 import { FunctionListItem } from '../../common/types';
 import FunctionsListPage from './FunctionsListPage';
+import { BuildSnapshot } from '../../common/clients/functionsClient';
 
 // vi.mock is hoisted above imports, so regular imports aren't available in the factory.
 // vi.hoisted runs before vi.mock, making the sdkTestDoubles available to the factory.
@@ -67,7 +68,7 @@ describe('FunctionsListPage', () => {
     logoutGithubFake();
   });
 
-  function buildStatusFrame(functions: Record<string, unknown>): string {
+  function buildStatusFrame(functions: BuildSnapshot['functions']): string {
     return `event: build-status\ndata: ${JSON.stringify({ functions })}\n\n`;
   }
 
