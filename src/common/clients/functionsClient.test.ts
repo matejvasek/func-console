@@ -456,6 +456,100 @@ describe('createBuildStatusEventSource', () => {
     expect(gotBuildStatus).toBe(true);
     expect(gotError).toBe(false);
   });
+
+  it('aborts the HTTP connection when close() is called', async () => {
+    let abortHandlerCalled = false;
+    server.use(
+      http.get(
+        '/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch',
+        ({ request }) => {
+          request.signal.addEventListener('abort', () => {
+            abortHandlerCalled = true;
+          });
+          const sseFrame =
+            'event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Building"}}}\n\n';
+          let intervalId: NodeJS.Timeout | undefined;
+          const stream = new ReadableStream<Uint8Array>({
+            start(controller) {
+              const encoder = new TextEncoder();
+              controller.enqueue(encoder.encode(sseFrame));
+              intervalId = setInterval(() => {
+                controller.enqueue(encoder.encode(':\n\n'));
+              }, 100);
+            },
+            cancel() {
+              if (intervalId) clearInterval(intervalId);
+            },
+          });
+          return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } });
+        },
+      ),
+    );
+
+    const eventSource = createBuildStatusEventSource();
+    const eventQueue = new AsyncQueue<BuildSnapshot>();
+
+    eventSource.addEventListener('build-status', (e) => {
+      eventQueue.enqueue(JSON.parse(e.data));
+    });
+
+    const event = await eventQueue.dequeue();
+    expect(event.functions['a/b'].buildStatus).toBe('Building');
+
+    eventSource.close();
+
+    expect(abortHandlerCalled).toBe(true);
+  });
+
+  it('stops receiving events after close() is called', async () => {
+    const frameQueue = new AsyncQueue<string>();
+    const ac = new AbortController();
+    const emitFrame = (frame: string) => {
+      frameQueue.enqueue(frame);
+    };
+    const closeEmit = () => {
+      ac.abort('close');
+    };
+
+    server.use(
+      http.get('/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch', () => {
+        const stream = new ReadableStream<Uint8Array>({
+          async start(controller) {
+            const encoder = new TextEncoder();
+            try {
+              while (!ac.signal.aborted) {
+                const frame = await frameQueue.dequeue(ac.signal);
+                controller.enqueue(encoder.encode(frame));
+              }
+            } catch (e: unknown) {
+              void e;
+            }
+          },
+        });
+        return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } });
+      }),
+    );
+
+    const eventSource = createBuildStatusEventSource();
+    const eventQueue = new AsyncQueue<BuildSnapshot>();
+
+    eventSource.addEventListener('build-status', (e) => {
+      eventQueue.enqueue(JSON.parse(e.data));
+    });
+
+    emitFrame('event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"None"}}}\n\n');
+    const event = await eventQueue.dequeue();
+    expect(event.functions['a/b'].buildStatus).toBe('None');
+
+    eventSource.close();
+
+    // emit after close
+    emitFrame('event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Building"}}}\n\n');
+    closeEmit();
+
+    // no data should arrive after the close
+    await expect(eventQueue.dequeue(50)).rejects.toThrow('timeout');
+  });
 });
 
 class AsyncQueue<T> {
