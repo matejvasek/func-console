@@ -119,7 +119,7 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
         if (!res.body) continue;
         invokeListeners(openListeners, undefined, 'open');
         for await (const event of readEventStream(res.body)) {
-          if (!streaming) continue; // not return or break, read generator to the end
+          if (!streaming) break;
           switch (event.type) {
             case 'build-status':
               invokeListeners(listeners, { data: event.data }, 'build-status');
@@ -201,15 +201,19 @@ async function* readEventStream(
   const decoder = new TextDecoder();
   let buffer = '';
 
-  for await (const value of body) {
-    buffer += decoder.decode(value, { stream: true });
-    let idx: number;
-    while ((idx = buffer.indexOf('\n\n')) !== -1) {
-      const frame = buffer.slice(0, idx);
-      buffer = buffer.slice(idx + 2);
-      const event = deserializeFrame(frame);
-      if (event) yield event;
+  try {
+    for await (const value of body) {
+      buffer += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buffer.indexOf('\n\n')) !== -1) {
+        const frame = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        const event = deserializeFrame(frame);
+        if (event) yield event;
+      }
     }
+  } finally {
+    body.cancel().catch(() => {});
   }
 
   function deserializeFrame(frame: string): { type: string; data: string } | null {
