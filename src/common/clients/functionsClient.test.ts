@@ -471,17 +471,56 @@ class AsyncQueue<T> {
     }
   }
 
-  async dequeue(timeout = 500): Promise<T> {
+  async dequeue(timeoutOrSignal?: number | AbortSignal): Promise<T> {
     if (this.queue.length > 0) {
       return this.queue.shift()!;
     }
-    return Promise.race([
-      new Promise<T>((resolve) => {
-        this.waiters.push(resolve);
-      }),
-      new Promise<T>((_, reject) =>
-        setTimeout(() => reject(new Error('AsyncQueue timeout')), timeout),
-      ),
-    ]);
+
+    const timeout = typeof timeoutOrSignal === 'number' ? timeoutOrSignal : 500;
+    const signal = timeoutOrSignal instanceof AbortSignal ? timeoutOrSignal : undefined;
+
+    return new Promise<T>((resolve, reject) => {
+      let timeoutId: NodeJS.Timeout | undefined;
+      let abortHandler: (() => void) | undefined;
+
+      const cleanup = () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        if (abortHandler && signal) signal.removeEventListener('abort', abortHandler);
+        const idx = this.waiters.indexOf(waiter);
+        if (idx >= 0) this.waiters.splice(idx, 1);
+      };
+
+      const waiter = (value: T) => {
+        cleanup();
+        resolve(value);
+      };
+      this.waiters.push(waiter);
+
+      const rejectWithAbortReason = () => {
+        cleanup();
+        let err: Error;
+        if (signal!.reason instanceof Error) {
+          err = signal!.reason;
+        } else {
+          const message = signal!.reason ? String(signal!.reason) : 'aborted';
+          err = new Error(message);
+        }
+        reject(err);
+      };
+
+      if (signal) {
+        if (signal.aborted) {
+          rejectWithAbortReason();
+        } else {
+          abortHandler = rejectWithAbortReason;
+          signal.addEventListener('abort', abortHandler, { once: true });
+        }
+      } else {
+        timeoutId = setTimeout(() => {
+          cleanup();
+          reject(new Error('timeout'));
+        }, timeout);
+      }
+    });
   }
 }
