@@ -101,6 +101,29 @@ describe('createBuildStatusEventSource', () => {
     expect(error.isAuthError).toBe(true);
   });
 
+  it('emits open event on successful connection', async () => {
+    server.use(
+      http.get(BUILD_WATCH_URL, () => {
+        const stream = new ReadableStream<Uint8Array>({
+          start() {
+            // Open connection but send nothing
+          },
+        });
+        return new Response(stream, {
+          headers: { 'Content-Type': 'text/event-stream' },
+        });
+      }),
+    );
+
+    const eventSource = createTrackedSource();
+    const openQueue = new AsyncQueue<void>();
+    eventSource.addEventListener('open', () => {
+      openQueue.enqueue(undefined);
+    });
+
+    await openQueue.dequeue(100);
+  });
+
   it('does not reconnect after 401 auth error', async () => {
     vi.useFakeTimers();
     let callCount = 0;
