@@ -13,6 +13,9 @@ import { server } from '../testing/mswServer';
 import { consoleFetch } from '@openshift-console/dynamic-plugin-sdk';
 import { BuildSnapshot, createBuildStatusEventSource } from './functionsClient';
 
+const BUILD_WATCH_URL =
+  '/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch';
+
 describe('createBuildStatusEventSource', () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -58,13 +61,7 @@ describe('createBuildStatusEventSource', () => {
       expectedStatus: 'Failed',
     },
   ])('$description', async ({ frames, expectedKey, expectedStatus }) => {
-    server.use(
-      http.get('/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch', () =>
-        HttpResponse.text(frames, {
-          headers: { 'Content-Type': 'text/event-stream' },
-        }),
-      ),
-    );
+    useStaticEventStream(frames);
 
     const eventSource = createBuildStatusEventSource();
     const eventQueue = captureBuildStatuses(eventSource);
@@ -77,14 +74,7 @@ describe('createBuildStatusEventSource', () => {
 
   it('emits error event from SSE stream', async () => {
     const sseFrames = 'event: error\ndata: github API rate limited\n\n';
-
-    server.use(
-      http.get('/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch', () =>
-        HttpResponse.text(sseFrames, {
-          headers: { 'Content-Type': 'text/event-stream' },
-        }),
-      ),
-    );
+    useStaticEventStream(sseFrames);
 
     const eventSource = createBuildStatusEventSource();
     const errorQueue = captureErrors(eventSource);
@@ -118,7 +108,7 @@ describe('createBuildStatusEventSource', () => {
     let callCount = 0;
     let errorCount = 0;
     server.use(
-      http.get('/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch', () => {
+      http.get(BUILD_WATCH_URL, () => {
         callCount++;
         return new HttpResponse(null, { status: 401, statusText: 'Unauthorized' });
       }),
@@ -148,7 +138,7 @@ describe('createBuildStatusEventSource', () => {
     vi.useFakeTimers();
     let callCount = 0;
     server.use(
-      http.get('/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch', () => {
+      http.get(BUILD_WATCH_URL, () => {
         callCount++;
         if (callCount === 1) {
           return new HttpResponse(null, { status: 500, statusText: 'Internal Server Error' });
@@ -187,7 +177,7 @@ describe('createBuildStatusEventSource', () => {
     vi.useFakeTimers();
     let callCount = 0;
     server.use(
-      http.get('/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch', () => {
+      http.get(BUILD_WATCH_URL, () => {
         callCount++;
         if (callCount === 1) {
           // First call: 200 with no body
@@ -229,12 +219,7 @@ describe('createBuildStatusEventSource', () => {
       'event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Building"}}}\n\n' +
       'event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Succeeded"}}}\n\n' +
       'event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Failed"}}}\n\n';
-
-    server.use(
-      http.get('/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch', () =>
-        HttpResponse.text(sseFrames, { headers: { 'Content-Type': 'text/event-stream' } }),
-      ),
-    );
+    useStaticEventStream(sseFrames);
 
     const eventSource = createBuildStatusEventSource();
     const eventQueue = captureBuildStatuses(eventSource);
@@ -261,12 +246,7 @@ describe('createBuildStatusEventSource', () => {
       ),
     };
     const sseFrame = `event: build-status\ndata: ${JSON.stringify(largePayload)}\n\n`;
-
-    server.use(
-      http.get('/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch', () =>
-        HttpResponse.text(sseFrame, { headers: { 'Content-Type': 'text/event-stream' } }),
-      ),
-    );
+    useStaticEventStream(sseFrame);
 
     const eventSource = createBuildStatusEventSource();
     const eventQueue = captureBuildStatuses(eventSource);
@@ -283,7 +263,7 @@ describe('createBuildStatusEventSource', () => {
   it('handles SSE frames split across multiple chunks, including split in delimiter', async () => {
     // Simulate frames arriving fragmented, with the split in the middle of '\n\n' delimiter
     server.use(
-      http.get('/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch', () => {
+      http.get(BUILD_WATCH_URL, () => {
         const chunks = [
           'event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Building"}}}\n',
           '\nevent: build-',
@@ -329,7 +309,6 @@ describe('createBuildStatusEventSource', () => {
 
     vi.mocked(consoleFetch).mockImplementation(
       (_url: string, _options?: RequestInit, timeout?: number) => {
-        // Contract: timeout: 0 means no timeout, any other number means close after that duration
         const stream = new ReadableStream<Uint8Array>({
           start(controller) {
             const encoder = new TextEncoder();
@@ -378,30 +357,27 @@ describe('createBuildStatusEventSource', () => {
   it('aborts the HTTP connection when close() is called', async () => {
     let abortHandlerCalled = false;
     server.use(
-      http.get(
-        '/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch',
-        ({ request }) => {
-          request.signal.addEventListener('abort', () => {
-            abortHandlerCalled = true;
-          });
-          const sseFrame =
-            'event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Building"}}}\n\n';
-          let intervalId: NodeJS.Timeout | undefined;
-          const stream = new ReadableStream<Uint8Array>({
-            start(controller) {
-              const encoder = new TextEncoder();
-              controller.enqueue(encoder.encode(sseFrame));
-              intervalId = setInterval(() => {
-                controller.enqueue(encoder.encode(':\n\n'));
-              }, 100);
-            },
-            cancel() {
-              if (intervalId) clearInterval(intervalId);
-            },
-          });
-          return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } });
-        },
-      ),
+      http.get(BUILD_WATCH_URL, ({ request }) => {
+        request.signal.addEventListener('abort', () => {
+          abortHandlerCalled = true;
+        });
+        const sseFrame =
+          'event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Building"}}}\n\n';
+        let intervalId: NodeJS.Timeout | undefined;
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            const encoder = new TextEncoder();
+            controller.enqueue(encoder.encode(sseFrame));
+            intervalId = setInterval(() => {
+              controller.enqueue(encoder.encode(':\n\n'));
+            }, 100);
+          },
+          cancel() {
+            if (intervalId) clearInterval(intervalId);
+          },
+        });
+        return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } });
+      }),
     );
 
     const eventSource = createBuildStatusEventSource();
@@ -425,7 +401,7 @@ describe('createBuildStatusEventSource', () => {
     };
 
     server.use(
-      http.get('/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch', () => {
+      http.get(BUILD_WATCH_URL, () => {
         const stream = new ReadableStream<Uint8Array>({
           async start(controller) {
             const encoder = new TextEncoder();
@@ -454,6 +430,16 @@ describe('createBuildStatusEventSource', () => {
     // no data should arrive after the close
     await expect(eventQueue.dequeue(50)).rejects.toThrow('timeout');
   });
+
+  function useStaticEventStream(frames: string) {
+    server.use(
+      http.get(BUILD_WATCH_URL, () =>
+        HttpResponse.text(frames, {
+          headers: { 'Content-Type': 'text/event-stream' },
+        }),
+      ),
+    );
+  }
 
   function captureBuildStatuses(eventSource: ReturnType<typeof createBuildStatusEventSource>) {
     const queue = new AsyncQueue<BuildSnapshot>();
