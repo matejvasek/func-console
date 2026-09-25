@@ -72,8 +72,6 @@ describe('createBuildStatusEventSource', () => {
 
     const event = await eventQueue.dequeue();
     expect(event.functions[expectedKey].buildStatus).toBe(expectedStatus);
-
-    eventSource.close();
   });
 
   it('emits error event from SSE stream', async () => {
@@ -86,8 +84,6 @@ describe('createBuildStatusEventSource', () => {
     const error = await errorQueue.dequeue();
     expect(error.message).toBe('github API rate limited');
     expect(error.isAuthError).toBe(false);
-
-    eventSource.close();
   });
 
   it('emits error on 401 auth failure', async () => {
@@ -103,8 +99,6 @@ describe('createBuildStatusEventSource', () => {
 
     const error = await errorQueue.dequeue();
     expect(error.isAuthError).toBe(true);
-
-    eventSource.close();
   });
 
   it('does not reconnect after 401 auth error', async () => {
@@ -133,8 +127,6 @@ describe('createBuildStatusEventSource', () => {
 
     expect(callCount).toBe(1);
     expect(errorCount).toBe(1);
-
-    eventSource.close();
   });
 
   it('reconnects on transient (5xx) errors', async () => {
@@ -171,8 +163,6 @@ describe('createBuildStatusEventSource', () => {
     expect(event.functions['a/b'].buildStatus).toBe('Building');
 
     expect(callCount).toBe(2);
-
-    eventSource.close();
   });
 
   it('reconnects when response has no body', async () => {
@@ -231,8 +221,6 @@ describe('createBuildStatusEventSource', () => {
     expect(event1.functions['a/b'].buildStatus).toBe('Building');
     expect(event2.functions['a/b'].buildStatus).toBe('Succeeded');
     expect(event3.functions['a/b'].buildStatus).toBe('Failed');
-
-    eventSource.close();
   });
 
   it('handles large payload in single frame', async () => {
@@ -256,8 +244,6 @@ describe('createBuildStatusEventSource', () => {
     expect(Object.keys(event.functions).length).toBe(50);
     expect(event.functions['fn0/repo0']).toBeDefined();
     expect(event.functions['fn49/repo49']).toBeDefined();
-
-    eventSource.close();
   });
 
   it('handles SSE frames split across multiple chunks, including split in delimiter', async () => {
@@ -297,8 +283,6 @@ describe('createBuildStatusEventSource', () => {
 
     expect(event1.functions['a/b'].buildStatus).toBe('Building');
     expect(event2.functions['c/d'].buildStatus).toBe('Succeeded');
-
-    eventSource.close();
   });
 
   it('passes timeout: 0 to prevent default ~60s timeout on long-lived stream', async () => {
@@ -346,8 +330,6 @@ describe('createBuildStatusEventSource', () => {
     // Advance time past the 60-second default timeout threshold.
     // If timeout: 0 was not passed, the stream would error and data would be cleared.
     await vi.advanceTimersByTimeAsync(65000);
-
-    eventSource.close();
 
     // Verify the stream succeeded (didn't timeout)
     expect(gotBuildStatus).toBe(true);
