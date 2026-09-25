@@ -124,6 +124,35 @@ describe('createBuildStatusEventSource', () => {
     await openQueue.dequeue(100);
   });
 
+  it('logs listener errors and continues streaming', async () => {
+    useStaticEventStream(
+      'event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Building"}}}\n\n' +
+        'event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Succeeded"}}}\n\n',
+    );
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const eventSource = createTrackedSource();
+
+    // Listener that throws
+    eventSource.addEventListener('build-status', () => {
+      throw new Error('listener boom');
+    });
+
+    // Successful listener (proves stream continues after error)
+    const eventQueue = captureBuildStatuses(eventSource);
+
+    const event1 = await eventQueue.dequeue();
+    const event2 = await eventQueue.dequeue();
+
+    expect(event1.functions['a/b'].buildStatus).toBe('Building');
+    expect(event2.functions['a/b'].buildStatus).toBe('Succeeded');
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('BuildStatusEventSource'),
+      expect.any(Error),
+    );
+  });
+
   it('does not reconnect after 401 auth error', async () => {
     vi.useFakeTimers();
     let callCount = 0;
