@@ -23,6 +23,7 @@ describe('createBuildStatusEventSource', () => {
     createdSources.forEach((source) => source.close());
     createdSources.length = 0;
     vi.useRealTimers();
+    vi.restoreAllMocks();
     server.resetHandlers();
     // Reset to default behavior (delegate to fetch) after tests that override it
     vi.mocked(consoleFetch).mockImplementation((url: string, options?: RequestInit) =>
