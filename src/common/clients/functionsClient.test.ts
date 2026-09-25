@@ -17,7 +17,11 @@ const BUILD_WATCH_URL =
   '/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch';
 
 describe('createBuildStatusEventSource', () => {
+  const createdSources: ReturnType<typeof createBuildStatusEventSource>[] = [];
+
   afterEach(() => {
+    createdSources.forEach((source) => source.close());
+    createdSources.length = 0;
     vi.useRealTimers();
     server.resetHandlers();
     // Reset to default behavior (delegate to fetch) after tests that override it
@@ -63,7 +67,7 @@ describe('createBuildStatusEventSource', () => {
   ])('$description', async ({ frames, expectedKey, expectedStatus }) => {
     useStaticEventStream(frames);
 
-    const eventSource = createBuildStatusEventSource();
+    const eventSource = createTrackedSource();
     const eventQueue = captureBuildStatuses(eventSource);
 
     const event = await eventQueue.dequeue();
@@ -76,7 +80,7 @@ describe('createBuildStatusEventSource', () => {
     const sseFrames = 'event: error\ndata: github API rate limited\n\n';
     useStaticEventStream(sseFrames);
 
-    const eventSource = createBuildStatusEventSource();
+    const eventSource = createTrackedSource();
     const errorQueue = captureErrors(eventSource);
 
     const error = await errorQueue.dequeue();
@@ -94,7 +98,7 @@ describe('createBuildStatusEventSource', () => {
       ),
     );
 
-    const eventSource = createBuildStatusEventSource();
+    const eventSource = createTrackedSource();
     const errorQueue = captureErrors(eventSource);
 
     const error = await errorQueue.dequeue();
@@ -114,7 +118,7 @@ describe('createBuildStatusEventSource', () => {
       }),
     );
 
-    const eventSource = createBuildStatusEventSource();
+    const eventSource = createTrackedSource();
     eventSource.addEventListener('error', () => {
       errorCount++;
     });
@@ -152,7 +156,7 @@ describe('createBuildStatusEventSource', () => {
       }),
     );
 
-    const eventSource = createBuildStatusEventSource();
+    const eventSource = createTrackedSource();
     const errorQueue = captureErrors(eventSource);
     const eventQueue = captureBuildStatuses(eventSource);
 
@@ -192,7 +196,7 @@ describe('createBuildStatusEventSource', () => {
       }),
     );
 
-    const eventSource = createBuildStatusEventSource();
+    const eventSource = createTrackedSource();
     const eventQueue = new AsyncQueue<BuildSnapshot>();
 
     eventSource.addEventListener('build-status', (e) => {
@@ -221,7 +225,7 @@ describe('createBuildStatusEventSource', () => {
       'event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Failed"}}}\n\n';
     useStaticEventStream(sseFrames);
 
-    const eventSource = createBuildStatusEventSource();
+    const eventSource = createTrackedSource();
     const eventQueue = captureBuildStatuses(eventSource);
 
     const event1 = await eventQueue.dequeue();
@@ -248,7 +252,7 @@ describe('createBuildStatusEventSource', () => {
     const sseFrame = `event: build-status\ndata: ${JSON.stringify(largePayload)}\n\n`;
     useStaticEventStream(sseFrame);
 
-    const eventSource = createBuildStatusEventSource();
+    const eventSource = createTrackedSource();
     const eventQueue = captureBuildStatuses(eventSource);
 
     const event = await eventQueue.dequeue();
@@ -289,7 +293,7 @@ describe('createBuildStatusEventSource', () => {
       }),
     );
 
-    const eventSource = createBuildStatusEventSource();
+    const eventSource = createTrackedSource();
     const eventQueue = captureBuildStatuses(eventSource);
 
     const event1 = await eventQueue.dequeue();
@@ -330,7 +334,7 @@ describe('createBuildStatusEventSource', () => {
       },
     );
 
-    const eventSource = createBuildStatusEventSource();
+    const eventSource = createTrackedSource();
 
     let gotBuildStatus = false;
     let gotError = false;
@@ -380,7 +384,7 @@ describe('createBuildStatusEventSource', () => {
       }),
     );
 
-    const eventSource = createBuildStatusEventSource();
+    const eventSource = createTrackedSource();
     const eventQueue = captureBuildStatuses(eventSource);
 
     const event = await eventQueue.dequeue();
@@ -414,7 +418,7 @@ describe('createBuildStatusEventSource', () => {
       }),
     );
 
-    const eventSource = createBuildStatusEventSource();
+    const eventSource = createTrackedSource();
     const eventQueue = captureBuildStatuses(eventSource);
 
     emitFrame('event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"None"}}}\n\n');
@@ -430,6 +434,12 @@ describe('createBuildStatusEventSource', () => {
     // no data should arrive after the close
     await expect(eventQueue.dequeue(50)).rejects.toThrow('timeout');
   });
+
+  function createTrackedSource() {
+    const source = createBuildStatusEventSource();
+    createdSources.push(source);
+    return source;
+  }
 
   function useStaticEventStream(frames: string) {
     server.use(
