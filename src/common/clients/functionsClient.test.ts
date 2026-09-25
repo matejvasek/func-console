@@ -23,13 +23,44 @@ describe('createBuildStatusEventSource', () => {
     );
   });
 
-  it('emits parsed build-status events from SSE stream', async () => {
-    const sseFrame =
-      'event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Building"}}}\n\n';
-
+  it.each<{
+    description: string;
+    frames: string;
+    expectedKey: string;
+    expectedStatus: string;
+  }>([
+    {
+      description: 'emits parsed build-status events from SSE stream',
+      frames: 'event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Building"}}}\n\n',
+      expectedKey: 'a/b',
+      expectedStatus: 'Building',
+    },
+    {
+      description: 'ignores frames without build-status event name',
+      frames:
+        'event: message\ndata: {"functions":{"ignored":"data"}}\n\n' +
+        'event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Succeeded"}}}\n\n',
+      expectedKey: 'a/b',
+      expectedStatus: 'Succeeded',
+    },
+    {
+      description: 'ignores a frame with no event name',
+      frames:
+        'data: {"irrelevant":"not a build-status event"}\n\n' +
+        'event: build-status\ndata: {"functions":{"c/d":{"buildStatus":"Succeeded"}}}\n\n',
+      expectedKey: 'c/d',
+      expectedStatus: 'Succeeded',
+    },
+    {
+      description: 'handles heartbeat comment frames',
+      frames: ':\n\nevent: build-status\ndata: {"functions":{"x/y":{"buildStatus":"Failed"}}}\n\n',
+      expectedKey: 'x/y',
+      expectedStatus: 'Failed',
+    },
+  ])('$description', async ({ frames, expectedKey, expectedStatus }) => {
     server.use(
       http.get('/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch', () =>
-        HttpResponse.text(sseFrame, {
+        HttpResponse.text(frames, {
           headers: { 'Content-Type': 'text/event-stream' },
         }),
       ),
@@ -43,84 +74,7 @@ describe('createBuildStatusEventSource', () => {
     });
 
     const event = await eventQueue.dequeue();
-    expect(event.functions['a/b'].buildStatus).toBe('Building');
-
-    eventSource.close();
-  });
-
-  it('ignores frames without build-status event name', async () => {
-    const sseFrames =
-      'event: message\ndata: {"functions":{"ignored":"data"}}\n\n' +
-      'event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Succeeded"}}}\n\n';
-
-    server.use(
-      http.get('/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch', () =>
-        HttpResponse.text(sseFrames, {
-          headers: { 'Content-Type': 'text/event-stream' },
-        }),
-      ),
-    );
-
-    const eventSource = createBuildStatusEventSource();
-    const eventQueue = new AsyncQueue<BuildSnapshot>();
-
-    eventSource.addEventListener('build-status', (e) => {
-      eventQueue.enqueue(JSON.parse(e.data));
-    });
-
-    const event = await eventQueue.dequeue();
-    expect(event.functions['a/b'].buildStatus).toBe('Succeeded');
-
-    eventSource.close();
-  });
-
-  it('ignores a frame with no event name', async () => {
-    const sseFrames =
-      'data: {"irrelevant":"not a build-status event"}\n\n' +
-      'event: build-status\ndata: {"functions":{"c/d":{"buildStatus":"Succeeded"}}}\n\n';
-
-    server.use(
-      http.get('/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch', () =>
-        HttpResponse.text(sseFrames, {
-          headers: { 'Content-Type': 'text/event-stream' },
-        }),
-      ),
-    );
-
-    const eventSource = createBuildStatusEventSource();
-    const eventQueue = new AsyncQueue<BuildSnapshot>();
-
-    eventSource.addEventListener('build-status', (e) => {
-      eventQueue.enqueue(JSON.parse(e.data));
-    });
-
-    const event = await eventQueue.dequeue();
-    expect(event.functions['c/d'].buildStatus).toBe('Succeeded');
-
-    eventSource.close();
-  });
-
-  it('handles heartbeat comment frames', async () => {
-    const sseFrames =
-      ':\n\nevent: build-status\ndata: {"functions":{"x/y":{"buildStatus":"Failed"}}}\n\n';
-
-    server.use(
-      http.get('/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch', () =>
-        HttpResponse.text(sseFrames, {
-          headers: { 'Content-Type': 'text/event-stream' },
-        }),
-      ),
-    );
-
-    const eventSource = createBuildStatusEventSource();
-    const eventQueue = new AsyncQueue<BuildSnapshot>();
-
-    eventSource.addEventListener('build-status', (e) => {
-      eventQueue.enqueue(JSON.parse(e.data));
-    });
-
-    const event = await eventQueue.dequeue();
-    expect(event.functions['x/y'].buildStatus).toBe('Failed');
+    expect(event.functions[expectedKey].buildStatus).toBe(expectedStatus);
 
     eventSource.close();
   });
