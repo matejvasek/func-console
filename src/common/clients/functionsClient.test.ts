@@ -122,7 +122,7 @@ describe('createBuildStatusEventSource', () => {
       openQueue.enqueue(undefined);
     });
 
-    await openQueue.dequeue(100);
+    await openQueue.dequeue();
   });
 
   it('logs listener errors and continues streaming', async () => {
@@ -205,14 +205,14 @@ describe('createBuildStatusEventSource', () => {
     const eventQueue = captureBuildStatuses(eventSource);
 
     // First error arrives immediately
-    const error = await errorQueue.dequeue(100);
+    const error = await errorQueue.dequeue();
     expect(error.isAuthError).toBe(false);
 
     // Advance past reconnect delay (3000ms)
     await vi.advanceTimersByTimeAsync(3100);
 
     // Event arrives on successful reconnect
-    const event = await eventQueue.dequeue(100);
+    const event = await eventQueue.dequeue();
     expect(event.functions['a/b'].buildStatus).toBe('Building');
 
     expect(callCount).toBe(2);
@@ -244,7 +244,7 @@ describe('createBuildStatusEventSource', () => {
     await vi.advanceTimersByTimeAsync(3100);
 
     // Event arrives on successful reconnect
-    const event = await eventQueue.dequeue(100);
+    const event = await eventQueue.dequeue();
     expect(event.functions['c/d'].buildStatus).toBe('Succeeded');
   });
 
@@ -453,8 +453,11 @@ describe('createBuildStatusEventSource', () => {
     emitFrame('event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Building"}}}\n\n');
     closeEmit();
 
-    // no data should arrive after the close
-    await expect(eventQueue.dequeue(50)).rejects.toThrow('timeout');
+    const raceResult = await Promise.race([
+      eventQueue.dequeue().then(() => 'event received'),
+      new Promise((resolve) => setTimeout(() => resolve('timeout'), 100)),
+    ]);
+    expect(raceResult).toBe('timeout');
   });
 
   function createTrackedSource() {
@@ -510,40 +513,14 @@ class AsyncQueue<T> {
     }
   }
 
-  async dequeue(timeout?: number): Promise<T> {
+  async dequeue(): Promise<T> {
     if (this.queue.length > 0) {
       return this.queue.shift()!;
     }
     if (this.closed) throw new Error(AsyncQueue.CLOSED_ERROR);
 
     return new Promise<T>((resolve, reject) => {
-      const cleanupTimer = () => {
-        if (timeoutId !== undefined) clearTimeout(timeoutId);
-      };
-      const cleanupConsumer = () => {
-        const idx = this.consumers.indexOf(consumer);
-        if (idx >= 0) this.consumers.splice(idx, 1);
-      };
-
-      const consumer = {
-        resolve: (value: T) => {
-          cleanupTimer();
-          resolve(value);
-        },
-        reject: (e: Error) => {
-          cleanupTimer();
-          reject(e);
-        },
-      };
-      this.consumers.push(consumer);
-
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
-      if (timeout !== Infinity) {
-        timeoutId = setTimeout(() => {
-          cleanupConsumer();
-          reject(new Error('timeout'));
-        }, timeout ?? 500);
-      }
+      this.consumers.push({ resolve, reject });
     });
   }
 
@@ -559,7 +536,7 @@ class AsyncQueue<T> {
     return {
       next: async (): Promise<IteratorResult<T>> => {
         try {
-          const value = await this.dequeue(Infinity);
+          const value = await this.dequeue();
           return { done: false, value };
         } catch (e) {
           if (e instanceof Error && e.message === AsyncQueue.CLOSED_ERROR) {
