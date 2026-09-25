@@ -135,7 +135,6 @@ describe('createBuildStatusEventSource', () => {
     expect(errorCount).toBe(1);
 
     eventSource.close();
-    vi.useRealTimers();
   });
 
   it('reconnects on transient (5xx) errors', async () => {
@@ -174,7 +173,6 @@ describe('createBuildStatusEventSource', () => {
     expect(callCount).toBe(2);
 
     eventSource.close();
-    vi.useRealTimers();
   });
 
   it('reconnects when response has no body', async () => {
@@ -214,8 +212,6 @@ describe('createBuildStatusEventSource', () => {
 
     // Should have made two requests: first returned no body, second succeeded
     expect(callCount).toBe(2);
-
-    vi.useRealTimers();
   });
 
   it('handles multiple sequential build-status events', async () => {
