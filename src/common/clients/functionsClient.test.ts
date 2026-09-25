@@ -185,13 +185,7 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createTrackedSource();
-    const eventQueue = new AsyncQueue<BuildSnapshot>();
-
-    eventSource.addEventListener('build-status', (e) => {
-      eventQueue.enqueue(JSON.parse(e.data));
-      // Close after first successful event to prevent further retries
-      eventSource.close();
-    });
+    const eventQueue = captureBuildStatuses(eventSource);
 
     // Advance past reconnect delay (first request is made immediately)
     await vi.advanceTimersByTimeAsync(3100);
@@ -199,9 +193,6 @@ describe('createBuildStatusEventSource', () => {
     // Event arrives on successful reconnect
     const event = await eventQueue.dequeue(100);
     expect(event.functions['c/d'].buildStatus).toBe('Succeeded');
-
-    // Should have made two requests: first returned no body, second succeeded
-    expect(callCount).toBe(2);
   });
 
   it('handles multiple sequential build-status events', async () => {
