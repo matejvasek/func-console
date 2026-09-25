@@ -221,32 +221,29 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const errors: Array<{ message: string; isAuthError: boolean }> = [];
-    const events: Array<BuildSnapshot> = [];
+    const errorQueue = new AsyncQueue<{ message: string; isAuthError: boolean }>();
+    const eventQueue = new AsyncQueue<BuildSnapshot>();
 
     eventSource.addEventListener('error', (e) => {
-      errors.push(e);
+      errorQueue.enqueue(e);
     });
 
     eventSource.addEventListener('build-status', (e) => {
-      events.push(JSON.parse(e.data));
+      eventQueue.enqueue(JSON.parse(e.data));
     });
 
-    // Advance past first 500 error
-    await vi.advanceTimersByTimeAsync(100);
-    expect(callCount).toBe(1);
-    expect(errors).toHaveLength(1);
-    expect(errors[0].isAuthError).toBe(false);
+    // First error arrives immediately
+    const error = await errorQueue.dequeue(100);
+    expect(error.isAuthError).toBe(false);
 
     // Advance past reconnect delay (3000ms)
     await vi.advanceTimersByTimeAsync(3100);
 
-    // Wait for second request to complete
-    await vi.advanceTimersByTimeAsync(100);
+    // Event arrives on successful reconnect
+    const event = await eventQueue.dequeue(100);
+    expect(event.functions['a/b'].buildStatus).toBe('Building');
 
     expect(callCount).toBe(2);
-    expect(events.length).toBe(1);
-    expect(events[0].functions['a/b'].buildStatus).toBe('Building');
 
     eventSource.close();
     vi.useRealTimers();
@@ -272,10 +269,10 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const events: Array<BuildSnapshot> = [];
+    const eventQueue = new AsyncQueue<BuildSnapshot>();
 
     eventSource.addEventListener('build-status', (e) => {
-      events.push(JSON.parse(e.data));
+      eventQueue.enqueue(JSON.parse(e.data));
       // Close after first successful event to prevent further retries
       eventSource.close();
     });
@@ -283,13 +280,12 @@ describe('createBuildStatusEventSource', () => {
     // Advance past reconnect delay (first request is made immediately)
     await vi.advanceTimersByTimeAsync(3100);
 
-    // Wait for second request to complete
-    await vi.advanceTimersByTimeAsync(100);
+    // Event arrives on successful reconnect
+    const event = await eventQueue.dequeue(100);
+    expect(event.functions['c/d'].buildStatus).toBe('Succeeded');
 
     // Should have made two requests: first returned no body, second succeeded
     expect(callCount).toBe(2);
-    expect(events.length).toBe(1);
-    expect(events[0].functions['c/d'].buildStatus).toBe('Succeeded');
 
     vi.useRealTimers();
   });
