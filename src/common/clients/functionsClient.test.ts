@@ -503,12 +503,11 @@ describe('createBuildStatusEventSource', () => {
 
   it('stops receiving events after close() is called', async () => {
     const frameQueue = new AsyncQueue<string>();
-    const ac = new AbortController();
     const emitFrame = (frame: string) => {
       frameQueue.enqueue(frame);
     };
     const closeEmit = () => {
-      ac.abort('close');
+      frameQueue.close();
     };
 
     server.use(
@@ -516,13 +515,8 @@ describe('createBuildStatusEventSource', () => {
         const stream = new ReadableStream<Uint8Array>({
           async start(controller) {
             const encoder = new TextEncoder();
-            try {
-              while (!ac.signal.aborted) {
-                const frame = await frameQueue.dequeue(ac.signal);
-                controller.enqueue(encoder.encode(frame));
-              }
-            } catch (e: unknown) {
-              void e;
+            for await (const frame of frameQueue) {
+              controller.enqueue(encoder.encode(frame));
             }
           },
         });
@@ -552,69 +546,84 @@ describe('createBuildStatusEventSource', () => {
   });
 });
 
+// "…Stick a queue in there. Queues are the way to just get rid of this problem.
+// If you're not using queues extensively, you should be.
+// You should start right away, like right after this talk." -Rich Hickey
 class AsyncQueue<T> {
+  private static readonly CLOSED_ERROR = 'queue closed';
+
   private queue: T[] = [];
-  private waiters: ((value: T) => void)[] = [];
+  private consumers: { resolve: (value: T) => void; reject: (e: Error) => void }[] = [];
+  private closed: boolean = false;
 
   enqueue(value: T): void {
-    if (this.waiters.length > 0) {
-      const waiter = this.waiters.shift()!;
-      waiter(value);
+    if (this.closed) throw new Error(AsyncQueue.CLOSED_ERROR);
+    if (this.consumers.length > 0) {
+      const consumer = this.consumers.shift()!;
+      consumer.resolve(value);
     } else {
       this.queue.push(value);
     }
   }
 
-  async dequeue(timeoutOrSignal?: number | AbortSignal): Promise<T> {
+  async dequeue(timeout?: number): Promise<T> {
     if (this.queue.length > 0) {
       return this.queue.shift()!;
     }
-
-    const timeout = typeof timeoutOrSignal === 'number' ? timeoutOrSignal : 500;
-    const signal = timeoutOrSignal instanceof AbortSignal ? timeoutOrSignal : undefined;
+    if (this.closed) throw new Error(AsyncQueue.CLOSED_ERROR);
 
     return new Promise<T>((resolve, reject) => {
-      let timeoutId: NodeJS.Timeout | undefined;
-      let abortHandler: (() => void) | undefined;
-
-      const cleanup = () => {
-        if (timeoutId) clearTimeout(timeoutId);
-        if (abortHandler && signal) signal.removeEventListener('abort', abortHandler);
-        const idx = this.waiters.indexOf(waiter);
-        if (idx >= 0) this.waiters.splice(idx, 1);
+      const cleanupTimer = () => {
+        if (timeoutId !== undefined) clearTimeout(timeoutId);
+      };
+      const cleanupConsumer = () => {
+        const idx = this.consumers.indexOf(consumer);
+        if (idx >= 0) this.consumers.splice(idx, 1);
       };
 
-      const waiter = (value: T) => {
-        cleanup();
-        resolve(value);
+      const consumer = {
+        resolve: (value: T) => {
+          cleanupTimer();
+          resolve(value);
+        },
+        reject: (e: Error) => {
+          cleanupTimer();
+          reject(e);
+        },
       };
-      this.waiters.push(waiter);
+      this.consumers.push(consumer);
 
-      const rejectWithAbortReason = () => {
-        cleanup();
-        let err: Error;
-        if (signal!.reason instanceof Error) {
-          err = signal!.reason;
-        } else {
-          const message = signal!.reason ? String(signal!.reason) : 'aborted';
-          err = new Error(message);
-        }
-        reject(err);
-      };
-
-      if (signal) {
-        if (signal.aborted) {
-          rejectWithAbortReason();
-        } else {
-          abortHandler = rejectWithAbortReason;
-          signal.addEventListener('abort', abortHandler, { once: true });
-        }
-      } else {
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      if (timeout !== Infinity) {
         timeoutId = setTimeout(() => {
-          cleanup();
+          cleanupConsumer();
           reject(new Error('timeout'));
-        }, timeout);
+        }, timeout ?? 500);
       }
     });
+  }
+
+  close() {
+    this.closed = true;
+    this.consumers.forEach((c) => {
+      c.reject(new Error(AsyncQueue.CLOSED_ERROR));
+    });
+    this.consumers.length = 0;
+  }
+
+  [Symbol.asyncIterator]() {
+    return {
+      next: async (): Promise<IteratorResult<T>> => {
+        try {
+          const value = await this.dequeue(Infinity);
+          return { done: false, value };
+        } catch (e) {
+          if (e instanceof Error && e.message === AsyncQueue.CLOSED_ERROR) {
+            return { done: true, value: undefined };
+          }
+          throw e;
+        }
+      },
+    };
   }
 }
