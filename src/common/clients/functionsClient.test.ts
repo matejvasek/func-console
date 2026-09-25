@@ -525,6 +525,7 @@ class AsyncQueue<T> {
   }
 
   close() {
+    if (this.closed) throw new Error(AsyncQueue.CLOSED_ERROR);
     this.closed = true;
     this.consumers.forEach((c) => {
       c.reject(new Error(AsyncQueue.CLOSED_ERROR));
