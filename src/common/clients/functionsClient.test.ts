@@ -67,11 +67,7 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const eventQueue = new AsyncQueue<BuildSnapshot>();
-
-    eventSource.addEventListener('build-status', (e) => {
-      eventQueue.enqueue(JSON.parse(e.data));
-    });
+    const eventQueue = captureBuildStatuses(eventSource);
 
     const event = await eventQueue.dequeue();
     expect(event.functions[expectedKey].buildStatus).toBe(expectedStatus);
@@ -91,11 +87,7 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const errorQueue = new AsyncQueue<{ message: string; isAuthError: boolean }>();
-
-    eventSource.addEventListener('error', (e) => {
-      errorQueue.enqueue(e);
-    });
+    const errorQueue = captureErrors(eventSource);
 
     const error = await errorQueue.dequeue();
     expect(error.message).toBe('github API rate limited');
@@ -113,11 +105,7 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const errorQueue = new AsyncQueue<{ message: string; isAuthError: boolean }>();
-
-    eventSource.addEventListener('error', (e) => {
-      errorQueue.enqueue(e);
-    });
+    const errorQueue = captureErrors(eventSource);
 
     const error = await errorQueue.dequeue();
     expect(error.isAuthError).toBe(true);
@@ -175,16 +163,8 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const errorQueue = new AsyncQueue<{ message: string; isAuthError: boolean }>();
-    const eventQueue = new AsyncQueue<BuildSnapshot>();
-
-    eventSource.addEventListener('error', (e) => {
-      errorQueue.enqueue(e);
-    });
-
-    eventSource.addEventListener('build-status', (e) => {
-      eventQueue.enqueue(JSON.parse(e.data));
-    });
+    const errorQueue = captureErrors(eventSource);
+    const eventQueue = captureBuildStatuses(eventSource);
 
     // First error arrives immediately
     const error = await errorQueue.dequeue(100);
@@ -257,11 +237,7 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const eventQueue = new AsyncQueue<BuildSnapshot>();
-
-    eventSource.addEventListener('build-status', (e) => {
-      eventQueue.enqueue(JSON.parse(e.data));
-    });
+    const eventQueue = captureBuildStatuses(eventSource);
 
     const event1 = await eventQueue.dequeue();
     const event2 = await eventQueue.dequeue();
@@ -293,11 +269,7 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const eventQueue = new AsyncQueue<BuildSnapshot>();
-
-    eventSource.addEventListener('build-status', (e) => {
-      eventQueue.enqueue(JSON.parse(e.data));
-    });
+    const eventQueue = captureBuildStatuses(eventSource);
 
     const event = await eventQueue.dequeue();
 
@@ -338,11 +310,7 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const eventQueue = new AsyncQueue<BuildSnapshot>();
-
-    eventSource.addEventListener('build-status', (e) => {
-      eventQueue.enqueue(JSON.parse(e.data));
-    });
+    const eventQueue = captureBuildStatuses(eventSource);
 
     const event1 = await eventQueue.dequeue();
     const event2 = await eventQueue.dequeue();
@@ -437,11 +405,7 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const eventQueue = new AsyncQueue<BuildSnapshot>();
-
-    eventSource.addEventListener('build-status', (e) => {
-      eventQueue.enqueue(JSON.parse(e.data));
-    });
+    const eventQueue = captureBuildStatuses(eventSource);
 
     const event = await eventQueue.dequeue();
     expect(event.functions['a/b'].buildStatus).toBe('Building');
@@ -475,11 +439,7 @@ describe('createBuildStatusEventSource', () => {
     );
 
     const eventSource = createBuildStatusEventSource();
-    const eventQueue = new AsyncQueue<BuildSnapshot>();
-
-    eventSource.addEventListener('build-status', (e) => {
-      eventQueue.enqueue(JSON.parse(e.data));
-    });
+    const eventQueue = captureBuildStatuses(eventSource);
 
     emitFrame('event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"None"}}}\n\n');
     const event = await eventQueue.dequeue();
@@ -494,6 +454,22 @@ describe('createBuildStatusEventSource', () => {
     // no data should arrive after the close
     await expect(eventQueue.dequeue(50)).rejects.toThrow('timeout');
   });
+
+  function captureBuildStatuses(eventSource: ReturnType<typeof createBuildStatusEventSource>) {
+    const queue = new AsyncQueue<BuildSnapshot>();
+    eventSource.addEventListener('build-status', (e) => {
+      queue.enqueue(JSON.parse(e.data));
+    });
+    return queue;
+  }
+
+  function captureErrors(eventSource: ReturnType<typeof createBuildStatusEventSource>) {
+    const queue = new AsyncQueue<{ message: string; isAuthError: boolean }>();
+    eventSource.addEventListener('error', (e) => {
+      queue.enqueue(e);
+    });
+    return queue;
+  }
 });
 
 // "…Stick a queue in there. Queues are the way to just get rid of this problem.
