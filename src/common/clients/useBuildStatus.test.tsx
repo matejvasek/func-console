@@ -67,7 +67,7 @@ describe('useBuildStatus', () => {
 
     emitSnapshot({
       functions: {
-        'bob/repo': { buildStatus: 'Succeeded', conclusion: 'success' },
+        'bob/repo': { buildStatus: 'Succeeded' },
       },
     });
 

@@ -115,23 +115,25 @@ function StatusCell({
   buildRunURL?: string;
   buildActivity?: 'Building' | 'Failed';
 }) {
+  const { t } = useTranslation('plugin__console-functions-plugin');
+
   switch (status) {
     case 'Running':
-      return withBuildActivity(<SuccessStatus title={status} />, buildActivity, buildRunURL);
+      return withBuildActivity(<SuccessStatus title={t(status)} />, buildActivity, buildRunURL);
     case 'ScaledToZero':
-      return withBuildActivity(<InfoStatus title={status} />, buildActivity, buildRunURL);
+      return withBuildActivity(<InfoStatus title={t(status)} />, buildActivity, buildRunURL);
     case 'Deploying':
-      return withBuildActivity(<InfoStatus title={status} />, buildActivity, buildRunURL);
+      return withBuildActivity(<InfoStatus title={t(status)} />, buildActivity, buildRunURL);
     case 'Error':
-      return withBuildActivity(<ErrorStatus title={status} />, buildActivity, buildRunURL);
+      return withBuildActivity(<ErrorStatus title={t(status)} />, buildActivity, buildRunURL);
     case 'BuildFailed': {
-      const badge = <ErrorStatus title={status} className="pf-v6-u-display-inline-flex" />;
+      const badge = <ErrorStatus title={t(status)} className="pf-v6-u-display-inline-flex" />;
       return buildRunURL ? <RunLink url={buildRunURL}>{badge}</RunLink> : badge;
     }
     case 'NotDeployed':
-      return withBuildActivity(<InfoStatus title={status} />, buildActivity, buildRunURL);
+      return withBuildActivity(<InfoStatus title={t(status)} />, buildActivity, buildRunURL);
     case 'Unknown':
-      return <StatusIconAndText title={status} icon={<ExclamationTriangleIcon />} />;
+      return <StatusIconAndText title={t(status)} icon={<ExclamationTriangleIcon />} />;
   }
 }
 
