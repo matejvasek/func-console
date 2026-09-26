@@ -1,14 +1,11 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router';
 import { authenticateGithubFake, logoutGithubFake } from '../../common/testing/authFake';
-import { BACKEND_API } from '../../common/testing/constants';
-import { listFunctionsStub } from '../../common/testing/functionsClientStub';
+import { listFunctionsStub, watchBuildsStub } from '../../common/testing/functionsClientStub';
 import { server } from '../../common/testing/mswServer';
 import { FunctionListItem } from '../../common/types';
 import FunctionsListPage from './FunctionsListPage';
-import { BuildSnapshot } from '../../common/clients/functionsClient';
 
 // vi.mock is hoisted above imports, so regular imports aren't available in the factory.
 // vi.hoisted runs before vi.mock, making the sdkTestDoubles available to the factory.
@@ -68,35 +65,10 @@ describe('FunctionsListPage', () => {
     logoutGithubFake();
   });
 
-  function buildStatusFrame(functions: BuildSnapshot['functions']): string {
-    return `event: build-status\ndata: ${JSON.stringify({ functions })}\n\n`;
-  }
-
-  function setWatchResponse(frames: string[]) {
-    server.use(
-      http.get(`${BACKEND_API}/api/v1/func/build/watch`, () =>
-        HttpResponse.text(frames.join(''), {
-          headers: { 'Content-Type': 'text/event-stream' },
-        }),
-      ),
-    );
-  }
-
-  function setWatchErrorResponse(
-    status: number = 503,
-    message: string = 'Build watcher service unavailable',
-  ) {
-    server.use(
-      http.get(`${BACKEND_API}/api/v1/func/build/watch`, () =>
-        HttpResponse.json({ error: message }, { status }),
-      ),
-    );
-  }
-
   it('displays build watcher error alert with message when stream fails', async () => {
     const functionItem = repoListItem('my-repo');
     listFunctionsStub({ responses: [functionItem] });
-    setWatchErrorResponse(503, 'Service Unavailable');
+    watchBuildsStub({ message: 'Service Unavailable', status: 503 });
 
     render(
       <MemoryRouter>
@@ -118,8 +90,7 @@ describe('FunctionsListPage', () => {
 
     // Initial endpoint response is an error
     const errorStatusText = 'Service Unavailable';
-    const errorStatus = 503;
-    setWatchErrorResponse(errorStatus, errorStatusText);
+    watchBuildsStub({ message: errorStatusText, status: 503 });
 
     render(
       <MemoryRouter>
@@ -134,11 +105,7 @@ describe('FunctionsListPage', () => {
     });
 
     // Update MSW to return successful stream (reconnection will retry after RECONNECT_DELAY_MS)
-    setWatchResponse([
-      buildStatusFrame({
-        'twoGiants/my-repo': { buildStatus: 'Succeeded' },
-      }),
-    ]);
+    watchBuildsStub({ 'twoGiants/my-repo': { buildStatus: 'Succeeded' } });
 
     // Wait for reconnection (3000ms delay) and error to clear
     await waitFor(
@@ -393,9 +360,7 @@ describe('FunctionsListPage', () => {
     // No cluster fixture, so the function is NotDeployed. Building is always shown
     // as a secondary indicator regardless of whether there is an existing deployment.
     listFunctionsStub({ responses: [repoListItem(funcName)] });
-    setWatchResponse([
-      buildStatusFrame({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } }),
-    ]);
+    watchBuildsStub({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } });
 
     render(
       <MemoryRouter>
@@ -413,9 +378,7 @@ describe('FunctionsListPage', () => {
     // new revision builds; the build is surfaced only as a secondary spinner.
     listFunctionsStub({ responses: [repoListItem(funcName)] });
     sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
-    setWatchResponse([
-      buildStatusFrame({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } }),
-    ]);
+    watchBuildsStub({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } });
 
     render(
       <MemoryRouter>
@@ -431,14 +394,12 @@ describe('FunctionsListPage', () => {
   it('keeps Running with a build-failed indicator when the cluster is Running', async () => {
     listFunctionsStub({ responses: [repoListItem(funcName)] });
     sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
-    setWatchResponse([
-      buildStatusFrame({
-        [`twoGiants/${funcName}`]: {
-          buildStatus: 'Failed',
-          runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
-        },
-      }),
-    ]);
+    watchBuildsStub({
+      [`twoGiants/${funcName}`]: {
+        buildStatus: 'Failed',
+        runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+      },
+    });
 
     render(
       <MemoryRouter>
@@ -463,14 +424,12 @@ describe('FunctionsListPage', () => {
       knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')],
       deps: [sdkTestDoubles.deploymentFixture(funcName, 0, 0)],
     });
-    setWatchResponse([
-      buildStatusFrame({
-        [`twoGiants/${funcName}`]: {
-          buildStatus: 'Failed',
-          runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
-        },
-      }),
-    ]);
+    watchBuildsStub({
+      [`twoGiants/${funcName}`]: {
+        buildStatus: 'Failed',
+        runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+      },
+    });
 
     render(
       <MemoryRouter>
@@ -492,9 +451,7 @@ describe('FunctionsListPage', () => {
     // it had already passed on every redeploy.
     listFunctionsStub({ responses: [repoListItem(funcName)] });
     sdkTestDoubles.setWatchFixtures({ knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')] });
-    setWatchResponse([
-      buildStatusFrame({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } }),
-    ]);
+    watchBuildsStub({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } });
 
     render(
       <MemoryRouter>
@@ -515,14 +472,12 @@ describe('FunctionsListPage', () => {
       knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'False')],
       deps: [sdkTestDoubles.deploymentFixture(funcName, 1, 0)],
     });
-    setWatchResponse([
-      buildStatusFrame({
-        [`twoGiants/${funcName}`]: {
-          buildStatus: 'Failed',
-          runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
-        },
-      }),
-    ]);
+    watchBuildsStub({
+      [`twoGiants/${funcName}`]: {
+        buildStatus: 'Failed',
+        runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+      },
+    });
 
     render(
       <MemoryRouter>
@@ -542,14 +497,12 @@ describe('FunctionsListPage', () => {
     // Error from FunctionListItem.err is not a cluster status, so the build
     // status still takes over as it does for NotDeployed.
     listFunctionsStub({ responses: [{ ...repoListItem(funcName), err: 'cannot read func.yaml' }] });
-    setWatchResponse([
-      buildStatusFrame({
-        [`twoGiants/${funcName}`]: {
-          buildStatus: 'Failed',
-          runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
-        },
-      }),
-    ]);
+    watchBuildsStub({
+      [`twoGiants/${funcName}`]: {
+        buildStatus: 'Failed',
+        runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+      },
+    });
 
     render(
       <MemoryRouter>
@@ -562,14 +515,12 @@ describe('FunctionsListPage', () => {
 
   it('shows BuildFailed with a run link from the build stream', async () => {
     listFunctionsStub({ responses: [repoListItem(funcName)] });
-    setWatchResponse([
-      buildStatusFrame({
-        [`twoGiants/${funcName}`]: {
-          buildStatus: 'Failed',
-          runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
-        },
-      }),
-    ]);
+    watchBuildsStub({
+      [`twoGiants/${funcName}`]: {
+        buildStatus: 'Failed',
+        runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+      },
+    });
 
     render(
       <MemoryRouter>
