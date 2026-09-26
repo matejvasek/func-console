@@ -306,8 +306,6 @@ describe('createBuildStatusEventSource', () => {
             const encoder = new TextEncoder();
             for (const chunk of chunks) {
               controller.enqueue(encoder.encode(chunk));
-              // Small delay between chunks to simulate network jitter
-              await new Promise((resolve) => setTimeout(resolve, 10));
             }
             controller.close();
           },
