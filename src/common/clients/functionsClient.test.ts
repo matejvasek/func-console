@@ -419,12 +419,6 @@ describe('createBuildStatusEventSource', () => {
 
   it('stops receiving events after close() is called', async () => {
     const frameQueue = new AsyncQueue<string>();
-    const emitFrame = (frame: string) => {
-      frameQueue.enqueue(frame);
-    };
-    const closeEmit = () => {
-      frameQueue.close();
-    };
 
     server.use(
       http.get(BUILD_WATCH_URL, () => {
@@ -443,15 +437,19 @@ describe('createBuildStatusEventSource', () => {
     const eventSource = createTrackedSource();
     const eventQueue = captureBuildStatuses(eventSource);
 
-    emitFrame('event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"None"}}}\n\n');
+    frameQueue.enqueue(
+      'event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"None"}}}\n\n',
+    );
     const event = await eventQueue.dequeue();
     expect(event.functions['a/b'].buildStatus).toBe('None');
 
     eventSource.close();
 
     // emit after close
-    emitFrame('event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Building"}}}\n\n');
-    closeEmit();
+    frameQueue.enqueue(
+      'event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Building"}}}\n\n',
+    );
+    frameQueue.close();
 
     const raceResult = await Promise.race([
       eventQueue.dequeue().then(() => 'event received'),
