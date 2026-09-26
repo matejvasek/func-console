@@ -5,6 +5,8 @@ import { authenticateGithubFake, logoutGithubFake } from '../../common/testing/a
 import { listFunctionsStub, watchBuildsStub } from '../../common/testing/functionsClientStub';
 import { server } from '../../common/testing/mswServer';
 import { FunctionListItem } from '../../common/types';
+import { BuildSnapshot } from '../../common/clients/functionsClient';
+import { AsyncQueue } from '../../common/utils/AsyncQueue';
 import FunctionsListPage from './FunctionsListPage';
 
 // vi.mock is hoisted above imports, so regular imports aren't available in the factory.
@@ -114,6 +116,39 @@ describe('FunctionsListPage', () => {
       },
       { timeout: 3500 },
     );
+  });
+
+  it('transitions build status from NotDeployed -> Building -> Succeeded', async () => {
+    const queue = new AsyncQueue<BuildSnapshot['functions']>();
+    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    watchBuildsStub(queue);
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    // Initial state: NotDeployed with no build activity
+    expect(await screen.findByText('Info: NotDeployed')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Build in progress')).not.toBeInTheDocument();
+
+    // Emit Building status
+    queue.enqueue({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } });
+
+    // Should show building indicator
+    await waitFor(() => {
+      expect(screen.getByLabelText('Build in progress')).toBeInTheDocument();
+    });
+
+    // Emit Succeeded status
+    queue.enqueue({ [`twoGiants/${funcName}`]: { buildStatus: 'Succeeded' } });
+    queue.close();
+
+    // Building indicator should disappear (Succeeded on NotDeployed shows nothing)
+    await waitFor(() => {
+      expect(screen.queryByLabelText('Build in progress')).not.toBeInTheDocument();
+    });
   });
 
   it('renders a spinner while loading', () => {
