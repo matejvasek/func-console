@@ -12,53 +12,51 @@ export class AsyncQueue<T> implements AsyncIterable<T>, Disposable {
   private static readonly CLOSED_ERROR = 'queue closed';
 
   private queue: T[] = [];
-  private consumers: { resolve: (value: T) => void; reject: (e: Error) => void }[] = [];
+  private consumers: ((result: IteratorResult<T>) => void)[] = [];
   private closed: boolean = false;
 
   enqueue(value: T): void {
     if (this.closed) throw new Error(AsyncQueue.CLOSED_ERROR);
     if (this.consumers.length > 0) {
-      const consumer = this.consumers.shift()!;
-      consumer.resolve(value);
+      const resolve = this.consumers.shift()!;
+      resolve({ done: false, value });
     } else {
       this.queue.push(value);
     }
   }
 
-  async dequeue(): Promise<T> {
+  private async next(): Promise<IteratorResult<T>> {
     if (this.queue.length > 0) {
-      return this.queue.shift()!;
+      return { done: false, value: this.queue.shift()! };
     }
-    if (this.closed) throw new Error(AsyncQueue.CLOSED_ERROR);
+    if (this.closed) {
+      return { done: true, value: undefined };
+    }
 
-    return new Promise<T>((resolve, reject) => {
-      this.consumers.push({ resolve, reject });
+    return new Promise<IteratorResult<T>>((resolve) => {
+      this.consumers.push(resolve);
     });
+  }
+
+  async dequeue(): Promise<T> {
+    const result = await this.next();
+    if (result.done) {
+      throw new Error(AsyncQueue.CLOSED_ERROR);
+    }
+    return result.value;
   }
 
   close() {
     if (this.closed) throw new Error(AsyncQueue.CLOSED_ERROR);
     this.closed = true;
-    this.consumers.forEach((c) => {
-      c.reject(new Error(AsyncQueue.CLOSED_ERROR));
+    this.consumers.forEach((resolve) => {
+      resolve({ done: true, value: undefined });
     });
     this.consumers.length = 0;
   }
 
   [Symbol.asyncIterator]() {
-    return {
-      next: async (): Promise<IteratorResult<T>> => {
-        try {
-          const value = await this.dequeue();
-          return { done: false, value };
-        } catch (e) {
-          if (e instanceof Error && e.message === AsyncQueue.CLOSED_ERROR) {
-            return { done: true, value: undefined };
-          }
-          throw e;
-        }
-      },
-    };
+    return { next: () => this.next() };
   }
 
   [Symbol.dispose](): void {
