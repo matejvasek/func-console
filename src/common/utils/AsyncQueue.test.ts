@@ -127,11 +127,11 @@ describe('AsyncQueue', () => {
   });
 
   it('dequeue rejects after async disposal', async () => {
-    const q = await (async () => {
-      await using queue = new AsyncQueue<string>();
-      return queue;
-    })();
-
-    await expect(q.dequeue()).rejects.toThrow('queue closed');
+    let queue: AsyncQueue<string>;
+    {
+      await using q = new AsyncQueue<string>();
+      queue = q;
+    }
+    await expect(queue.dequeue()).rejects.toThrow('queue closed');
   });
 });
