@@ -1,7 +1,7 @@
 // "…Stick a queue in there. Queues are the way to just get rid of this problem.
 // If you're not using queues extensively, you should be.
 // You should start right away, like right after this talk." -Rich Hickey
-export class AsyncQueue<T> {
+export class AsyncQueue<T> implements AsyncIterable<T>, Disposable {
   private static readonly CLOSED_ERROR = 'queue closed';
 
   private queue: T[] = [];
@@ -54,7 +54,7 @@ export class AsyncQueue<T> {
     };
   }
 
-  async [Symbol.asyncDispose](): Promise<void> {
+  [Symbol.dispose](): void {
     if (!this.closed) {
       this.close();
     }

@@ -3,7 +3,7 @@ import { AsyncQueue } from './AsyncQueue';
 
 describe('AsyncQueue', () => {
   it('dequeue waits for enqueued value', async () => {
-    await using queue = new AsyncQueue<string>();
+    using queue = new AsyncQueue<string>();
 
     const deqPromise = queue.dequeue();
 
@@ -129,7 +129,7 @@ describe('AsyncQueue', () => {
   it('dequeue rejects after async disposal', async () => {
     let queue: AsyncQueue<string>;
     {
-      await using q = new AsyncQueue<string>();
+      using q = new AsyncQueue<string>();
       queue = q;
     }
     await expect(queue.dequeue()).rejects.toThrow('queue closed');

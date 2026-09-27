@@ -141,7 +141,7 @@ describe('FunctionsListPage', () => {
   }
 
   it('transitions build status from NotDeployed -> Building -> Succeeded', async () => {
-    await using queue = new AsyncQueue<BuildSnapshot['functions']>();
+    using queue = new AsyncQueue<BuildSnapshot['functions']>();
     listFunctionsStub({ responses: [repoListItem(funcName)] });
     watchBuildsStub(queue);
 
@@ -173,7 +173,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('updates multiple functions with different status transitions', async () => {
-    await using queue = new AsyncQueue<BuildSnapshot['functions']>();
+    using queue = new AsyncQueue<BuildSnapshot['functions']>();
     const func1 = 'func-alpha';
     const func2 = 'func-beta';
     listFunctionsStub({
