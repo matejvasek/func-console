@@ -1,3 +1,10 @@
+// AsyncQueue is a simple FIFO queue for async producer-consumer patterns.
+// `enqueue(value)` is synchronous and buffers values. `dequeue()` is async: returns
+// immediately with buffered values, otherwise waits for `enqueue()`. Both throw
+// if queue is closed (`enqueue` always, `dequeue` only if no buffered values).
+// Supports async iteration via `for await...of` and automatic cleanup via `using`
+// statements (`Symbol.dispose`).
+//
 // "…Stick a queue in there. Queues are the way to just get rid of this problem.
 // If you're not using queues extensively, you should be.
 // You should start right away, like right after this talk." -Rich Hickey
