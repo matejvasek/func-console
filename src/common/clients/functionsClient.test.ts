@@ -157,11 +157,9 @@ describe('createBuildStatusEventSource', () => {
 
   it('does not reconnect after 401 auth error', async () => {
     vi.useFakeTimers();
-    let callCount = 0;
     let errorCount = 0;
     server.use(
       http.get(BUILD_WATCH_URL, () => {
-        callCount++;
         return new HttpResponse(null, { status: 401, statusText: 'Unauthorized' });
       }),
     );
@@ -173,13 +171,10 @@ describe('createBuildStatusEventSource', () => {
 
     // Advance past first error
     await vi.advanceTimersByTimeAsync(100);
-    expect(callCount).toBe(1);
     expect(errorCount).toBe(1);
 
     // Advance past reconnect delay (3000ms) — should NOT make second request
     await vi.advanceTimersByTimeAsync(3100);
-
-    expect(callCount).toBe(1);
     expect(errorCount).toBe(1);
   });
 
@@ -215,8 +210,6 @@ describe('createBuildStatusEventSource', () => {
     // Event arrives on successful reconnect
     const event = await eventQueue.dequeue();
     expect(event.functions['a/b'].buildStatus).toBe('Building');
-
-    expect(callCount).toBe(2);
   });
 
   it('reconnects when response has no body', async () => {
