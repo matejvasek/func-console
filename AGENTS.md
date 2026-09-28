@@ -7,6 +7,16 @@ This is the project map. Read this first, every session.
 FaaS PoC UI for OpenShift Console — React + TypeScript + Webpack + PatternFly 6 + OCP Dynamic Plugin SDK.
 See `docs/design/` for full design specs.
 
+## Communication
+
+- Ask before staring modifications of code.
+- Ask before starting a new task or making a design decision.
+- Once actively implementing, keep going without asking. Only stop to ask when blocked by sandbox, permissions, or ambiguous requirements.
+
+## Writing Style
+
+No em dashes (`—`). Use commas, periods, or parentheses instead.
+
 ## Knowledge Base
 
 | File | Purpose |
@@ -22,5 +32,7 @@ See `docs/design/` for full design specs.
 | `docs/potential-features.json` | Candidate features for future implementation |
 | `docs/claude-progress.txt` | Session handoff log — see [`references/claude-progress-readme.md`](docs/references/claude-progress-readme.md) |
 | `docs/agent-struggles.json` | Struggle log — see [`references/agent-struggles-readme.md`](docs/references/agent-struggles-readme.md) |
+| `.dev-env.json` | Dev server ports (backendPort, pluginPort, consolePort), written by init.sh |
+| `.dev-logs/` | Dev server log files (backend.log, webpack.log, console.log) |
 | `docs/references/ocp-plugin-guide.md` | OCP dynamic plugin mechanics, i18n, extension points |
 | `docs/references/commit-message-guide.md` | Git commit conventions and authorship rules |

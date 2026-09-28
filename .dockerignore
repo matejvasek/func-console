@@ -1,1 +1,4 @@
 /bin
+.dev-logs
+.dev-pids
+.dev-env.json

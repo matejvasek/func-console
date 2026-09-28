@@ -15,23 +15,31 @@ Do NOT write all test cases first and then implement everything at once.
 
 | Layer | Tool | Scope |
 |-------|------|-------|
-| Unit / Component | Jest + React Testing Library | Hooks, services, component rendering, form logic |
+| Unit / Component | Vitest + React Testing Library | Hooks, services, component rendering, form logic |
 | E2e / Feature validation | Cypress | Validate features.json entries in real browser |
 | API mocking | MSW (Mock Service Worker) | GitHub API + K8s API — mock everything first, real cluster later |
 
 ## Mock Strategy
 
-Use MSW for all API mocking (GitHub + K8s). If SDK hooks require module-level mocks in unit tests (because they depend on Console runtime internals), fall back to Jest mocks — but try MSW first.
+MSW is the primary mocking strategy for anything that hits the network (GitHub API, K8s API, Go backend). K8s API mocking uses MSW WebSocket capability.
 
-- **Start:** Mock everything via MSW (GitHub API, K8s API)
-- **Later:** Real cluster for e2e — SDK hooks work natively, GitHub API remains mocked
-- **Fallback:** If SDK hooks can't be driven by MSW alone in unit tests, use Jest module mocks
+`vi.mock` is only for framework and library internals that have no external service:
+
+- `react-i18next` (translation hook)
+- `@openshift-console/dynamic-plugin-sdk` (console shell runtime components like DocumentTitle, ListPageHeader, consoleFetchJSON)
+- `@patternfly/react-icons` (UI library)
+- `react-router-dom-v5-compat` (framework routing)
+- `libsodium-wrappers` (WASM crypto library)
+
+If it makes an HTTP or WebSocket call, mock it with MSW, not `vi.mock`.
 
 ## File Conventions
 
 | Type | Location |
 |------|----------|
-| Unit / Component tests | `src/**/*.test.ts\|tsx` |
+| Component tests | `src/pages/<name>/components/*.test.ts\|tsx`, `src/common/components/*.test.ts\|tsx` |
+| Page tests | `src/pages/<name>/*.test.ts\|tsx` |
+| Service / Hook / Util tests | `src/common/**/*.test.ts\|tsx` |
 | E2e specs | `e2e/<feature-name>/*.test.ts` |
 | MSW handlers | `testing/msw/handlers.ts` |
 
@@ -42,8 +50,27 @@ Use MSW for all API mocking (GitHub + K8s). If SDK hooks require module-level mo
 | Service interfaces | Unit | `FunctionService.generateFunction()` returns expected files |
 | React hooks | Unit | `useFunctionService()` returns service instance |
 | Components | Component | `CreateForm` renders all fields, validates input |
-| Views | Component + E2e | `FunctionListPage` shows empty state, table |
+| Pages | Component + E2e | `FunctionsListPage` shows empty state, table |
 | User flows | E2e | Create form → submit → list shows new function |
+
+## Component vs. Page Tests
+
+Every component gets its own exhaustive test file. Every page gets its own test file that tests the page's orchestration and integration with its components.
+
+**Component tests** cover:
+
+- Rendering based on props (all states and variants)
+- User interactions that trigger callbacks (clicks, input, form validation)
+- Internal state (expand/collapse, selection)
+
+**Page tests** cover:
+
+- Component is present on the page and wired correctly
+- Data flows from hooks/services to components (correct props)
+- User actions that trigger cross-component effects or service calls (e.g., form submit calls service, then navigates)
+- Page-level states: loading, error, empty
+
+Overlap between component tests and page tests is expected and acceptable. They test at different levels: component tests verify the component works in isolation, page tests verify the page's orchestration logic works correctly.
 
 ## Testing Best Practices
 
@@ -61,29 +88,33 @@ Use MSW for all API mocking (GitHub + K8s). If SDK hooks require module-level mo
    - **Act:** Perform user actions
    - **Assert:** Verify expected state
 
+6. **Scoping** — Place beforeEach, afterEach, and afterAll inside describe blocks.
+
 ## Mocking Patterns
 
-Use ESM `import` at top of file. Never use `require('react')` or `React.createElement()` in mocks.
-Prefer `jest.mock()` for modules, `jest.fn()` for components. Keep mocks simple.
+MSW is the primary approach. `vi.mock` is rare (see Mock Strategy above).
 
-**Correct patterns:**
+Use ESM `import` at top of file. Never use `require('react')` or `React.createElement()` in mocks.
+Keep mocks simple.
+
+**Correct patterns (for the rare `vi.mock` cases):**
 
 ```typescript
 // Return null
-jest.mock('../MyComponent', () => () => null);
+vi.mock('../MyComponent', () => () => null);
 
 // Return string
-jest.mock('../LoadingSpinner', () => () => 'Loading...');
+vi.mock('../LoadingSpinner', () => () => 'Loading...');
 
 // Return children directly
-jest.mock('../Wrapper', () => ({ children }) => children);
+vi.mock('../Wrapper', () => ({ children }) => children);
 
-// Track calls with jest.fn
-jest.mock('../ButtonBar', () => jest.fn(({ children }) => children));
+// Track calls with vi.fn
+vi.mock('../ButtonBar', () => vi.fn(({ children }) => children));
 
-// Mock custom hooks
-jest.mock('../useCustomHook', () => ({
-  useCustomHook: jest.fn(() => [/* mock data */]),
+// Mock framework hooks
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
 }));
 ```
 
@@ -91,20 +122,20 @@ jest.mock('../useCustomHook', () => ({
 
 ```typescript
 // NEVER - require() in mocks
-jest.mock('../Component', () => {
+vi.mock('../Component', () => {
   const React = require('react');
   return () => React.createElement('div');
 });
 
 // NEVER - JSX in mocks
-jest.mock('../Component', () => () => <div>Mock</div>);
+vi.mock('../Component', () => () => <div>Mock</div>);
 ```
 
 **Clean up mocks:**
 
 ```typescript
 afterEach(() => {
-  jest.restoreAllMocks();
+  vi.restoreAllMocks();
 });
 ```
 

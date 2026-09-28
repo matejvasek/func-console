@@ -1,25 +1,12 @@
 [
   {
     "category": "technical",
-    "description": "Claude Code sandbox: isolated VM environment for autonomous agent development",
+    "description": "Replace per-file blob fetching in GithubService.fetch() with single archive download (downloadTarballArchive) and extraction for better performance",
     "steps": [
-      "Vagrant VM with Fedora (matching host OS) provisioned",
-      "Project directory mounted into VM",
-      "Full write permissions enabled for agent",
-      "Git worktree creation works inside VM",
-      "Agent can run full startup sequence autonomously in VM",
-      "VM isolation ensures no leakage to host workstation"
-    ],
-    "passes": false
-  },
-  {
-    "category": "functional",
-    "description": "Perspective-aware namespace scoping: developer perspective respects active namespace, admin perspective shows all namespaces cluster-wide",
-    "steps": [
-      "Developer perspective filters functions to the active project/namespace selected via the OCP project selector",
-      "Admin perspective shows functions across all namespaces cluster-wide",
-      "ClusterService supports both modes: single-namespace watch (dev) and all-namespaces watch (admin)",
-      "Namespace column visible in admin perspective, hidden in dev perspective (redundant with project selector)"
+      "Download repo as tarball via octokit.repos.downloadTarballArchive()",
+      "Decompress gzip with DecompressionStream, parse tar format",
+      "Strip the prefix directory from extracted paths",
+      "Return FileEntry[] from extracted contents instead of N+1 getBlob calls"
     ],
     "passes": false
   }

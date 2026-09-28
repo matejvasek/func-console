@@ -2,22 +2,14 @@
 
 ## Startup Sequence
 
-Every session, before doing any work:
-
-1. `pwd` — confirm working directory
-2. Read `docs/claude-progress.txt` + `git log --oneline -10` — orient
-3. Read `docs/agent-struggles.json` — if unresolved entries exist, present to user
-4. Read `docs/features.json` — pick first `"passes": false` entry
-5. Run `./init.sh` — start dev env
-6. Run tests — verify app is healthy
-7. If broken → fix first. If clean → start [Feature Development Sequence](#feature-development-sequence).
+Handled by the `init-session` command (`.claude/commands/init-session.md`).
 
 ## Feature Development Sequence
 
 After [Startup Sequence](#startup-sequence), work through the picked feature:
 
-1. **Plan** — read `docs/ARCHITECTURE.md` + `docs/STYLEGUIDE.md` + `docs/TESTING.md`, then use `/brainstorming` to design the chosen feature from `docs/features.json`, then use `/writing-plans` to create implementation plan → `docs/plans/active/<NNN>-<type>-<short-name>.md`
-2. **Branch** — create feature branch per [Branching](#branching) convention
+1. **Branch** — create feature branch per [Branching](#branching) convention. Immediately push and open a **draft PR** (`gh pr create --draft`) to reserve the PR number for other contributors' branch numbering.
+2. **Plan** — read `docs/ARCHITECTURE.md` + `docs/STYLEGUIDE.md` + `docs/TESTING.md`, then use `/brainstorming` to design the chosen feature from `docs/features.json`, then use `/writing-plans` to create implementation plan → `docs/plans/active/<NNN>-<type>-<short-name>.md`
 3. **Implement** — using `/executing-plans` skill
 4. **Review** — code review using `/requesting-code-review` skill, fix found issues
 5. **Manual Test** — use browser automation and validate it works in the browser
@@ -31,7 +23,7 @@ For each comment: read the full text and its diff hunk context, make the fix, th
 
 ## Branching
 
-Create a feature branch per plan: `<NNN>-<type>-<short-name>` where `<NNN>` matches the plan number and `<type>` the conventional commit type as per our [Git Commit Guide](references/commit-message-guide.md#conventional-commits). Example: `001-feat-function-list-empty-state`. If we're on a feature branch already do nothing.
+Create a feature branch per plan: `<NNN>-<type>-<short-name>` where `<NNN>` is determined by `./hack/next-plan-number.sh` (next PR number on the remote) and `<type>` is the conventional commit type as per our [Git Commit Guide](references/commit-message-guide.md#conventional-commits). The plan file uses the same number. Example: `010-feat-function-list-empty-state`. If we're on a feature branch already do nothing.
 
 ## Pull Requests
 

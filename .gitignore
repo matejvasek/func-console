@@ -35,6 +35,8 @@ AGENTS.override.md
 # Local development configuration
 .dev
 .dev-logs
+.dev-pids
+.dev-env.json
 
 # Yarn v4 (Berry)
 .yarn/*
@@ -50,3 +52,6 @@ install-state.gz
 
 # Built binaries
 /bin
+pages/plugin.yaml
+backend/static/index.html
+backend/static/plugin.yaml

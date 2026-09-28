@@ -97,32 +97,110 @@
     "passes": true
   },
   {
+    "category": "technical",
+    "description": "CI/CD: GitHub Actions pipelines for PR checks and master publish to GHCR, plus lint fixes and README deployment instructions",
+    "steps": [
+      "PR pipeline (.github/workflows/pr.yml): triggers on pull_request to master, runs yarn install --immutable, yarn lint, yarn test — branch cannot merge without passing checks and an approval",
+      "Publish pipeline (.github/workflows/publish.yml): triggers on push to master (merged PRs), runs yarn install --immutable, yarn lint, yarn test, then builds multi-arch container image via docker/build-push-action using existing Dockerfile and pushes to ghcr.io/twogiants/console-functions-plugin with :latest and :sha-<commit> tags",
+      "Both pipelines use actions/setup-node@v4 with node-version 22, corepack enable, and cache: yarn for Yarn install caching (GitHub runners ship Node 20 by default with corepack disabled)",
+      "Both pipelines authenticate to GHCR using GITHUB_TOKEN secret with packages:write permission (token added to repo's Actions secrets)",
+      "Add yarn lint script to package.json if missing, run it, and fix all lint errors in the codebase",
+      "Update README.md deployment section (lines 96-117) — replace generic Helm boilerplate, placeholder commands, and obsolete OCP 4.10 / i18n notes with concrete instructions: oc new-project console-functions-plugin, helm upgrade -i console-functions-plugin charts/openshift-console-plugin -n console-functions-plugin --create-namespace --set plugin.image=ghcr.io/twogiants/console-functions-plugin:latest@sha256:<digest>"
+    ],
+    "passes": true
+  },
+  {
     "category": "functional",
     "description": "GitHub PAT Avatar: session-wide PAT entry via modal + avatar component showing authenticated GitHub user",
     "steps": [
       "PatModal opens automatically on first visit to Function List Page when no PAT is stored in session",
       "PatModal is dismissable — user can close it without entering a PAT",
       "PatModal validates the PAT against GitHub API and on success stores it in session and closes",
-      "SourceControlService interface extended with init(pat: string) and isInitialized(): boolean methods; GithubService implementation updated accordingly",
       "UserAvatar component renders inside ListPageHeader at the top-right corner on every page (list, create, edit)",
       "UserAvatar has two states: not initialized shows 'Connect to GitHub' with a key/lock icon (clickable, opens PatModal); initialized shows GitHub username with avatar icon",
       "UserAvatar is clickable only on the Function List Page, clicking reopens PatModal to change the PAT and associated GitHub user",
       "On Create and Edit pages, UserAvatar displays the GitHub user but is not clickable (PAT cannot be changed from those pages)",
       "When PatModal is dismissed without a PAT, the Function List Page (both empty state and table view) shows a hint text directing the user to click 'Connect to GitHub' in the top-right corner to set a PAT",
-      "PAT change logic is encapsulated in a useUserAvatar custom hook following layered architecture (Hook imports Service, Component imports Hook)"
+      "PAT change logic is encapsulated in a useUserAvatar custom hook following layered architecture (Hook imports Service, Component imports Hook)",
+      "If the GH PAT is not set in the session then the Create button is inactive/disabled.",
+      "The GH PAT must not be compiled/hardcode into code at compile time."
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "functional",
-    "description": "Function List Page shows deployed functions from all user-accessible namespaces without requiring a PAT",
+    "description": "Function Edit Page with TreeView file browser and CodeEditor for editing and deploying function code",
     "steps": [
-      "ClusterService refactored: remove ALL_NAMESPACES and useActiveNamespace logic, always watch across all user-accessible namespaces (functions in GitHub repos can target different namespaces via func.yaml, so single-namespace view is not useful; filtering deferred to a later feature)",
-      "ClusterService lists all namespaces/projects accessible to the logged-in user and watches Deployments with label function.knative.dev/name across all of them",
-      "Function List Page renders deployed functions even when no PAT has been entered (PatModal dismissed or not yet shown)",
-      "When PAT is later provided, repo data from SourceControlService is merged with already-visible deployed functions",
-      "Deployed functions without a matching repo still appear in the table with available cluster data (name, namespace, status, replicas, url)"
+      "SourceControlService extended with fetch(repo) and updateRepo(repo) methods. fetch retrieves full repo tree via git.getTree recursive + blob fetches. updateRepo commits on existing branches with local commit SHA cache for GitHub's eventual consistency",
+      "Navigate to /faas/edit/:name loads files from GitHub via listFunctionRepos + fetch (each page loads its own data from URL params)",
+      "Page layout: toolbar at top (Back link left, success/danger Alert center, Save & Deploy button right), FileTreeView fixed-width left panel (16rem, horizontally scrollable), SDK CodeEditor fills remaining width (70vh height)",
+      "FileTreeView builds nested tree from flat FileEntry[] paths with loading spinner state, empty placeholder state, directories expand/collapse only, files are selectable and update CodeEditor content",
+      "SDK CodeEditor with empty state (code icon + 'Start editing' message) when no file selected, language label visible in header",
+      "CodeEditor language auto-detected from file extension via getLanguageFromPath utility",
+      "Handler file auto-selected on load based on runtime from func.yaml (no fallback selection if handler not found)",
+      "Modified files indicated in tree with dot indicator after filename, dirty state derived by comparing working content against original per file on every onChange",
+      "Save & Deploy button pushes all files to GitHub via updateRepo, resets dirty state on success, shows spinner and disables button during push, shows success alert with auto-dismiss after 2 seconds",
+      "Back to Functions link navigates to /faas directly if clean, shows unsaved changes confirmation modal if dirty",
+      "Empty tree with 'No files' placeholder and disabled Save & Deploy when repo not found, back link always visible"
     ],
-    "passes": false
+    "passes": true
+  },
+  {
+    "category": "technical",
+    "description": "Better testing server setup (init.sh)",
+    "steps": [
+      "The --stop operation shall employ PID files, not kill processes by name.",
+      "The ports (go backend 8080, webpack server 9001, webconsole container 9000) shall randomized, so it's possible to run multiple testing servers (for multiple Claude instances).",
+      "The randomized ports shall be available to the Claude via a file.",
+      "The go backend service should be automatically recompiled/restarted upon change to the ./backend directory."
+    ],
+    "passes": true
+  },
+  {
+    "category": "functional",
+    "description": "Set GitHub Secret (KUBECONFIG) on created function repos so GH Actions can deploy to the cluster",
+    "steps": [
+      "Add createSecret method to SourceControlService interface",
+      "Encrypt secret value with repo public key using tweetnacl or libsodium.js",
+      "Wire into create flow: set KUBECONFIG secret before push so the workflow has credentials from the first run",
+      "GH Actions workflow can authenticate to the cluster and run func deploy"
+    ],
+    "passes": true
+  },
+  {
+    "category": "technical",
+    "description": "Restructure project so page-specific components and hooks live close to their page, not in a shared /components directory",
+    "steps": [
+      "Evaluate co-location strategy (inline, page folder, or hybrid) and document the chosen convention",
+      "Move CreateFunctionForm (+ test) into FunctionCreatePage directory (only used by CreatePage)",
+      "Move FileTreeView (+ test) into FunctionEditPage directory (only used by EditPage)",
+      "Move FunctionTable (+ test) into FunctionListPage directory (only used by ListPage)",
+      "Verify shared components stay in /components: EmptyState (used by ListPage and EditPage), UserAvatar (used by all 3 pages)",
+      "Update docs/ARCHITECTURE.md with the chosen co-location convention",
+      "All tests pass, no broken imports"
+    ],
+    "passes": true
+  },
+  {
+    "category": "technical",
+    "description": "Landing page: copy buttons handle clipboard failures gracefully (non-HTTPS, permission denied)",
+    "steps": [
+      "Pre-check navigator.clipboard availability before calling writeText",
+      "Catch writeText rejections (e.g. permission denied, iframe sandbox)",
+      "Error state shows X icon with 'Copy failed' label on hover, auto-clears after 1.5s",
+      "Both copy buttons (install command and YAML) have error handling"
+    ],
+    "passes": true
+  },
+  {
+    "category": "technical",
+    "description": "GitHub Pages local development: script to generate plugin.yaml and serve the pages site locally",
+    "steps": [
+      "Add a script (e.g. hack/pages-dev.sh) that runs helm template to generate plugin.yaml into pages/",
+      "Script starts a local HTTP server (e.g. python -m http.server) to serve pages/ so fetch('plugin.yaml') works",
+      "Add pages/plugin.yaml to .gitignore so the generated file is not committed",
+      "Document usage in README or script header"
+    ],
+    "passes": true
   }
 ]

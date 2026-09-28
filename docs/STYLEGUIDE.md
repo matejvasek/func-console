@@ -17,10 +17,16 @@
 - **No `any` type**: Use proper TypeScript types.
 - **No `console.log`**: Use structured approach if logging needed.
 - **Naming**: `use*` for hooks, `*Service` for services, PascalCase for components/types.
+- **Co-locate helper functions**: Keep helper functions in the same file as the component or hook that uses them. Test them indirectly through the consumer's tests. Only extract to `utils/` when shared across multiple unrelated modules.
 
 ## Documentation
 
 - **No em dashes (`—`)**. Use commas, periods, or parentheses instead.
+
+## CSS
+
+- **PatternFly first**: Use PatternFly component props for all layout and spacing. Only fall back to custom CSS when PatternFly does not cover the need.
+- **Relative units only**: When custom CSS is necessary, use `rem` and `em` for all sizing. Never use `px`.
 
 ## OCP Plugin Styling Constraints
 

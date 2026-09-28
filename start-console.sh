@@ -2,8 +2,23 @@
 
 set -euo pipefail
 
+# Parse CLI arguments (all optional, with defaults)
+BACKEND_PORT=8080
+PLUGIN_PORT=9001
+CIDFILE=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --backend-port) BACKEND_PORT="$2"; shift 2 ;;
+    --plugin-port) PLUGIN_PORT="$2"; shift 2 ;;
+    --console-port) CONSOLE_PORT="$2"; shift 2 ;;
+    --cidfile) CIDFILE="$2"; shift 2 ;;
+    *) echo "Unknown argument: $1"; exit 1 ;;
+  esac
+done
+
 CONSOLE_IMAGE=${CONSOLE_IMAGE:="quay.io/openshift/origin-console:latest"}
-CONSOLE_PORT=${CONSOLE_PORT:=9000}
+CONSOLE_PORT=${CONSOLE_PORT:-9000}
 CONSOLE_IMAGE_PLATFORM=${CONSOLE_IMAGE_PLATFORM:="linux/amd64"}
 
 # Plugin metadata is declared in package.json
@@ -42,24 +57,29 @@ echo "Console Platform: $CONSOLE_IMAGE_PLATFORM"
 # Prefer podman if installed. Otherwise, fall back to docker.
 if [ -x "$(command -v podman)" ]; then
     CONTAINER_CMD="podman"
-    if [ "$(uname -s)" = "Linux" ]; then
-        # Use host networking on Linux since host.containers.internal is unreachable in some environments.
-        PLUGIN_HOST="localhost"
-        CONTAINER_NETWORK_OPTS="--network=host"
-    else
-        PLUGIN_HOST="host.containers.internal"
-        CONTAINER_NETWORK_OPTS="-p ${CONSOLE_PORT}:9000"
-    fi
+    PLUGIN_HOST="host.containers.internal"
 else
     CONTAINER_CMD="docker"
     PLUGIN_HOST="host.docker.internal"
-    CONTAINER_NETWORK_OPTS="-p ${CONSOLE_PORT}:9000"
+fi
+CONTAINER_NETWORK_OPTS="-p ${CONSOLE_PORT}:9000"
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    CONTAINER_NETWORK_OPTS="${CONTAINER_NETWORK_OPTS} --add-host api.crc.testing:host-gateway"
 fi
 
-BRIDGE_PLUGINS="${PLUGIN_NAME}=http://${PLUGIN_HOST}:9001"
-BRIDGE_PLUGIN_PROXY='{"services":[{"consoleAPIPath":"/api/proxy/plugin/'"${PLUGIN_NAME}"'/backend/","endpoint":"http://'"${PLUGIN_HOST}"':8080","authorize":false}]}'
+BRIDGE_PLUGINS="${PLUGIN_NAME}=http://${PLUGIN_HOST}:${PLUGIN_PORT}"
+BRIDGE_PLUGIN_PROXY='{"services":[{"consoleAPIPath":"/api/proxy/plugin/'"${PLUGIN_NAME}"'/backend/","endpoint":"http://'"${PLUGIN_HOST}"':'"${BACKEND_PORT}"'","authorize":false}]}'
+
+# Allow browser to connect to GitHub API (CSP connect-src).
+# Production uses ConsolePlugin.spec.contentSecurityPolicy instead.
+BRIDGE_CONTENT_SECURITY_POLICY="connect-src=https://api.github.com"
 
 echo "BRIDGE_PLUGINS=$BRIDGE_PLUGINS"
 echo "BRIDGE_PLUGIN_PROXY=$BRIDGE_PLUGIN_PROXY"
 
-$CONTAINER_CMD run --pull always --platform $CONSOLE_IMAGE_PLATFORM --rm $CONTAINER_NETWORK_OPTS --env-file <(env | grep ^BRIDGE) $CONSOLE_IMAGE
+CIDFILE_OPTS=""
+if [ -n "$CIDFILE" ]; then
+  CIDFILE_OPTS="--cidfile $CIDFILE"
+fi
+
+$CONTAINER_CMD run --pull always --platform $CONSOLE_IMAGE_PLATFORM --rm $CIDFILE_OPTS $CONTAINER_NETWORK_OPTS --env-file <(env | grep ^BRIDGE) $CONSOLE_IMAGE
