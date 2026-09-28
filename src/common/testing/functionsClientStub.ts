@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { BACKEND_API } from '../testing/constants';
 import { server } from '../testing/mswServer';
 import { FunctionListItem } from '../types';
-import { BuildSnapshot } from '../clients/functionsClient';
+import { BuildStatusMap } from '../clients/functionsClient';
 
 // -----------------------------------------------------------------------------
 // Test Doubles ----------------------------------------------------------------
@@ -49,23 +49,20 @@ export function listFunctionsStub(
 export function watchBuildsStub(err: { message: string; status: number }): void;
 
 // Static snapshot response
-export function watchBuildsStub(snapshot: BuildSnapshot['functions']): void;
+export function watchBuildsStub(buildStatuses: BuildStatusMap): void;
 
 // Dynamic stream from async iterable (for state transition tests)
-export function watchBuildsStub(iterable: AsyncIterable<BuildSnapshot['functions']>): void;
+export function watchBuildsStub(buildStatusesSeq: AsyncIterable<BuildStatusMap>): void;
 
 export function watchBuildsStub(
-  val:
-    | BuildSnapshot['functions']
-    | { message: string; status: number }
-    | AsyncIterable<BuildSnapshot['functions']>,
+  val: BuildStatusMap | { message: string; status: number } | AsyncIterable<BuildStatusMap>,
 ) {
   if (typeof val === 'object' && Symbol.asyncIterator in val) {
     watchBuildsStreamStub(val);
   } else if ('message' in val && 'status' in val) {
     watchBuildsErrorStub(val as { message: string; status: number });
   } else {
-    watchBuildsSnapshotStub(val as BuildSnapshot['functions']);
+    watchBuildsSnapshotStub(val as BuildStatusMap);
   }
 }
 
@@ -77,7 +74,7 @@ function watchBuildsErrorStub(err: { message: string; status: number }) {
   );
 }
 
-function watchBuildsSnapshotStub(snapshot: BuildSnapshot['functions']) {
+function watchBuildsSnapshotStub(snapshot: BuildStatusMap) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -96,15 +93,15 @@ function watchBuildsSnapshotStub(snapshot: BuildSnapshot['functions']) {
   );
 }
 
-function watchBuildsStreamStub(iterable: AsyncIterable<BuildSnapshot['functions']>) {
+function watchBuildsStreamStub(buildStatusesSeq: AsyncIterable<BuildStatusMap>) {
   server.use(
     http.get(`${BACKEND_API}/api/v1/func/build/watch`, async () => {
       const encoder = new TextEncoder();
       const stream = new ReadableStream<Uint8Array>({
         async start(controller) {
           try {
-            for await (const functions of iterable) {
-              const frame = `event: build-status\ndata: ${JSON.stringify({ functions })}\n\n`;
+            for await (const buildStatuses of buildStatusesSeq) {
+              const frame = `event: build-status\ndata: ${JSON.stringify({ functions: buildStatuses })}\n\n`;
               controller.enqueue(encoder.encode(frame));
             }
             controller.close();

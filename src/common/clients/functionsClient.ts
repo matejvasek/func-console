@@ -14,9 +14,11 @@ import {
 
 const RECONNECT_DELAY_MS = 3000;
 
+export type BuildStatusMap = Record<string, BuildStatus>;
+
 export interface BuildSnapshot {
   // Keyed by "owner/repo", the identifier a function is correlated on.
-  functions: Record<string, BuildStatus>;
+  functions: BuildStatusMap;
 }
 
 export interface BuildSnapshotEvent {

@@ -5,9 +5,9 @@ import { authenticateGithubFake, logoutGithubFake } from '../../common/testing/a
 import { listFunctionsStub, watchBuildsStub } from '../../common/testing/functionsClientStub';
 import { server } from '../../common/testing/mswServer';
 import { FunctionListItem } from '../../common/types';
-import { BuildSnapshot } from '../../common/clients/functionsClient';
 import { AsyncQueue } from '../../common/utils/AsyncQueue';
 import FunctionsListPage from './FunctionsListPage';
+import { BuildStatusMap } from '../../common/clients/functionsClient';
 
 // vi.mock is hoisted above imports, so regular imports aren't available in the factory.
 // vi.hoisted runs before vi.mock, making the sdkTestDoubles available to the factory.
@@ -141,9 +141,9 @@ describe('FunctionsListPage', () => {
   }
 
   it('transitions build status from NotDeployed -> Building -> Succeeded', async () => {
-    using snapshots = new AsyncQueue<BuildSnapshot['functions']>();
+    using buildStatusesSeq = new AsyncQueue<BuildStatusMap>();
     listFunctionsStub({ responses: [repoListItem(funcName)] });
-    watchBuildsStub(snapshots);
+    watchBuildsStub(buildStatusesSeq);
 
     render(
       <MemoryRouter>
@@ -156,7 +156,7 @@ describe('FunctionsListPage', () => {
     expect(screen.queryByLabelText('Build in progress')).not.toBeInTheDocument();
 
     // Emit Building status
-    snapshots.enqueue({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } });
+    buildStatusesSeq.enqueue({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } });
 
     // Should show building indicator
     await waitFor(() => {
@@ -164,7 +164,7 @@ describe('FunctionsListPage', () => {
     });
 
     // Emit Succeeded status
-    snapshots.enqueue({ [`twoGiants/${funcName}`]: { buildStatus: 'Succeeded' } });
+    buildStatusesSeq.enqueue({ [`twoGiants/${funcName}`]: { buildStatus: 'Succeeded' } });
 
     // Building indicator should disappear (Succeeded on NotDeployed shows nothing)
     await waitFor(() => {
@@ -173,13 +173,13 @@ describe('FunctionsListPage', () => {
   });
 
   it('updates multiple functions with different status transitions', async () => {
-    using snapshots = new AsyncQueue<BuildSnapshot['functions']>();
+    using buildStatusesSeq = new AsyncQueue<BuildStatusMap>();
     const func1 = 'func-alpha';
     const func2 = 'func-beta';
     listFunctionsStub({
       responses: [repoListItem('repo-alpha', func1), repoListItem('repo-beta', func2)],
     });
-    watchBuildsStub(snapshots);
+    watchBuildsStub(buildStatusesSeq);
 
     render(
       <MemoryRouter>
@@ -192,7 +192,7 @@ describe('FunctionsListPage', () => {
     expect(screen.getByText(func2)).toBeInTheDocument();
 
     // Snapshot: func-alpha Building
-    snapshots.enqueue({
+    buildStatusesSeq.enqueue({
       [`twoGiants/repo-alpha`]: { buildStatus: 'Building' },
     });
     await waitFor(() => {
@@ -203,7 +203,7 @@ describe('FunctionsListPage', () => {
     });
 
     // Snapshot: func-alpha Succeeded, func-beta Building
-    snapshots.enqueue({
+    buildStatusesSeq.enqueue({
       [`twoGiants/repo-alpha`]: { buildStatus: 'Succeeded' },
       [`twoGiants/repo-beta`]: { buildStatus: 'Building' },
     });
@@ -215,7 +215,7 @@ describe('FunctionsListPage', () => {
     });
 
     // Snapshot: both Succeeded
-    snapshots.enqueue({
+    buildStatusesSeq.enqueue({
       [`twoGiants/repo-alpha`]: { buildStatus: 'Succeeded' },
       [`twoGiants/repo-beta`]: { buildStatus: 'Succeeded' },
     });
