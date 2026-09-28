@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { BuildStatus } from '../types';
 import {
   BuildSnapshot,
   BuildStatusEventSource,
+  BuildStatusMap,
   createBuildStatusEventSource,
 } from './functionsClient';
 
@@ -13,8 +13,8 @@ import {
 export function useBuildStatus(
   connectionId?: number,
   eventSource?: BuildStatusEventSource,
-): { statuses: Readonly<Record<string, BuildStatus>>; error?: string } {
-  const [statuses, setStatuses] = useState<Record<string, BuildStatus>>({});
+): { statuses: Readonly<BuildStatusMap>; error?: string } {
+  const [statuses, setStatuses] = useState<BuildStatusMap>({});
   const [error, setError] = useState<string>();
 
   useEffect(() => {
