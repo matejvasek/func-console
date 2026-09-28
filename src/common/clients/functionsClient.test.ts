@@ -329,6 +329,7 @@ describe('createBuildStatusEventSource', () => {
 
     vi.mocked(consoleFetch).mockImplementation(
       (_url: string, _options?: RequestInit, timeout?: number) => {
+        if (timeout === undefined) timeout = 60_000;
         const stream = new ReadableStream<Uint8Array>({
           start(controller) {
             const encoder = new TextEncoder();
