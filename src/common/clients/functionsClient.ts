@@ -14,15 +14,9 @@ import {
 
 const RECONNECT_DELAY_MS = 3000;
 
-export interface BuildStatusItem {
-  buildStatus: BuildStatus['buildStatus'];
-  conclusion?: string;
-  runURL?: string;
-}
-
 export interface BuildSnapshot {
   // Keyed by "owner/repo", the identifier a function is correlated on.
-  functions: Record<string, BuildStatusItem>;
+  functions: Record<string, BuildStatus>;
 }
 
 export interface BuildSnapshotEvent {
