@@ -141,9 +141,9 @@ describe('FunctionsListPage', () => {
   }
 
   it('transitions build status from NotDeployed -> Building -> Succeeded', async () => {
-    using queue = new AsyncQueue<BuildSnapshot['functions']>();
+    using snapshots = new AsyncQueue<BuildSnapshot['functions']>();
     listFunctionsStub({ responses: [repoListItem(funcName)] });
-    watchBuildsStub(queue);
+    watchBuildsStub(snapshots);
 
     render(
       <MemoryRouter>
@@ -156,7 +156,7 @@ describe('FunctionsListPage', () => {
     expect(screen.queryByLabelText('Build in progress')).not.toBeInTheDocument();
 
     // Emit Building status
-    queue.enqueue({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } });
+    snapshots.enqueue({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } });
 
     // Should show building indicator
     await waitFor(() => {
@@ -164,7 +164,7 @@ describe('FunctionsListPage', () => {
     });
 
     // Emit Succeeded status
-    queue.enqueue({ [`twoGiants/${funcName}`]: { buildStatus: 'Succeeded' } });
+    snapshots.enqueue({ [`twoGiants/${funcName}`]: { buildStatus: 'Succeeded' } });
 
     // Building indicator should disappear (Succeeded on NotDeployed shows nothing)
     await waitFor(() => {
@@ -173,13 +173,13 @@ describe('FunctionsListPage', () => {
   });
 
   it('updates multiple functions with different status transitions', async () => {
-    using queue = new AsyncQueue<BuildSnapshot['functions']>();
+    using snapshots = new AsyncQueue<BuildSnapshot['functions']>();
     const func1 = 'func-alpha';
     const func2 = 'func-beta';
     listFunctionsStub({
       responses: [repoListItem('repo-alpha', func1), repoListItem('repo-beta', func2)],
     });
-    watchBuildsStub(queue);
+    watchBuildsStub(snapshots);
 
     render(
       <MemoryRouter>
@@ -192,7 +192,7 @@ describe('FunctionsListPage', () => {
     expect(screen.getByText(func2)).toBeInTheDocument();
 
     // Snapshot: func-alpha Building
-    queue.enqueue({
+    snapshots.enqueue({
       [`twoGiants/repo-alpha`]: { buildStatus: 'Building' },
     });
     await waitFor(() => {
@@ -203,7 +203,7 @@ describe('FunctionsListPage', () => {
     });
 
     // Snapshot: func-alpha Succeeded, func-beta Building
-    queue.enqueue({
+    snapshots.enqueue({
       [`twoGiants/repo-alpha`]: { buildStatus: 'Succeeded' },
       [`twoGiants/repo-beta`]: { buildStatus: 'Building' },
     });
@@ -215,7 +215,7 @@ describe('FunctionsListPage', () => {
     });
 
     // Snapshot: both Succeeded
-    queue.enqueue({
+    snapshots.enqueue({
       [`twoGiants/repo-alpha`]: { buildStatus: 'Succeeded' },
       [`twoGiants/repo-beta`]: { buildStatus: 'Succeeded' },
     });
