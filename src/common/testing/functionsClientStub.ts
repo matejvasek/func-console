@@ -61,54 +61,61 @@ export function watchBuildsStub(
     | AsyncIterable<BuildSnapshot['functions']>,
 ) {
   if (typeof val === 'object' && Symbol.asyncIterator in val) {
-    // Dynamic stream from queue
-    server.use(
-      http.get(`${BACKEND_API}/api/v1/func/build/watch`, async () => {
-        const encoder = new TextEncoder();
-        const stream = new ReadableStream<Uint8Array>({
-          async start(controller) {
-            try {
-              for await (const functions of val) {
-                const frame = `event: build-status\ndata: ${JSON.stringify({ functions })}\n\n`;
-                controller.enqueue(encoder.encode(frame));
-              }
-              controller.close();
-            } catch (e) {
-              controller.error(e);
-            }
-          },
-        });
-        return new Response(stream, {
-          headers: { 'Content-Type': 'text/event-stream' },
-        });
-      }),
-    );
+    watchBuildsStreamStub(val);
   } else if ('message' in val && 'status' in val) {
-    // Error response
-    const err = val as { message: string; status: number };
-    server.use(
-      http.get(`${BACKEND_API}/api/v1/func/build/watch`, () =>
-        HttpResponse.json({ error: err.message }, { status: err.status }),
-      ),
-    );
+    watchBuildsErrorStub(val as { message: string; status: number });
   } else {
-    // SSE stream response with single snapshot, connection stays open
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        const frame = `event: build-status\ndata: ${JSON.stringify({ functions: val })}\n\n`;
-        controller.enqueue(encoder.encode(frame));
-        // Never close - keep connection alive indefinitely
-      },
-    });
-    server.use(
-      http.get(
-        `${BACKEND_API}/api/v1/func/build/watch`,
-        () =>
-          new Response(stream, {
-            headers: { 'Content-Type': 'text/event-stream' },
-          }),
-      ),
-    );
+    watchBuildsSnapshotStub(val as BuildSnapshot['functions']);
   }
+}
+
+function watchBuildsErrorStub(err: { message: string; status: number }) {
+  server.use(
+    http.get(`${BACKEND_API}/api/v1/func/build/watch`, () =>
+      HttpResponse.json({ error: err.message }, { status: err.status }),
+    ),
+  );
+}
+
+function watchBuildsSnapshotStub(snapshot: BuildSnapshot['functions']) {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const frame = `event: build-status\ndata: ${JSON.stringify({ functions: snapshot })}\n\n`;
+      controller.enqueue(encoder.encode(frame));
+    },
+  });
+  server.use(
+    http.get(
+      `${BACKEND_API}/api/v1/func/build/watch`,
+      () =>
+        new Response(stream, {
+          headers: { 'Content-Type': 'text/event-stream' },
+        }),
+    ),
+  );
+}
+
+function watchBuildsStreamStub(iterable: AsyncIterable<BuildSnapshot['functions']>) {
+  server.use(
+    http.get(`${BACKEND_API}/api/v1/func/build/watch`, async () => {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          try {
+            for await (const functions of iterable) {
+              const frame = `event: build-status\ndata: ${JSON.stringify({ functions })}\n\n`;
+              controller.enqueue(encoder.encode(frame));
+            }
+            controller.close();
+          } catch (e) {
+            controller.error(e);
+          }
+        },
+      });
+      return new Response(stream, {
+        headers: { 'Content-Type': 'text/event-stream' },
+      });
+    }),
+  );
 }
