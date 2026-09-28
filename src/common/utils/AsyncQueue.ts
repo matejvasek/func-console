@@ -9,50 +9,50 @@
 // If you're not using queues extensively, you should be.
 // You should start right away, like right after this talk." -Rich Hickey
 export class AsyncQueue<T> implements AsyncIterable<T>, AsyncIterator<T>, Disposable {
-  private static readonly CLOSED_ERROR = 'queue closed';
+  static readonly #CLOSED_ERROR = 'queue closed';
 
-  private queue: T[] = [];
-  private consumers: ((result: IteratorResult<T>) => void)[] = [];
-  private closed: boolean = false;
+  #queue: T[] = [];
+  #consumers: ((result: IteratorResult<T>) => void)[] = [];
+  #closed: boolean = false;
 
   enqueue(value: T): void {
-    if (this.closed) throw new Error(AsyncQueue.CLOSED_ERROR);
-    if (this.consumers.length > 0) {
-      const resolve = this.consumers.shift()!;
+    if (this.#closed) throw new Error(AsyncQueue.#CLOSED_ERROR);
+    if (this.#consumers.length > 0) {
+      const resolve = this.#consumers.shift()!;
       resolve({ done: false, value });
     } else {
-      this.queue.push(value);
+      this.#queue.push(value);
     }
   }
 
   async next(): Promise<IteratorResult<T>> {
-    if (this.queue.length > 0) {
-      return { done: false, value: this.queue.shift()! };
+    if (this.#queue.length > 0) {
+      return { done: false, value: this.#queue.shift()! };
     }
-    if (this.closed) {
+    if (this.#closed) {
       return { done: true, value: undefined };
     }
 
     return new Promise<IteratorResult<T>>((resolve) => {
-      this.consumers.push(resolve);
+      this.#consumers.push(resolve);
     });
   }
 
   async dequeue(): Promise<T> {
     const result = await this.next();
     if (result.done) {
-      throw new Error(AsyncQueue.CLOSED_ERROR);
+      throw new Error(AsyncQueue.#CLOSED_ERROR);
     }
     return result.value;
   }
 
   close() {
-    if (this.closed) throw new Error(AsyncQueue.CLOSED_ERROR);
-    this.closed = true;
-    this.consumers.forEach((resolve) => {
+    if (this.#closed) throw new Error(AsyncQueue.#CLOSED_ERROR);
+    this.#closed = true;
+    this.#consumers.forEach((resolve) => {
       resolve({ done: true, value: undefined });
     });
-    this.consumers.length = 0;
+    this.#consumers.length = 0;
   }
 
   [Symbol.asyncIterator]() {
@@ -60,7 +60,7 @@ export class AsyncQueue<T> implements AsyncIterable<T>, AsyncIterator<T>, Dispos
   }
 
   [Symbol.dispose](): void {
-    if (!this.closed) {
+    if (!this.#closed) {
       this.close();
     }
   }
