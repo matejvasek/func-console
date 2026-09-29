@@ -153,12 +153,12 @@ func (c *ghClient) latestWorkflowRun(ctx context.Context, owner, repo, branch, w
 		if isNotFound(err) {
 			// No such workflow here (a non-func repo, or it has not been
 			// pushed yet). Treat it as a repo with no runs.
-			return scm.WorkflowRun{BuildStatus: scm.None}, nil
+			return scm.WorkflowRun{}, nil
 		}
-		return scm.WorkflowRun{BuildStatus: scm.None}, fmt.Errorf("list workflow runs for %s/%s (%s): %w", owner, repo, workflowFile, mapErr(err))
+		return scm.WorkflowRun{}, fmt.Errorf("list workflow runs for %s/%s (%s): %w", owner, repo, workflowFile, mapErr(err))
 	}
 	if len(runs.WorkflowRuns) == 0 {
-		return scm.WorkflowRun{BuildStatus: scm.None}, nil
+		return scm.WorkflowRun{}, nil
 	}
 
 	// GitHub returns runs in created_at descending order by default, so with

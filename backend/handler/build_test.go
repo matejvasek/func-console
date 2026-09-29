@@ -131,7 +131,7 @@ var _ = Describe("BuildWatch", func() {
 		reader := startWatchStream(stub, ticker.SilentTickerFactory())
 
 		ch <- scm.WorkflowRunsOrErr{
-			Runs: map[string]scm.WorkflowRun{"alice/fn": {BuildStatus: scm.None}},
+			Runs: map[string]scm.WorkflowRun{"alice/fn": {}},
 		}
 		frame, ok := readSSEDataWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a frame for the snapshot")

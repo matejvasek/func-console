@@ -2,6 +2,7 @@ package scm
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 )
@@ -97,14 +98,36 @@ func (w *stubWatch) Stop() {
 	close(w.ch)
 }
 
-type BuildStatus string
+type BuildStatus int
 
 const (
-	None      BuildStatus = "None"
-	Building  BuildStatus = "Building"
-	Succeeded BuildStatus = "Succeeded"
-	Failed    BuildStatus = "Failed"
+	None BuildStatus = iota
+	Building
+	Succeeded
+	Failed
 )
+
+func (b BuildStatus) String() string {
+	switch b {
+	case None:
+		return "None"
+	case Building:
+		return "Building"
+	case Succeeded:
+		return "Succeeded"
+	case Failed:
+		return "Failed"
+	}
+	return fmt.Sprintf("unknown BuildStatus: %d", b)
+}
+
+func (b BuildStatus) MarshalJSON() ([]byte, error) {
+	bs, err := json.Marshal(b.String())
+	if err != nil {
+		return nil, fmt.Errorf("cannot deserialize BuildStatus: %w", err)
+	}
+	return bs, nil
+}
 
 // WorkflowRun is the latest GitHub Actions run of a specific workflow file on a
 // repo branch. A nil *WorkflowRun means the workflow has no runs on that branch
