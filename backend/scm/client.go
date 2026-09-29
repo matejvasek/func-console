@@ -79,8 +79,8 @@ type FileEntry struct {
 }
 
 type WorkflowRunsOrErr struct {
-	Runs map[string]WorkflowRun
-	Err  error
+	Runs map[string]WorkflowRun `json:"statuses"`
+	Err  error                  `json:"error,omitempty"`
 }
 
 type WorkflowWatch interface {
@@ -110,8 +110,8 @@ const (
 // repo branch. A nil *WorkflowRun means the workflow has no runs on that branch
 // (including when the workflow file does not exist in the repo).
 type WorkflowRun struct {
-	BuildStatus BuildStatus
-	HTMLURL     string
+	BuildStatus BuildStatus `json:"buildStatus"`
+	HTMLURL     string      `json:"runURL,omitempty"`
 }
 
 type ClientStub struct {

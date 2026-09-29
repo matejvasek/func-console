@@ -17,15 +17,6 @@ import (
 
 const defaultHeartbeat = 15 * time.Second
 
-type buildStatusItem struct {
-	BuildStatus string `json:"buildStatus"` // Building | Succeeded | Failed | None
-	RunURL      string `json:"runURL,omitempty"`
-}
-
-type buildSnapshot struct {
-	Functions map[string]buildStatusItem `json:"statuses"`
-}
-
 func BuildWatch(opts ...WatchOption) http.HandlerFunc {
 	cfg := watchConfig{
 		newSCMClient: func(pat string) scm.Client {
@@ -101,7 +92,7 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 				flusher.Flush()
 				return
 			}
-			data, err := json.Marshal(toSnapshot(event.Runs))
+			data, err := json.Marshal(event)
 			if err != nil {
 				slog.Warn("build watch: marshal snapshot failed", "err", err)
 				continue
@@ -130,21 +121,6 @@ func WithHeartbeatTickerFactory(f ticker.Factory) WatchOption {
 		panic("heartbeat factory must not be nil")
 	}
 	return func(c *watchConfig) { c.heartbeatFactory = f }
-}
-
-func toSnapshot(runs map[string]scm.WorkflowRun) buildSnapshot {
-	items := make(map[string]buildStatusItem, len(runs))
-	for k, v := range runs {
-		items[k] = toBuildStatusItem(v)
-	}
-	return buildSnapshot{Functions: items}
-}
-
-func toBuildStatusItem(run scm.WorkflowRun) buildStatusItem {
-	return buildStatusItem{
-		BuildStatus: string(run.BuildStatus),
-		RunURL:      run.HTMLURL,
-	}
 }
 
 func writeSnapshotEvent(w io.Writer, data []byte) error {
