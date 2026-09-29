@@ -167,11 +167,32 @@ func (c *ghClient) latestWorkflowRun(ctx context.Context, owner, repo, branch, w
 	// PerPage 1 the single element WorkflowRuns[0] is the newest run.
 	run := runs.WorkflowRuns[0]
 	result := &scm.WorkflowRun{
-		ID:         run.GetID(),
-		Status:     run.GetStatus(),
-		Conclusion: run.GetConclusion(),
-		HeadSHA:    run.GetHeadSHA(),
-		HTMLURL:    run.GetHTMLURL(),
+		BuildStatus: deriveBuildStatus(run),
+		HTMLURL:     run.GetHTMLURL(),
 	}
 	return result, nil
+}
+
+func deriveBuildStatus(run *ghlib.WorkflowRun) scm.BuildStatus {
+	if run == nil {
+		return scm.None
+	}
+	switch run.GetStatus() {
+	// "waiting", "requested", "pending" mean a run exists but has not finished.
+	case "queued", "in_progress", "waiting", "requested", "pending":
+		return scm.Building
+	case "completed":
+		switch run.GetConclusion() {
+		case "success":
+			return scm.Succeeded
+		case "failure", "cancelled", "timed_out":
+			return scm.Failed
+		default:
+			// GitHub conclusions "skipped", "neutral", "stale", "action_required"
+			// do not indicate success or failure, so report no build status change.
+			return scm.None
+		}
+	default:
+		return scm.None
+	}
 }

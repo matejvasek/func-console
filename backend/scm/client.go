@@ -104,15 +104,21 @@ func (w *stubWatch) Stop() {
 	close(w.ch)
 }
 
+type BuildStatus string
+
+const (
+	None      BuildStatus = "None"
+	Building  BuildStatus = "Building"
+	Succeeded BuildStatus = "Succeeded"
+	Failed    BuildStatus = "Failed"
+)
+
 // WorkflowRun is the latest GitHub Actions run of a specific workflow file on a
 // repo branch. A nil *WorkflowRun means the workflow has no runs on that branch
 // (including when the workflow file does not exist in the repo).
 type WorkflowRun struct {
-	ID         int64
-	Status     string // queued | in_progress | completed
-	Conclusion string // success | failure | cancelled | timed_out | ""
-	HeadSHA    string
-	HTMLURL    string
+	BuildStatus BuildStatus
+	HTMLURL     string
 }
 
 type ClientStub struct {

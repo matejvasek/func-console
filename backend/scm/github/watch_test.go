@@ -107,7 +107,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 			first, ok := recvWithin(w.ResultChan(), 2*time.Second)
 			Expect(ok).To(BeTrue(), "expected an initial snapshot")
-			Expect(first[0].Run.Status).To(Equal("in_progress"))
+			Expect(first[0].Run.BuildStatus).To(Equal(scm.Building))
 
 			go func() {
 				tickPoll() // this should result in 429 if proper caching is not in place
@@ -116,7 +116,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 			second, ok := recvWithin(w.ResultChan(), 2*time.Second)
 			Expect(ok).To(BeTrue(), "expected an updated snapshot")
-			Expect(second[0].Run.Status).To(Equal("completed"))
+			Expect(second[0].Run.BuildStatus).To(Equal(scm.Succeeded))
 		},
 		Entry("0 bytes of padding", 0),
 		Entry("14_000 bytes of padding", 14_000),
@@ -162,14 +162,13 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		Expect(first).To(HaveLen(1))
 		Expect(first[0].Repo.FullName()).To(Equal("alice/fn"))
 		Expect(first[0].Run).NotTo(BeNil())
-		Expect(first[0].Run.Status).To(Equal("in_progress"))
+		Expect(first[0].Run.BuildStatus).To(Equal(scm.Building))
 
 		// Trigger poll to get the second snapshot with changed status
 		go tickPoll()
 		second, ok := recvWithin(w.ResultChan(), 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a second snapshot once the run changed")
-		Expect(second[0].Run.Status).To(Equal("completed"))
-		Expect(second[0].Run.Conclusion).To(Equal("success"))
+		Expect(second[0].Run.BuildStatus).To(Equal(scm.Succeeded))
 	})
 
 	It("does not re-emit while the run is unchanged", func() {
@@ -219,7 +218,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 		first, ok := recvWithin(w.ResultChan(), 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an initial snapshot")
-		Expect(first[0].Run.Status).To(Equal("in_progress"))
+		Expect(first[0].Run.BuildStatus).To(Equal(scm.Building))
 
 		// Trigger poll to get the error event
 		go tickPoll()
@@ -396,7 +395,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		// Get initial snapshot
 		first, ok := recvWithin(w.ResultChan(), 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an initial snapshot")
-		Expect(first[0].Run.Status).To(Equal("in_progress"))
+		Expect(first[0].Run.BuildStatus).To(Equal(scm.Building))
 
 		// Call Stop()
 		w.Stop()
@@ -451,7 +450,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		// Get initial snapshot with the run
 		first, ok := recvWithin(w.ResultChan(), 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an initial snapshot")
-		Expect(first[0].Run.Status).To(Equal("in_progress"))
+		Expect(first[0].Run.BuildStatus).To(Equal(scm.Building))
 
 		// Trigger poll to hit the rate-limited endpoint
 		go tickPoll()
@@ -467,6 +466,47 @@ var _ = Describe("WatchWorkflowRuns", func() {
 			Fail("timeout")
 		}
 	})
+
+	DescribeTable("maps run status and conclusion to a build status",
+		func(status, conclusion string, expected scm.BuildStatus) {
+			cl := newWatchClientWithFactories(ticker.SilentTickerFactory(), ticker.SilentTickerFactory(),
+				watchFake(
+					"alice",
+					[]map[string]any{
+						repoItem("alice", "alpha", "main"),
+					},
+					func(w http.ResponseWriter, r *http.Request) {
+						writeRuns(w, map[string]any{"id": 1, "status": status, "conclusion": conclusion})
+					}),
+			)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			DeferCleanup(cancel)
+			w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(w.Stop)
+
+			first, ok := recvWithin(w.ResultChan(), 2*time.Second)
+			Expect(ok).To(BeTrue(), "expected an initial snapshot")
+
+			Expect(first[0].Run.BuildStatus).To(Equal(expected))
+		},
+		Entry("queued -> Building", "queued", "", scm.Building),
+		Entry("in_progress -> Building", "in_progress", "", scm.Building),
+		Entry("waiting -> Building", "waiting", "", scm.Building),
+		Entry("requested -> Building", "requested", "", scm.Building),
+		Entry("pending -> Building", "pending", "", scm.Building),
+		Entry("completed+success -> Succeeded", "completed", "success", scm.Succeeded),
+		Entry("completed+failure -> Failed", "completed", "failure", scm.Failed),
+		Entry("completed+cancelled -> Failed", "completed", "cancelled", scm.Failed),
+		Entry("completed+timed_out -> Failed", "completed", "timed_out", scm.Failed),
+		Entry("completed+skipped -> None", "completed", "skipped", scm.None),
+		Entry("completed+neutral -> None", "completed", "neutral", scm.None),
+		Entry("completed+stale -> None", "completed", "stale", scm.None),
+		Entry("completed+action_required -> None", "completed", "action_required", scm.None),
+		Entry("unknown status -> None", "bogus", "", scm.None),
+	)
+
 })
 
 // newWatchClient serves handler as GitHub and returns a client whose watch loop

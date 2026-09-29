@@ -19,9 +19,7 @@ const defaultHeartbeat = 15 * time.Second
 
 type buildStatusItem struct {
 	BuildStatus string `json:"buildStatus"` // Building | Succeeded | Failed | None
-	Conclusion  string `json:"conclusion,omitempty"`
 	RunURL      string `json:"runURL,omitempty"`
-	HeadSHA     string `json:"headSHA,omitempty"`
 }
 
 type buildSnapshot struct {
@@ -143,37 +141,12 @@ func toSnapshot(runs []scm.RepoRun) buildSnapshot {
 }
 
 func toBuildStatusItem(run *scm.WorkflowRun) buildStatusItem {
-	item := buildStatusItem{BuildStatus: deriveBuildStatus(run)}
+	item := buildStatusItem{BuildStatus: string(scm.None)}
 	if run != nil {
-		item.Conclusion = run.Conclusion
 		item.RunURL = run.HTMLURL
-		item.HeadSHA = run.HeadSHA
+		item.BuildStatus = string(run.BuildStatus)
 	}
 	return item
-}
-
-func deriveBuildStatus(run *scm.WorkflowRun) string {
-	if run == nil {
-		return "None"
-	}
-	switch run.Status {
-	// "waiting", "requested", "pending" mean a run exists but has not finished.
-	case "queued", "in_progress", "waiting", "requested", "pending":
-		return "Building"
-	case "completed":
-		switch run.Conclusion {
-		case "success":
-			return "Succeeded"
-		case "failure", "cancelled", "timed_out":
-			return "Failed"
-		default:
-			// GitHub conclusions "skipped", "neutral", "stale", "action_required"
-			// do not indicate success or failure, so report no build status change.
-			return "None"
-		}
-	default:
-		return "None"
-	}
 }
 
 func writeSnapshotEvent(w io.Writer, data []byte) error {

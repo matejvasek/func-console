@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	ghlib "github.com/google/go-github/v90/github"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -261,7 +262,7 @@ var _ = Describe("FakeGitHub Server", func() {
 		})
 
 		It("stores a scripted workflow run via /_admin/actions/runs", func() {
-			ts, cl := startServer()
+			ts, cl := startServerPlain()
 			seedRepo(ts)
 
 			setWorkflowRun(ts, `{
@@ -271,12 +272,12 @@ var _ = Describe("FakeGitHub Server", func() {
 
 			run := latestRun(cl, "testuser", "test-func")
 			Expect(run).NotTo(BeNil())
-			Expect(run.Status).To(Equal("in_progress"))
-			Expect(run.HeadSHA).To(Equal("abc123"))
+			Expect(run.GetStatus()).To(Equal("in_progress"))
+			Expect(run.GetHeadSHA()).To(Equal("abc123"))
 		})
 
 		It("clears workflow runs on reset", func() {
-			ts, cl := startServer()
+			ts, cl := startServerPlain()
 			seedRepo(ts)
 			setWorkflowRun(ts, `{"owner":"testuser","repo":"test-func","branch":"main","status":"completed","conclusion":"success"}`)
 
@@ -290,7 +291,7 @@ var _ = Describe("FakeGitHub Server", func() {
 
 	Describe("LatestWorkflowRun", func() {
 		It("returns nil when the repo has no runs", func() {
-			ts, cl := startServer()
+			ts, cl := startServerPlain()
 			seedRepo(ts)
 
 			run := latestRun(cl, "testuser", "test-func")
@@ -298,20 +299,20 @@ var _ = Describe("FakeGitHub Server", func() {
 		})
 
 		It("returns the latest in-progress run", func() {
-			ts, cl := startServer()
+			ts, cl := startServerPlain()
 			seedRepo(ts)
 			setWorkflowRun(ts, `{"owner":"testuser","repo":"test-func","branch":"main","headSha":"sha1","status":"in_progress","conclusion":""}`)
 
 			run := latestRun(cl, "testuser", "test-func")
 			Expect(run).NotTo(BeNil())
-			Expect(run.Status).To(Equal("in_progress"))
-			Expect(run.Conclusion).To(BeEmpty())
-			Expect(run.HeadSHA).To(Equal("sha1"))
-			Expect(run.HTMLURL).To(ContainSubstring("/actions/runs/"))
+			Expect(run.GetStatus()).To(Equal("in_progress"))
+			Expect(run.GetConclusion()).To(BeEmpty())
+			Expect(run.GetHeadSHA()).To(Equal("sha1"))
+			Expect(run.GetHTMLURL()).To(ContainSubstring("/actions/runs/"))
 		})
 
 		It("filters by branch", func() {
-			ts, cl := startServer()
+			ts, cl := startServerPlain()
 			seedRepo(ts)
 			setWorkflowRun(ts, `{"owner":"testuser","repo":"test-func","branch":"other","status":"completed","conclusion":"success"}`)
 
@@ -320,7 +321,7 @@ var _ = Describe("FakeGitHub Server", func() {
 		})
 
 		It("scopes to the func workflow file, ignoring runs of other workflows", func() {
-			ts, cl := startServer()
+			ts, cl := startServerPlain()
 			seedRepo(ts)
 			setWorkflowRun(ts, `{
 				"owner":"testuser","repo":"test-func","branch":"main",
@@ -332,7 +333,7 @@ var _ = Describe("FakeGitHub Server", func() {
 		})
 
 		It("returns a completed failed run", func() {
-			ts, cl := startServer()
+			ts, cl := startServerPlain()
 			seedRepo(ts)
 			setWorkflowRun(ts, `{
 				"owner":"testuser","repo":"test-func","branch":"main","headSha":"badsha",
@@ -341,13 +342,13 @@ var _ = Describe("FakeGitHub Server", func() {
 
 			run := latestRun(cl, "testuser", "test-func")
 			Expect(run).NotTo(BeNil())
-			Expect(run.Status).To(Equal("completed"))
-			Expect(run.Conclusion).To(Equal("failure"))
-			Expect(run.HTMLURL).To(ContainSubstring("/actions/runs/"))
+			Expect(run.GetStatus()).To(Equal("completed"))
+			Expect(run.GetConclusion()).To(Equal("failure"))
+			Expect(run.GetHTMLURL()).To(ContainSubstring("/actions/runs/"))
 		})
 
 		It("returns a latest run of default branch", func() {
-			ts, cl := startServer()
+			ts, cl := startServerPlain()
 			seedRepo(ts)
 
 			setWorkflowRun(ts, `{
@@ -367,29 +368,32 @@ var _ = Describe("FakeGitHub Server", func() {
 
 			run := latestRun(cl, "testuser", "test-func")
 			Expect(run).NotTo(BeNil())
-			Expect(run.Status).To(Equal("completed"))
-			Expect(run.Conclusion).To(Equal("success"))
-			Expect(run.HTMLURL).To(ContainSubstring("/actions/runs/"))
+			Expect(run.GetStatus()).To(Equal("completed"))
+			Expect(run.GetConclusion()).To(Equal("success"))
+			Expect(run.GetHTMLURL()).To(ContainSubstring("/actions/runs/"))
 		})
 	})
 })
 
-// latestRun drives WatchWorkflowRuns and returns the given repo's latest run
-// from the initial snapshot. The repo must be discoverable (seeded with the
-// serverless-function topic) before calling. WatchWorkflowRuns uses the repo's
-// default branch, so callers seed runs on the default branch (main).
-func latestRun(cl scm.Client, owner, repo string) *scm.WorkflowRun {
+// latestRun gets latest workflow run for give repository
+func latestRun(c *ghlib.Client, owner, repo string) *ghlib.WorkflowRun {
 	ctx, cancel := context.WithCancel(context.Background())
 	DeferCleanup(cancel)
-	watch, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
-	ExpectWithOffset(1, err).NotTo(HaveOccurred())
-	var event scm.WorkflowRunsOrErr
-	EventuallyWithOffset(1, watch.ResultChan()).Should(Receive(&event))
-	ExpectWithOffset(1, event.Err).NotTo(HaveOccurred())
-	for _, rr := range event.Runs {
-		if rr.Repo.Owner == owner && rr.Repo.Name == repo {
-			return rr.Run
-		}
+	rep, _, err := c.Repositories.Get(ctx, owner, repo)
+	if err != nil {
+		return nil
+	}
+	opts := &ghlib.ListWorkflowRunsOptions{
+		Branch:      rep.GetDefaultBranch(),
+		ListOptions: ghlib.ListOptions{PerPage: 1},
+	}
+	wfr, _, err := c.Actions.ListWorkflowRunsByFileName(ctx, owner, repo, "func-deploy.yaml", opts)
+	if err != nil {
+		return nil
+	}
+	runs := wfr.GetWorkflowRuns()
+	if len(runs) > 0 {
+		return runs[0]
 	}
 	return nil
 }
@@ -400,6 +404,17 @@ func startServer() (*httptest.Server, scm.Client) {
 	DeferCleanup(ts.Close)
 	client := github.NewWithBaseURL(testPAT, ts.URL)
 	return ts, client
+}
+
+func startServerPlain() (*httptest.Server, *ghlib.Client) {
+	srv := fakegithub.New(fakegithub.User{Login: "testuser", AvatarURL: "https://example.com/avatar"}, testPAT)
+	ts := httptest.NewServer(srv)
+	DeferCleanup(ts.Close)
+	c, err := ghlib.NewClient(ghlib.WithURLs(&ts.URL, nil), ghlib.WithAuthToken(testPAT))
+	if err != nil {
+		Fail(err.Error())
+	}
+	return ts, c
 }
 
 func seedRepo(ts *httptest.Server) {

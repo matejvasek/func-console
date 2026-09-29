@@ -100,7 +100,7 @@ var _ = Describe("BuildWatch", func() {
 
 		ch <- scm.WorkflowRunsOrErr{Runs: []scm.RepoRun{{
 			Repo: scm.Repo{Owner: "alice", Name: "fn"},
-			Run:  &scm.WorkflowRun{Status: "in_progress"},
+			Run:  &scm.WorkflowRun{BuildStatus: scm.Building},
 		}}}
 		first, ok := readSSEDataWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a frame for the first snapshot")
@@ -109,8 +109,8 @@ var _ = Describe("BuildWatch", func() {
 		ch <- scm.WorkflowRunsOrErr{Runs: []scm.RepoRun{{
 			Repo: scm.Repo{Owner: "alice", Name: "fn"},
 			Run: &scm.WorkflowRun{
-				Status: "completed", Conclusion: "failure",
-				HTMLURL: "https://github.com/alice/fn/actions/runs/1",
+				BuildStatus: scm.Failed,
+				HTMLURL:     "https://github.com/alice/fn/actions/runs/1",
 			},
 		}}}
 		second, ok := readSSEDataWithin(reader, 2*time.Second)
@@ -148,7 +148,7 @@ var _ = Describe("BuildWatch", func() {
 
 		ch <- scm.WorkflowRunsOrErr{Runs: []scm.RepoRun{{
 			Repo: scm.Repo{Owner: "alice", Name: "fn"},
-			Run:  &scm.WorkflowRun{Status: "in_progress"},
+			Run:  &scm.WorkflowRun{BuildStatus: scm.Building},
 		}}}
 		first, ok := readSSEDataWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an initial frame")
@@ -250,54 +250,6 @@ var _ = Describe("BuildWatch", func() {
 		case <-time.After(2 * time.Second):
 			Fail("expected watch.Stop() to be called when request context is cancelled")
 		}
-	})
-
-	Describe("build status vocabulary", func() {
-		buildStatusFor := func(run *scm.WorkflowRun) string {
-			ch := make(chan scm.WorkflowRunsOrErr, 1)
-			stub := &scm.ClientStub{
-				OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
-					return &testWatch{ch: ch}, nil
-				},
-			}
-
-			reader := startWatchStream(stub, ticker.SilentTickerFactory())
-			ch <- scm.WorkflowRunsOrErr{Runs: []scm.RepoRun{{Repo: scm.Repo{Owner: "alice", Name: "fn"}, Run: run}}}
-			data, ok := readSSEDataWithin(reader, 2*time.Second)
-			Expect(ok).To(BeTrue(), "expected a frame for the snapshot")
-
-			var frame struct {
-				Functions map[string]struct {
-					BuildStatus string `json:"buildStatus"`
-				} `json:"statuses"`
-			}
-			Expect(json.Unmarshal([]byte(data), &frame)).To(Succeed())
-			return frame.Functions["alice/fn"].BuildStatus
-		}
-
-		DescribeTable("maps run status and conclusion to a build status",
-			func(status, conclusion, expected string) {
-				Expect(buildStatusFor(&scm.WorkflowRun{Status: status, Conclusion: conclusion})).To(Equal(expected))
-			},
-			Entry("queued -> Building", "queued", "", "Building"),
-			Entry("in_progress -> Building", "in_progress", "", "Building"),
-			Entry("waiting -> Building", "waiting", "", "Building"),
-			Entry("requested -> Building", "requested", "", "Building"),
-			Entry("pending -> Building", "pending", "", "Building"),
-			Entry("completed+success -> Succeeded", "completed", "success", "Succeeded"),
-			Entry("completed+failure -> Failed", "completed", "failure", "Failed"),
-			Entry("completed+cancelled -> Failed", "completed", "cancelled", "Failed"),
-			Entry("completed+timed_out -> Failed", "completed", "timed_out", "Failed"),
-			Entry("completed+skipped -> None", "completed", "skipped", "None"),
-			Entry("completed+neutral -> None", "completed", "neutral", "None"),
-			Entry("completed+stale -> None", "completed", "stale", "None"),
-			Entry("completed+action_required -> None", "completed", "action_required", "None"),
-			Entry("unknown status -> None", "bogus", "", "None"),
-		)
-
-		It("maps a repo with no run to None", func() {
-			Expect(buildStatusFor(nil)).To(Equal("None"))
-		})
 	})
 })
 
