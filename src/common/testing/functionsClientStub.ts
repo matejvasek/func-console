@@ -78,7 +78,7 @@ function watchBuildsSnapshotStub(snapshot: BuildStatusMap) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      const frame = `event: build-status\ndata: ${JSON.stringify({ functions: snapshot })}\n\n`;
+      const frame = `event: build-status\ndata: ${JSON.stringify({ statuses: snapshot })}\n\n`;
       controller.enqueue(encoder.encode(frame));
     },
   });
@@ -101,7 +101,7 @@ function watchBuildsStreamStub(buildStatusesSeq: AsyncIterable<BuildStatusMap>) 
         async start(controller) {
           try {
             for await (const buildStatuses of buildStatusesSeq) {
-              const frame = `event: build-status\ndata: ${JSON.stringify({ functions: buildStatuses })}\n\n`;
+              const frame = `event: build-status\ndata: ${JSON.stringify({ statuses: buildStatuses })}\n\n`;
               controller.enqueue(encoder.encode(frame));
             }
             controller.close();

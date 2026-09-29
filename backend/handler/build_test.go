@@ -269,7 +269,7 @@ var _ = Describe("BuildWatch", func() {
 			var frame struct {
 				Functions map[string]struct {
 					BuildStatus string `json:"buildStatus"`
-				} `json:"functions"`
+				} `json:"statuses"`
 			}
 			Expect(json.Unmarshal([]byte(data), &frame)).To(Succeed())
 			return frame.Functions["alice/fn"].BuildStatus

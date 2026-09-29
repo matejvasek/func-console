@@ -25,7 +25,7 @@ export function useBuildStatus(
     es.addEventListener('build-status', (e) => {
       try {
         const snap = JSON.parse(e.data) as BuildSnapshot;
-        setStatuses(snap.functions);
+        setStatuses(snap.statuses);
       } catch {
         setError('Invalid build status data');
       }

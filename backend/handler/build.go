@@ -25,7 +25,7 @@ type buildStatusItem struct {
 }
 
 type buildSnapshot struct {
-	Functions map[string]buildStatusItem `json:"functions"`
+	Functions map[string]buildStatusItem `json:"statuses"`
 }
 
 func BuildWatch(opts ...WatchOption) http.HandlerFunc {

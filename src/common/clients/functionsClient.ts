@@ -18,7 +18,7 @@ export type BuildStatusMap = Record<string, BuildStatus>;
 
 export interface BuildSnapshot {
   // Keyed by "owner/repo", the identifier a function is correlated on.
-  functions: BuildStatusMap;
+  statuses: BuildStatusMap;
 }
 
 export interface BuildSnapshotEvent {
