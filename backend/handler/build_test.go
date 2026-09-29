@@ -3,7 +3,6 @@ package handler_test
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -98,21 +97,23 @@ var _ = Describe("BuildWatch", func() {
 
 		reader := startWatchStream(stub, ticker.SilentTickerFactory())
 
-		ch <- scm.WorkflowRunsOrErr{Runs: []scm.RepoRun{{
-			Repo: scm.Repo{Owner: "alice", Name: "fn"},
-			Run:  &scm.WorkflowRun{BuildStatus: scm.Building},
-		}}}
+		ch <- scm.WorkflowRunsOrErr{
+			Runs: map[string]scm.WorkflowRun{
+				"alice/fn": {BuildStatus: scm.Building},
+			},
+		}
 		first, ok := readSSEDataWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a frame for the first snapshot")
 		Expect(first).To(ContainSubstring(`"alice/fn":{"buildStatus":"Building"}`))
 
-		ch <- scm.WorkflowRunsOrErr{Runs: []scm.RepoRun{{
-			Repo: scm.Repo{Owner: "alice", Name: "fn"},
-			Run: &scm.WorkflowRun{
-				BuildStatus: scm.Failed,
-				HTMLURL:     "https://github.com/alice/fn/actions/runs/1",
+		ch <- scm.WorkflowRunsOrErr{
+			Runs: map[string]scm.WorkflowRun{
+				"alice/fn": {
+					BuildStatus: scm.Failed,
+					HTMLURL:     "https://github.com/alice/fn/actions/runs/1",
+				},
 			},
-		}}}
+		}
 		second, ok := readSSEDataWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a frame for the second snapshot")
 		Expect(second).To(ContainSubstring(`"buildStatus":"Failed"`))
@@ -129,7 +130,9 @@ var _ = Describe("BuildWatch", func() {
 
 		reader := startWatchStream(stub, ticker.SilentTickerFactory())
 
-		ch <- scm.WorkflowRunsOrErr{Runs: []scm.RepoRun{{Repo: scm.Repo{Owner: "alice", Name: "fn"}, Run: nil}}}
+		ch <- scm.WorkflowRunsOrErr{
+			Runs: map[string]scm.WorkflowRun{"alice/fn": {BuildStatus: scm.None}},
+		}
 		frame, ok := readSSEDataWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a frame for the snapshot")
 		Expect(frame).To(ContainSubstring(`"alice/fn":{"buildStatus":"None"}`))
@@ -146,10 +149,9 @@ var _ = Describe("BuildWatch", func() {
 
 		reader := startWatchStream(stub, ticker.SilentTickerFactory())
 
-		ch <- scm.WorkflowRunsOrErr{Runs: []scm.RepoRun{{
-			Repo: scm.Repo{Owner: "alice", Name: "fn"},
-			Run:  &scm.WorkflowRun{BuildStatus: scm.Building},
-		}}}
+		ch <- scm.WorkflowRunsOrErr{
+			Runs: map[string]scm.WorkflowRun{"alice/fn": {BuildStatus: scm.Building}},
+		}
 		first, ok := readSSEDataWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an initial frame")
 		Expect(first).To(ContainSubstring(`"buildStatus":"Building"`))

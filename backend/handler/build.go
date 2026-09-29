@@ -132,21 +132,19 @@ func WithHeartbeatTickerFactory(f ticker.Factory) WatchOption {
 	return func(c *watchConfig) { c.heartbeatFactory = f }
 }
 
-func toSnapshot(runs []scm.RepoRun) buildSnapshot {
+func toSnapshot(runs map[string]scm.WorkflowRun) buildSnapshot {
 	items := make(map[string]buildStatusItem, len(runs))
-	for _, rr := range runs {
-		items[rr.Repo.FullName()] = toBuildStatusItem(rr.Run)
+	for k, v := range runs {
+		items[k] = toBuildStatusItem(v)
 	}
 	return buildSnapshot{Functions: items}
 }
 
-func toBuildStatusItem(run *scm.WorkflowRun) buildStatusItem {
-	item := buildStatusItem{BuildStatus: string(scm.None)}
-	if run != nil {
-		item.RunURL = run.HTMLURL
-		item.BuildStatus = string(run.BuildStatus)
+func toBuildStatusItem(run scm.WorkflowRun) buildStatusItem {
+	return buildStatusItem{
+		BuildStatus: string(run.BuildStatus),
+		RunURL:      run.HTMLURL,
 	}
-	return item
 }
 
 func writeSnapshotEvent(w io.Writer, data []byte) error {

@@ -78,15 +78,8 @@ type FileEntry struct {
 	Deleted bool   `json:"deleted,omitempty"`
 }
 
-// RepoRun pairs a repo with its latest workflow run. A nil Run means the repo
-// has no run yet (including when the workflow file does not exist there).
-type RepoRun struct {
-	Repo Repo
-	Run  *WorkflowRun
-}
-
 type WorkflowRunsOrErr struct {
-	Runs []RepoRun
+	Runs map[string]WorkflowRun
 	Err  error
 }
 

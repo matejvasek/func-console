@@ -107,7 +107,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 			first, ok := recvWithin(w.ResultChan(), 2*time.Second)
 			Expect(ok).To(BeTrue(), "expected an initial snapshot")
-			Expect(first[0].Run.BuildStatus).To(Equal(scm.Building))
+			Expect(first["alice/fn"].BuildStatus).To(Equal(scm.Building))
 
 			go func() {
 				tickPoll() // this should result in 429 if proper caching is not in place
@@ -116,7 +116,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 			second, ok := recvWithin(w.ResultChan(), 2*time.Second)
 			Expect(ok).To(BeTrue(), "expected an updated snapshot")
-			Expect(second[0].Run.BuildStatus).To(Equal(scm.Succeeded))
+			Expect(second["alice/fn"].BuildStatus).To(Equal(scm.Succeeded))
 		},
 		Entry("0 bytes of padding", 0),
 		Entry("14_000 bytes of padding", 14_000),
@@ -160,15 +160,14 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		first, ok := recvWithin(w.ResultChan(), 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an initial snapshot")
 		Expect(first).To(HaveLen(1))
-		Expect(first[0].Repo.FullName()).To(Equal("alice/fn"))
-		Expect(first[0].Run).NotTo(BeNil())
-		Expect(first[0].Run.BuildStatus).To(Equal(scm.Building))
+
+		Expect(first["alice/fn"].BuildStatus).To(Equal(scm.Building))
 
 		// Trigger poll to get the second snapshot with changed status
 		go tickPoll()
 		second, ok := recvWithin(w.ResultChan(), 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a second snapshot once the run changed")
-		Expect(second[0].Run.BuildStatus).To(Equal(scm.Succeeded))
+		Expect(second["alice/fn"].BuildStatus).To(Equal(scm.Succeeded))
 	})
 
 	It("does not re-emit while the run is unchanged", func() {
@@ -218,7 +217,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 		first, ok := recvWithin(w.ResultChan(), 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an initial snapshot")
-		Expect(first[0].Run.BuildStatus).To(Equal(scm.Building))
+		Expect(first["alice/fn"].BuildStatus).To(Equal(scm.Building))
 
 		// Trigger poll to get the error event
 		go tickPoll()
@@ -350,33 +349,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		first, ok := recvWithin(w.ResultChan(), 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an initial snapshot")
 		Expect(first).To(HaveLen(1))
-		Expect(first[0].Repo.FullName()).To(Equal("alice/fn"))
-		Expect(first[0].Run).To(BeNil())
-	})
-
-	It("returns a multi-repo snapshot sorted by repo full name", func() {
-		cl := newWatchClientWithFactories(ticker.SilentTickerFactory(), ticker.SilentTickerFactory(), watchFake("alice",
-			[]map[string]any{
-				repoItem("alice", "zeta", "main"),
-				repoItem("alice", "alpha", "main"),
-			},
-			func(w http.ResponseWriter, r *http.Request) {
-				writeRuns(w, map[string]any{"id": 1, "status": "in_progress"})
-			}))
-
-		ctx, cancel := context.WithCancel(context.Background())
-		DeferCleanup(cancel)
-		w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
-		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(w.Stop)
-
-		first, ok := recvWithin(w.ResultChan(), 2*time.Second)
-		Expect(ok).To(BeTrue(), "expected an initial snapshot")
-		Expect(first).To(HaveLen(2))
-		// Discovery returned the repos out of order; the snapshot is sorted so the
-		// stream and its change-detection are deterministic across polls.
-		Expect(first[0].Repo.FullName()).To(Equal("alice/alpha"))
-		Expect(first[1].Repo.FullName()).To(Equal("alice/zeta"))
+		Expect(first["alice/fn"].BuildStatus).To(Equal(scm.None))
 	})
 
 	It("stops polling when Stop() is called", func() {
@@ -395,7 +368,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		// Get initial snapshot
 		first, ok := recvWithin(w.ResultChan(), 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an initial snapshot")
-		Expect(first[0].Run.BuildStatus).To(Equal(scm.Building))
+		Expect(first["alice/fn"].BuildStatus).To(Equal(scm.Building))
 
 		// Call Stop()
 		w.Stop()
@@ -450,7 +423,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		// Get initial snapshot with the run
 		first, ok := recvWithin(w.ResultChan(), 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an initial snapshot")
-		Expect(first[0].Run.BuildStatus).To(Equal(scm.Building))
+		Expect(first["alice/fn"].BuildStatus).To(Equal(scm.Building))
 
 		// Trigger poll to hit the rate-limited endpoint
 		go tickPoll()
@@ -489,7 +462,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 			first, ok := recvWithin(w.ResultChan(), 2*time.Second)
 			Expect(ok).To(BeTrue(), "expected an initial snapshot")
 
-			Expect(first[0].Run.BuildStatus).To(Equal(expected))
+			Expect(first["alice/alpha"].BuildStatus).To(Equal(expected))
 		},
 		Entry("queued -> Building", "queued", "", scm.Building),
 		Entry("in_progress -> Building", "in_progress", "", scm.Building),
@@ -566,7 +539,7 @@ func padRun(run map[string]any, n int) map[string]any {
 }
 
 // recvWithin receives one event from ch or times out.
-func recvWithin(ch <-chan scm.WorkflowRunsOrErr, timeout time.Duration) ([]scm.RepoRun, bool) {
+func recvWithin(ch <-chan scm.WorkflowRunsOrErr, timeout time.Duration) (map[string]scm.WorkflowRun, bool) {
 	select {
 	case event := <-ch:
 		if event.Err != nil {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
-	"sort"
+	"sync"
 	"time"
 
 	ghlib "github.com/google/go-github/v90/github"
@@ -42,17 +42,16 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFile string) (
 
 		// Carried forward when a per-repo poll fails transiently: a flaky GitHub
 		// error would otherwise reset the run to nil and flicker the status.
-		prevRuns := make(map[string]*scm.WorkflowRun)
-		var prevSnapshot []scm.RepoRun
+		var prevRuns map[string]scm.WorkflowRun
 
-		emitWithErr := func(snapshot []scm.RepoRun, err error) bool {
+		emitWithErr := func(runs map[string]scm.WorkflowRun, err error) bool {
 			// Skip emitting if the snapshot hasn't changed and there's no error.
-			if reflect.DeepEqual(snapshot, prevSnapshot) && err == nil {
+			if reflect.DeepEqual(runs, prevRuns) && err == nil {
 				return true
 			}
 			select {
-			case ch <- scm.WorkflowRunsOrErr{Runs: snapshot, Err: err}:
-				prevSnapshot = snapshot
+			case ch <- scm.WorkflowRunsOrErr{Runs: runs, Err: err}:
+				prevRuns = runs
 				return true
 			case <-pollCtx.Done():
 				return false
@@ -61,13 +60,6 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFile string) (
 
 		pollAndEmit := func() bool {
 			snapshot, pollErr := c.pollRuns(pollCtx, repos, workflowFile, prevRuns)
-			// Rebuilding the index rather than updating it prunes repos that
-			// dropped out of discovery, so it cannot grow unbounded.
-			next := make(map[string]*scm.WorkflowRun, len(snapshot))
-			for _, rr := range snapshot {
-				next[rr.Repo.FullName()] = rr.Run
-			}
-			prevRuns = next
 			return emitWithErr(snapshot, pollErr)
 		}
 
@@ -87,7 +79,7 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFile string) (
 			case <-rediscover.Chan():
 				latest, err := c.ListRepos(pollCtx)
 				if err != nil {
-					if !emitWithErr(prevSnapshot, fmt.Errorf("repository rediscovery failed: %w", err)) {
+					if !emitWithErr(prevRuns, fmt.Errorf("repository rediscovery failed: %w", err)) {
 						return
 					}
 					slog.Warn("watch workflow runs: rediscover failed", "err", err)
@@ -95,9 +87,7 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFile string) (
 				}
 				repos = latest
 			case <-poll.Chan():
-				if !pollAndEmit() {
-					return
-				}
+				pollAndEmit()
 			}
 		}
 	}()
@@ -122,30 +112,38 @@ func (w *workflowWatch) Stop() {
 // the snapshot. The returned error is non-nil if any repo failed; the snapshot
 // is still valid (using carried-forward runs where needed). prevRuns is only
 // read here (the caller updates it), so the concurrent reads are safe.
-func (c *ghClient) pollRuns(ctx context.Context, repos []scm.Repo, workflowFile string, prevRuns map[string]*scm.WorkflowRun) ([]scm.RepoRun, error) {
-	snapshot := make([]scm.RepoRun, len(repos))
+func (c *ghClient) pollRuns(ctx context.Context, repos []scm.Repo, workflowFile string, prevRuns map[string]scm.WorkflowRun) (map[string]scm.WorkflowRun, error) {
+	var snapshot = make(map[string]scm.WorkflowRun, len(repos))
+	var mu sync.Mutex
+	var put = func(k string, v scm.WorkflowRun) {
+		mu.Lock()
+		defer mu.Unlock()
+		snapshot[k] = v
+	}
+
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(10)
-	for i, repo := range repos {
+
+	for _, repo := range repos {
 		g.Go(func() error {
 			run, err := c.latestWorkflowRun(ctx, repo.Owner, repo.Name, repo.DefaultBranch, workflowFile)
 			if err != nil {
+				put(repo.FullName(), prevRuns[repo.FullName()])
 				slog.Warn("watch workflow runs: get run failed", "repo", repo.FullName(), "err", err)
-				run = prevRuns[repo.FullName()]
+			} else {
+				put(repo.FullName(), run)
 			}
-			snapshot[i] = scm.RepoRun{Repo: repo, Run: run}
 			return err
 		})
 	}
 	err := g.Wait()
-	sort.Slice(snapshot, func(i, j int) bool { return snapshot[i].Repo.FullName() < snapshot[j].Repo.FullName() })
 	if err != nil {
 		return snapshot, fmt.Errorf("poll workflow runs: %w", err)
 	}
 	return snapshot, nil
 }
 
-func (c *ghClient) latestWorkflowRun(ctx context.Context, owner, repo, branch, workflowFile string) (*scm.WorkflowRun, error) {
+func (c *ghClient) latestWorkflowRun(ctx context.Context, owner, repo, branch, workflowFile string) (scm.WorkflowRun, error) {
 	opts := &ghlib.ListWorkflowRunsOptions{
 		Branch:      branch,
 		ListOptions: ghlib.ListOptions{PerPage: 1},
@@ -155,18 +153,18 @@ func (c *ghClient) latestWorkflowRun(ctx context.Context, owner, repo, branch, w
 		if isNotFound(err) {
 			// No such workflow here (a non-func repo, or it has not been
 			// pushed yet). Treat it as a repo with no runs.
-			return nil, nil
+			return scm.WorkflowRun{BuildStatus: scm.None}, nil
 		}
-		return nil, fmt.Errorf("list workflow runs for %s/%s (%s): %w", owner, repo, workflowFile, mapErr(err))
+		return scm.WorkflowRun{BuildStatus: scm.None}, fmt.Errorf("list workflow runs for %s/%s (%s): %w", owner, repo, workflowFile, mapErr(err))
 	}
 	if len(runs.WorkflowRuns) == 0 {
-		return nil, nil
+		return scm.WorkflowRun{BuildStatus: scm.None}, nil
 	}
 
 	// GitHub returns runs in created_at descending order by default, so with
 	// PerPage 1 the single element WorkflowRuns[0] is the newest run.
 	run := runs.WorkflowRuns[0]
-	result := &scm.WorkflowRun{
+	result := scm.WorkflowRun{
 		BuildStatus: deriveBuildStatus(run),
 		HTMLURL:     run.GetHTMLURL(),
 	}
