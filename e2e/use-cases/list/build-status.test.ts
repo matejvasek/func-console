@@ -35,15 +35,15 @@ test.describe('Build status', () => {
       });
     });
 
-    await test.step('navigate to functions list and verify NotDeployed with build indicator', async () => {
+    await test.step('navigate to functions list and verify Not deployed with build indicator', async () => {
       await navigateToFunctionsList(page);
       const grid = page.getByRole('grid', { name: 'Functions' });
       await expect(grid).toBeVisible({ timeout: 30_000 });
 
       const row = grid.locator(`tbody tr:has(td:text-is("${FUNC_NAME}"))`);
       await expect(row).toBeVisible();
-      // First-time creation shows NotDeployed (primary) + build indicator (secondary)
-      await expect(row.getByText('NotDeployed')).toBeVisible({ timeout: 20_000 });
+      // First-time creation shows Not deployed (primary) + build indicator (secondary)
+      await expect(row.getByText('Not deployed')).toBeVisible({ timeout: 20_000 });
       // Build activity indicator is a spinning icon with aria-label
       await expect(row.getByRole('img', { name: /build in progress/i })).toBeVisible({
         timeout: 20_000,
@@ -61,7 +61,7 @@ test.describe('Build status', () => {
 
       const grid = page.getByRole('grid', { name: 'Functions' });
       const row = grid.locator(`tbody tr:has(td:text-is("${FUNC_NAME}"))`);
-      await expect(row.getByText('BuildFailed')).toBeVisible({ timeout: 20_000 });
+      await expect(row.getByText('Build failed')).toBeVisible({ timeout: 20_000 });
     });
 
     await test.step('verify the status badge links to the failing run', async () => {
@@ -70,7 +70,7 @@ test.describe('Build status', () => {
 
       const runLink = row.locator('a[href*="/actions/runs/"]');
       await expect(runLink).toBeVisible();
-      await expect(runLink).toContainText('BuildFailed');
+      await expect(runLink).toContainText('Build failed');
     });
   });
 });
