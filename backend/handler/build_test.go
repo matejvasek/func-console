@@ -188,7 +188,7 @@ var _ = Describe("BuildWatch", func() {
 		// Verify the error event is sent
 		line, ok := readLineWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an error event line")
-		Expect(line).To(Equal("event: error"))
+		Expect(line).To(Equal("event: app-error"))
 
 		dataLine, ok := readLineWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a data line")

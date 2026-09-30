@@ -131,7 +131,7 @@ func writeSnapshotEvent(w io.Writer, data []byte) error {
 }
 
 func writeErrorEvent(w io.Writer, err error) error {
-	if _, writeErr := fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error()); writeErr != nil {
+	if _, writeErr := fmt.Fprintf(w, "event: app-error\ndata: %s\n\n", err.Error()); writeErr != nil {
 		return fmt.Errorf("write error event: %w", writeErr)
 	}
 	return nil
