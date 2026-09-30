@@ -119,11 +119,7 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
               invokeListeners(listeners, { data: event.data }, 'build-status');
               break;
             case 'app-error':
-              invokeListeners(
-                errorListeners,
-                { data: JSON.stringify({ message: event.data, isAuthError: false }) },
-                'error',
-              );
+              invokeListeners(errorListeners, { data: event.data }, 'error');
               break;
           }
         }

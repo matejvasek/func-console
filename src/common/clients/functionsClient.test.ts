@@ -77,7 +77,8 @@ describe('createBuildStatusEventSource', () => {
   });
 
   it('emits error event from SSE stream', async () => {
-    const sseFrames = 'event: app-error\ndata: github API rate limited\n\n';
+    const sseFrames =
+      'event: app-error\ndata: {"message":"github API rate limited","isAuthError":false}\n\n';
     useStaticEventStream(sseFrames);
 
     using eventSource = createEventSource();

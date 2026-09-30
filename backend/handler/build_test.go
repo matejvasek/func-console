@@ -3,6 +3,7 @@ package handler_test
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -192,7 +193,15 @@ var _ = Describe("BuildWatch", func() {
 
 		dataLine, ok := readLineWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a data line")
-		Expect(dataLine).To(Equal("data: github API rate limited"))
+		Expect(dataLine).To(HavePrefix("data: "))
+		var errorData struct {
+			Message     string `json:"message"`
+			IsAuthError bool   `json:"isAuthError"`
+		}
+		jsonStr := strings.TrimPrefix(dataLine, "data: ")
+		Expect(json.Unmarshal([]byte(jsonStr), &errorData)).To(Succeed())
+		Expect(errorData.Message).To(Equal("github API rate limited"))
+		Expect(errorData.IsAuthError).To(BeFalse())
 
 		// Verify the stream closes after the error event
 		errCh := make(chan error, 1)

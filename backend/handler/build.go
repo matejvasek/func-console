@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -131,8 +132,28 @@ func writeSnapshotEvent(w io.Writer, data []byte) error {
 }
 
 func writeErrorEvent(w io.Writer, err error) error {
-	if _, writeErr := fmt.Fprintf(w, "event: app-error\ndata: %s\n\n", err.Error()); writeErr != nil {
+	var errorDTO = struct {
+		Message     string `json:"message"`
+		IsAuthError bool   `json:"isAuthError"`
+	}{
+		Message:     err.Error(), // TODO send better user facing error
+		IsAuthError: errors.Is(err, scm.ErrUnauthorized),
+	}
+	return writeEvent(w, "app-error", &errorDTO)
+}
+
+func writeEvent(w io.Writer, name string, data any) error {
+	var buff bytes.Buffer
+
+	// Write to buffer never returns error
+	_, _ = fmt.Fprintf(&buff, "event: %s\ndata: ", name)
+	_ = json.NewEncoder(&buff).Encode(data)
+	_, _ = fmt.Fprintf(&buff, "\n\n")
+
+	_, writeErr := w.Write(buff.Bytes())
+	if writeErr != nil {
 		return fmt.Errorf("write error event: %w", writeErr)
 	}
+
 	return nil
 }
