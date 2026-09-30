@@ -6,7 +6,7 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
 
 import { renderHook, waitFor } from '@testing-library/react';
 import { useBuildStatus } from './useBuildStatus';
-import { BuildStatusMap } from './functionsClient';
+import { WorkflowRunMap } from './functionsClient';
 
 interface BuildSnapshotEvent {
   readonly data: string;
@@ -168,7 +168,7 @@ describe('useBuildStatus', () => {
 
   function createFakeEventSource(): {
     eventSource: BuildStatusEventSource;
-    emitSnapshot: (snap: BuildStatusMap) => void;
+    emitSnapshot: (snap: WorkflowRunMap) => void;
     emitError: (err: BuildWatchErrorEvent) => void;
     emitOpen: () => void;
     emitRaw: (data: string) => void;
@@ -214,7 +214,7 @@ describe('useBuildStatus', () => {
           openListeners.length = 0;
         },
       },
-      emitSnapshot(snap: BuildStatusMap) {
+      emitSnapshot(snap: WorkflowRunMap) {
         invokeListeners(listeners, { data: JSON.stringify(snap) });
       },
       emitError(err: BuildWatchErrorEvent) {

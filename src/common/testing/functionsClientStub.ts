@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { BACKEND_API } from '../testing/constants';
 import { server } from '../testing/mswServer';
 import { FunctionListItem } from '../types';
-import { BuildStatusMap } from '../clients/functionsClient';
+import { WorkflowRunMap } from '../clients/functionsClient';
 
 // -----------------------------------------------------------------------------
 // Test Doubles ----------------------------------------------------------------
@@ -49,20 +49,20 @@ export function listFunctionsStub(
 export function watchBuildsStub(err: { message: string; status: number }): void;
 
 // Static snapshot response
-export function watchBuildsStub(buildStatuses: BuildStatusMap): void;
+export function watchBuildsStub(buildStatuses: WorkflowRunMap): void;
 
 // Dynamic stream from async iterable (for state transition tests)
-export function watchBuildsStub(buildStatusesSeq: AsyncIterable<BuildStatusMap>): void;
+export function watchBuildsStub(buildStatusesSeq: AsyncIterable<WorkflowRunMap>): void;
 
 export function watchBuildsStub(
-  val: BuildStatusMap | { message: string; status: number } | AsyncIterable<BuildStatusMap>,
+  val: WorkflowRunMap | { message: string; status: number } | AsyncIterable<WorkflowRunMap>,
 ) {
   if (typeof val === 'object' && Symbol.asyncIterator in val) {
     watchBuildsStreamStub(val);
   } else if ('message' in val && 'status' in val) {
     watchBuildsErrorStub(val as { message: string; status: number });
   } else {
-    watchBuildsSnapshotStub(val as BuildStatusMap);
+    watchBuildsSnapshotStub(val as WorkflowRunMap);
   }
 }
 
@@ -74,7 +74,7 @@ function watchBuildsErrorStub(err: { message: string; status: number }) {
   );
 }
 
-function watchBuildsSnapshotStub(snapshot: BuildStatusMap) {
+function watchBuildsSnapshotStub(snapshot: WorkflowRunMap) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -93,7 +93,7 @@ function watchBuildsSnapshotStub(snapshot: BuildStatusMap) {
   );
 }
 
-function watchBuildsStreamStub(buildStatusesSeq: AsyncIterable<BuildStatusMap>) {
+function watchBuildsStreamStub(buildStatusesSeq: AsyncIterable<WorkflowRunMap>) {
   server.use(
     http.get(`${BACKEND_API}/api/v1/func/build/watch`, async () => {
       const encoder = new TextEncoder();

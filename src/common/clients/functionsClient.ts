@@ -4,7 +4,7 @@ import {
   isAllNamespacesKey,
 } from '@openshift-console/dynamic-plugin-sdk';
 import {
-  BuildStatus,
+  WorkflowRun,
   CreateFunctionRequest,
   FileEntry,
   FunctionListItem,
@@ -14,10 +14,13 @@ import {
 
 const RECONNECT_DELAY_MS = 3000;
 
-export type BuildStatusMap = Record<string, BuildStatus>;
+/**
+ * Map of workflow runs, keyed by repository full name (e.g., "owner/repo")
+ */
+export type WorkflowRunMap = Record<string, WorkflowRun>;
 
 export interface BuildSnapshotEvent {
-  // JSON string containing a BuildStatusMap; parse with JSON.parse(data) as BuildStatusMap
+  // JSON string containing a WorkflowRunMap; parse with JSON.parse(data) as WorkflowRunMap
   readonly data: string;
 }
 

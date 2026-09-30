@@ -25,7 +25,7 @@ import { FunctionTable, FunctionTableItem } from './components/FunctionTable';
 import { SetupGuide } from './components/SetupGuide';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
-import { BuildStatus, ClusterFunction, FunctionListItem } from '../../common/types';
+import { WorkflowRun, ClusterFunction, FunctionListItem } from '../../common/types';
 import { useCluster } from '../../common/clients/useCluster';
 import { useBuildStatus } from '../../common/clients/useBuildStatus';
 import { listFunctions } from '../../common/clients/functionsClient';
@@ -293,7 +293,7 @@ function enrichItem(item: FunctionTableItem, cf: ClusterFunction): FunctionTable
 // still falls through to the build status.
 function mergeBuild(
   item: FunctionTableItem,
-  build: BuildStatus,
+  build: WorkflowRun,
   inCluster: boolean,
 ): FunctionTableItem {
   if (inCluster) {

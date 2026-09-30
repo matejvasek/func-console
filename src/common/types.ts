@@ -85,7 +85,7 @@ export interface ClusterFunction {
   readonly mainResource: K8sResourceCommon;
 }
 
-export interface BuildStatus {
+export interface WorkflowRun {
   status: 'Building' | 'Succeeded' | 'Failed' | 'None';
   url?: string;
   error?: string;

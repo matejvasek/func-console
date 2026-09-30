@@ -13,7 +13,7 @@ import { server } from '../testing/mswServer';
 import { consoleFetch } from '@openshift-console/dynamic-plugin-sdk';
 import {
   BuildStatusEventSource,
-  BuildStatusMap,
+  WorkflowRunMap,
   createBuildStatusEventSource,
 } from './functionsClient';
 import { AsyncQueue } from '../utils/AsyncQueue';
@@ -464,7 +464,7 @@ describe('createBuildStatusEventSource', () => {
   }
 
   function captureBuildStatuses(eventSource: ReturnType<typeof createBuildStatusEventSource>) {
-    const queue = new AsyncQueue<BuildStatusMap>();
+    const queue = new AsyncQueue<WorkflowRunMap>();
     eventSource.addEventListener('build-status', (e) => {
       queue.enqueue(JSON.parse(e.data));
     });

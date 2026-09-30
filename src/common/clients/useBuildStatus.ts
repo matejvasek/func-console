@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   BuildStatusEventSource,
-  BuildStatusMap,
+  WorkflowRunMap,
   createBuildStatusEventSource,
 } from './functionsClient';
 
@@ -12,8 +12,8 @@ import {
 export function useBuildStatus(
   connectionId?: number,
   eventSource?: BuildStatusEventSource,
-): { statuses: Readonly<BuildStatusMap>; error?: string } {
-  const [statuses, setStatuses] = useState<BuildStatusMap>({});
+): { statuses: Readonly<WorkflowRunMap>; error?: string } {
+  const [statuses, setStatuses] = useState<WorkflowRunMap>({});
   const [error, setError] = useState<string>();
 
   useEffect(() => {
@@ -23,7 +23,7 @@ export function useBuildStatus(
 
     es.addEventListener('build-status', (e) => {
       try {
-        const snap = JSON.parse(e.data) as BuildStatusMap;
+        const snap = JSON.parse(e.data) as WorkflowRunMap;
         setStatuses(snap);
       } catch {
         setError('Invalid build status data');
