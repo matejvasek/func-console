@@ -12,8 +12,8 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../testing/mswServer';
 import { consoleFetch } from '@openshift-console/dynamic-plugin-sdk';
 import {
-  BuildSnapshot,
   BuildStatusEventSource,
+  BuildStatusMap,
   createBuildStatusEventSource,
 } from './functionsClient';
 import { AsyncQueue } from '../utils/AsyncQueue';
@@ -40,15 +40,15 @@ describe('createBuildStatusEventSource', () => {
   }>([
     {
       description: 'emits parsed build-status events from SSE stream',
-      frames: 'event: build-status\ndata: {"statuses":{"a/b":{"buildStatus":"Building"}}}\n\n',
+      frames: 'event: build-status\ndata: {"a/b":{"buildStatus":"Building"}}\n\n',
       expectedKey: 'a/b',
       expectedStatus: 'Building',
     },
     {
       description: 'ignores frames without build-status event name',
       frames:
-        'event: message\ndata: {"statuses":{"ignored":"data"}}\n\n' +
-        'event: build-status\ndata: {"statuses":{"a/b":{"buildStatus":"Succeeded"}}}\n\n',
+        'event: message\ndata: {"ignored":"data"}}\n\n' +
+        'event: build-status\ndata: {"a/b":{"buildStatus":"Succeeded"}}\n\n',
       expectedKey: 'a/b',
       expectedStatus: 'Succeeded',
     },
@@ -56,13 +56,13 @@ describe('createBuildStatusEventSource', () => {
       description: 'ignores a frame with no event name',
       frames:
         'data: {"irrelevant":"not a build-status event"}\n\n' +
-        'event: build-status\ndata: {"statuses":{"c/d":{"buildStatus":"Succeeded"}}}\n\n',
+        'event: build-status\ndata: {"c/d":{"buildStatus":"Succeeded"}}\n\n',
       expectedKey: 'c/d',
       expectedStatus: 'Succeeded',
     },
     {
       description: 'handles heartbeat comment frames',
-      frames: ':\n\nevent: build-status\ndata: {"statuses":{"x/y":{"buildStatus":"Failed"}}}\n\n',
+      frames: ':\n\nevent: build-status\ndata: {"x/y":{"buildStatus":"Failed"}}\n\n',
       expectedKey: 'x/y',
       expectedStatus: 'Failed',
     },
@@ -73,7 +73,7 @@ describe('createBuildStatusEventSource', () => {
     using eventQueue = captureBuildStatuses(eventSource);
 
     const event = await eventQueue.dequeue();
-    expect(event.statuses[expectedKey].buildStatus).toBe(expectedStatus);
+    expect(event[expectedKey].buildStatus).toBe(expectedStatus);
   });
 
   it('emits error event from SSE stream', async () => {
@@ -128,8 +128,8 @@ describe('createBuildStatusEventSource', () => {
 
   it('logs listener errors and continues streaming', async () => {
     useStaticEventStream(
-      'event: build-status\ndata: {"statuses":{"a/b":{"buildStatus":"Building"}}}\n\n' +
-        'event: build-status\ndata: {"statuses":{"a/b":{"buildStatus":"Succeeded"}}}\n\n',
+      'event: build-status\ndata: {"a/b":{"buildStatus":"Building"}}\n\n' +
+        'event: build-status\ndata: {"a/b":{"buildStatus":"Succeeded"}}\n\n',
     );
 
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -147,8 +147,8 @@ describe('createBuildStatusEventSource', () => {
     const event1 = await eventQueue.dequeue();
     const event2 = await eventQueue.dequeue();
 
-    expect(event1.statuses['a/b'].buildStatus).toBe('Building');
-    expect(event2.statuses['a/b'].buildStatus).toBe('Succeeded');
+    expect(event1['a/b'].buildStatus).toBe('Building');
+    expect(event2['a/b'].buildStatus).toBe('Succeeded');
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining('BuildStatusEventSource'),
       expect.any(Error),
@@ -188,8 +188,7 @@ describe('createBuildStatusEventSource', () => {
           return new HttpResponse(null, { status: 500, statusText: 'Internal Server Error' });
         }
         // Second call succeeds
-        const sseFrame =
-          'event: build-status\ndata: {"statuses":{"a/b":{"buildStatus":"Building"}}}\n\n';
+        const sseFrame = 'event: build-status\ndata: {"a/b":{"buildStatus":"Building"}}\n\n';
         return HttpResponse.text(sseFrame, {
           headers: { 'Content-Type': 'text/event-stream' },
         });
@@ -209,7 +208,7 @@ describe('createBuildStatusEventSource', () => {
 
     // Event arrives on successful reconnect
     const event = await eventQueue.dequeue();
-    expect(event.statuses['a/b'].buildStatus).toBe('Building');
+    expect(event['a/b'].buildStatus).toBe('Building');
   });
 
   it('reconnects when response has no body', async () => {
@@ -223,8 +222,7 @@ describe('createBuildStatusEventSource', () => {
           return new HttpResponse(null, { status: 200 });
         }
         // Subsequent calls succeed with SSE frame
-        const sseFrame =
-          'event: build-status\ndata: {"statuses":{"c/d":{"buildStatus":"Succeeded"}}}\n\n';
+        const sseFrame = 'event: build-status\ndata: {"c/d":{"buildStatus":"Succeeded"}}\n\n';
         return HttpResponse.text(sseFrame, {
           headers: { 'Content-Type': 'text/event-stream' },
         });
@@ -239,14 +237,14 @@ describe('createBuildStatusEventSource', () => {
 
     // Event arrives on successful reconnect
     const event = await eventQueue.dequeue();
-    expect(event.statuses['c/d'].buildStatus).toBe('Succeeded');
+    expect(event['c/d'].buildStatus).toBe('Succeeded');
   });
 
   it('handles multiple sequential build-status events', async () => {
     const sseFrames =
-      'event: build-status\ndata: {"statuses":{"a/b":{"buildStatus":"Building"}}}\n\n' +
-      'event: build-status\ndata: {"statuses":{"a/b":{"buildStatus":"Succeeded"}}}\n\n' +
-      'event: build-status\ndata: {"statuses":{"a/b":{"buildStatus":"Failed"}}}\n\n';
+      'event: build-status\ndata: {"a/b":{"buildStatus":"Building"}}\n\n' +
+      'event: build-status\ndata: {"a/b":{"buildStatus":"Succeeded"}}\n\n' +
+      'event: build-status\ndata: {"a/b":{"buildStatus":"Failed"}}\n\n';
     useStaticEventStream(sseFrames);
 
     using eventSource = createEventSource();
@@ -256,21 +254,19 @@ describe('createBuildStatusEventSource', () => {
     const event2 = await eventQueue.dequeue();
     const event3 = await eventQueue.dequeue();
 
-    expect(event1.statuses['a/b'].buildStatus).toBe('Building');
-    expect(event2.statuses['a/b'].buildStatus).toBe('Succeeded');
-    expect(event3.statuses['a/b'].buildStatus).toBe('Failed');
+    expect(event1['a/b'].buildStatus).toBe('Building');
+    expect(event2['a/b'].buildStatus).toBe('Succeeded');
+    expect(event3['a/b'].buildStatus).toBe('Failed');
   });
 
   it('handles large payload in single frame', async () => {
     // Large function map to ensure decoder handles bigger payloads
-    const largePayload = {
-      statuses: Object.fromEntries(
-        Array.from({ length: 50 }, (_, i) => [
-          `fn${i}/repo${i}`,
-          { buildStatus: `Status${i}`, runURL: `http://example.com/${i}` },
-        ]),
-      ),
-    };
+    const largePayload = Object.fromEntries(
+      Array.from({ length: 50 }, (_, i) => [
+        `fn${i}/repo${i}`,
+        { buildStatus: `Status${i}`, runURL: `http://example.com/${i}` },
+      ]),
+    );
     const sseFrame = `event: build-status\ndata: ${JSON.stringify(largePayload)}\n\n`;
     useStaticEventStream(sseFrame);
 
@@ -279,9 +275,9 @@ describe('createBuildStatusEventSource', () => {
 
     const event = await eventQueue.dequeue();
 
-    expect(Object.keys(event.statuses).length).toBe(50);
-    expect(event.statuses['fn0/repo0']).toBeDefined();
-    expect(event.statuses['fn49/repo49']).toBeDefined();
+    expect(Object.keys(event).length).toBe(50);
+    expect(event['fn0/repo0']).toBeDefined();
+    expect(event['fn49/repo49']).toBeDefined();
   });
 
   it('handles SSE frames split across multiple chunks, including split in delimiter', async () => {
@@ -289,10 +285,10 @@ describe('createBuildStatusEventSource', () => {
     server.use(
       http.get(BUILD_WATCH_URL, () => {
         const chunks = [
-          'event: build-status\ndata: {"statuses":{"a/b":{"buildStatus":"Building"}}}\n',
+          'event: build-status\ndata: {"a/b":{"buildStatus":"Building"}}\n',
           '\nevent: build-',
-          'status\ndata: {"statuses":{"c/d":{"buildStatus":"Succeeded"',
-          '}}}\n\n',
+          'status\ndata: {"c/d":{"buildStatus":"Succeeded"',
+          '}}\n\n',
         ];
 
         const stream = new ReadableStream<Uint8Array>({
@@ -317,8 +313,8 @@ describe('createBuildStatusEventSource', () => {
     const event1 = await eventQueue.dequeue();
     const event2 = await eventQueue.dequeue();
 
-    expect(event1.statuses['a/b'].buildStatus).toBe('Building');
-    expect(event2.statuses['c/d'].buildStatus).toBe('Succeeded');
+    expect(event1['a/b'].buildStatus).toBe('Building');
+    expect(event2['c/d'].buildStatus).toBe('Succeeded');
   });
 
   it('passes timeout: 0 to prevent default ~60s timeout on long-lived stream', async () => {
@@ -380,8 +376,7 @@ describe('createBuildStatusEventSource', () => {
         request.signal.addEventListener('abort', () => {
           abortHandlerCalled = true;
         });
-        const sseFrame =
-          'event: build-status\ndata: {"statuses":{"a/b":{"buildStatus":"Building"}}}\n\n';
+        const sseFrame = 'event: build-status\ndata: {"a/b":{"buildStatus":"Building"}}\n\n';
         let intervalId: NodeJS.Timeout | undefined;
         const stream = new ReadableStream<Uint8Array>({
           start(controller) {
@@ -403,7 +398,7 @@ describe('createBuildStatusEventSource', () => {
     using eventQueue = captureBuildStatuses(eventSource);
 
     const event = await eventQueue.dequeue();
-    expect(event.statuses['a/b'].buildStatus).toBe('Building');
+    expect(event['a/b'].buildStatus).toBe('Building');
 
     eventSource.close();
 
@@ -430,18 +425,14 @@ describe('createBuildStatusEventSource', () => {
     using eventSource = createEventSource();
     using eventQueue = captureBuildStatuses(eventSource);
 
-    frameQueue.enqueue(
-      'event: build-status\ndata: {"statuses":{"a/b":{"buildStatus":"None"}}}\n\n',
-    );
+    frameQueue.enqueue('event: build-status\ndata: {"a/b":{"buildStatus":"None"}}\n\n');
     const event = await eventQueue.dequeue();
-    expect(event.statuses['a/b'].buildStatus).toBe('None');
+    expect(event['a/b'].buildStatus).toBe('None');
 
     eventSource.close();
 
     // emit after close
-    frameQueue.enqueue(
-      'event: build-status\ndata: {"statuses":{"a/b":{"buildStatus":"Building"}}}\n\n',
-    );
+    frameQueue.enqueue('event: build-status\ndata: {"a/b":{"buildStatus":"Building"}}\n\n');
 
     const raceResult = await Promise.race([
       eventQueue.dequeue().then(() => 'event received'),
@@ -471,7 +462,7 @@ describe('createBuildStatusEventSource', () => {
   }
 
   function captureBuildStatuses(eventSource: ReturnType<typeof createBuildStatusEventSource>) {
-    const queue = new AsyncQueue<BuildSnapshot>();
+    const queue = new AsyncQueue<BuildStatusMap>();
     eventSource.addEventListener('build-status', (e) => {
       queue.enqueue(JSON.parse(e.data));
     });

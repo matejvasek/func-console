@@ -3,7 +3,6 @@ package handler_test
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -245,36 +244,6 @@ var _ = Describe("BuildWatch", func() {
 		case <-time.After(2 * time.Second):
 			Fail("expected watch.Stop() to be called when request context is cancelled")
 		}
-	})
-
-	It("wraps build-status snapshots in a statuses object", func() {
-		ch := make(chan scm.WorkflowRunsOrErr, 2)
-		stub := &scm.ClientStub{
-			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
-				return &scm.StubWatch{C: ch}, nil
-			},
-		}
-		reader := startWatchStream(stub, ticker.SilentTickerFactory())
-
-		expectStatuses := func(want string) {
-			data, ok := readSSEDataWithin(reader, 2*time.Second)
-			Expect(ok).To(BeTrue(), "expected a build-status SSE frame")
-
-			var payload map[string]json.RawMessage
-			Expect(json.Unmarshal([]byte(data), &payload)).To(Succeed())
-			Expect(payload).To(HaveKey("statuses"))
-			Expect(payload["statuses"]).To(MatchJSON(want))
-		}
-
-		ch <- scm.WorkflowRunsOrErr{
-			Runs: map[string]scm.WorkflowRun{
-				"alice/fn": {BuildStatus: scm.Building},
-			},
-		}
-		expectStatuses(`{"alice/fn":{"buildStatus":"Building"}}`)
-
-		ch <- scm.WorkflowRunsOrErr{Runs: map[string]scm.WorkflowRun{}}
-		expectStatuses(`{}`)
 	})
 })
 

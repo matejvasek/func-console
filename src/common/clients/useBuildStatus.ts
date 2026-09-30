@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import {
-  BuildSnapshot,
   BuildStatusEventSource,
   BuildStatusMap,
   createBuildStatusEventSource,
@@ -24,8 +23,8 @@ export function useBuildStatus(
 
     es.addEventListener('build-status', (e) => {
       try {
-        const snap = JSON.parse(e.data) as BuildSnapshot;
-        setStatuses(snap.statuses);
+        const snap = JSON.parse(e.data) as BuildStatusMap;
+        setStatuses(snap);
       } catch {
         setError('Invalid build status data');
       }

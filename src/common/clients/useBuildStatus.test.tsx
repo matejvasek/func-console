@@ -6,7 +6,7 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
 
 import { renderHook, waitFor } from '@testing-library/react';
 import { useBuildStatus } from './useBuildStatus';
-import { BuildSnapshot } from './functionsClient';
+import { BuildStatusMap } from './functionsClient';
 
 interface BuildSnapshotEvent {
   readonly data: string;
@@ -34,10 +34,8 @@ describe('useBuildStatus', () => {
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
     emitSnapshot({
-      statuses: {
-        'alice/fn': { buildStatus: 'Building' },
-        'alice/gn': { buildStatus: 'Failed', runURL: 'u' },
-      },
+      'alice/fn': { buildStatus: 'Building' },
+      'alice/gn': { buildStatus: 'Failed', runURL: 'u' },
     });
 
     await waitFor(() => expect(Object.keys(result.current.statuses).length).toBe(2));
@@ -51,13 +49,13 @@ describe('useBuildStatus', () => {
 
     const { result, unmount } = renderHook(() => useBuildStatus(0, eventSource));
 
-    emitSnapshot({ statuses: { 'a/b': { buildStatus: 'Building' } } });
+    emitSnapshot({ 'a/b': { buildStatus: 'Building' } });
     await waitFor(() => expect(Object.keys(result.current.statuses).length).toBe(1));
 
     unmount();
 
     expect(() => {
-      emitSnapshot({ statuses: { 'c/d': { buildStatus: 'Succeeded' } } });
+      emitSnapshot({ 'c/d': { buildStatus: 'Succeeded' } });
     }).toThrow(CLOSED_ERROR);
   });
 
@@ -65,11 +63,7 @@ describe('useBuildStatus', () => {
     const { eventSource, emitSnapshot } = createFakeEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
-    emitSnapshot({
-      statuses: {
-        'bob/repo': { buildStatus: 'Succeeded' },
-      },
-    });
+    emitSnapshot({ 'bob/repo': { buildStatus: 'Succeeded' } });
 
     await waitFor(() => expect(Object.keys(result.current.statuses).length).toBe(1));
     expect(result.current.statuses['bob/repo']?.buildStatus).toBe('Succeeded');
@@ -79,10 +73,10 @@ describe('useBuildStatus', () => {
     const { eventSource, emitSnapshot } = createFakeEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
-    emitSnapshot({ statuses: { 'x/y': { buildStatus: 'Building' } } });
+    emitSnapshot({ 'x/y': { buildStatus: 'Building' } });
     await waitFor(() => expect(result.current.statuses['x/y']?.buildStatus).toBe('Building'));
 
-    emitSnapshot({ statuses: { 'x/y': { buildStatus: 'Succeeded' } } });
+    emitSnapshot({ 'x/y': { buildStatus: 'Succeeded' } });
     await waitFor(() => expect(result.current.statuses['x/y']?.buildStatus).toBe('Succeeded'));
   });
 
@@ -99,7 +93,7 @@ describe('useBuildStatus', () => {
       initialProps: { connId: 0 },
     });
 
-    emitSnapshot({ statuses: { 'a/b': { buildStatus: 'Building' } } });
+    emitSnapshot({ 'a/b': { buildStatus: 'Building' } });
     await waitFor(() => expect(Object.keys(result.current.statuses).length).toBe(1));
 
     rerender({ connId: 1 });
@@ -120,7 +114,7 @@ describe('useBuildStatus', () => {
     const { eventSource, emitSnapshot, emitError } = createFakeEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
-    emitSnapshot({ statuses: { 'repo/owner': { buildStatus: 'Building' } } });
+    emitSnapshot({ 'repo/owner': { buildStatus: 'Building' } });
     await waitFor(() => expect(Object.keys(result.current.statuses).length).toBe(1));
 
     emitError({ message: 'Network error', isAuthError: false });
@@ -162,7 +156,7 @@ describe('useBuildStatus', () => {
     const { eventSource, emitSnapshot, emitRaw } = createFakeEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
-    emitSnapshot({ statuses: { 'a/b': { buildStatus: 'Building' } } });
+    emitSnapshot({ 'a/b': { buildStatus: 'Building' } });
     await waitFor(() => expect(Object.keys(result.current.statuses).length).toBe(1));
 
     emitRaw('invalid json data');
@@ -174,7 +168,7 @@ describe('useBuildStatus', () => {
 
   function createFakeEventSource(): {
     eventSource: BuildStatusEventSource;
-    emitSnapshot: (snap: BuildSnapshot) => void;
+    emitSnapshot: (snap: BuildStatusMap) => void;
     emitError: (err: BuildWatchErrorEvent) => void;
     emitOpen: () => void;
     emitRaw: (data: string) => void;
@@ -220,7 +214,7 @@ describe('useBuildStatus', () => {
           openListeners.length = 0;
         },
       },
-      emitSnapshot(snap: BuildSnapshot) {
+      emitSnapshot(snap: BuildStatusMap) {
         invokeListeners(listeners, { data: JSON.stringify(snap) });
       },
       emitError(err: BuildWatchErrorEvent) {

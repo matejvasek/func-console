@@ -16,14 +16,8 @@ const RECONNECT_DELAY_MS = 3000;
 
 export type BuildStatusMap = Record<string, BuildStatus>;
 
-export interface BuildSnapshot {
-  // Keyed by "owner/repo", the identifier a function is correlated on.
-  statuses: BuildStatusMap;
-  error?: string;
-}
-
 export interface BuildSnapshotEvent {
-  // JSON string containing a BuildSnapshot; parse with JSON.parse(data) as BuildSnapshot
+  // JSON string containing a BuildStatusMap; parse with JSON.parse(data) as BuildStatusMap
   readonly data: string;
 }
 

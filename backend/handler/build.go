@@ -92,7 +92,7 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 				flusher.Flush()
 				return
 			}
-			data, err := json.Marshal(event)
+			data, err := json.Marshal(event.Runs)
 			if err != nil {
 				slog.Warn("build watch: marshal snapshot failed", "err", err)
 				continue
