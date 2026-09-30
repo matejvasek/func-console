@@ -25,8 +25,8 @@ export interface BuildSnapshotEvent {
 }
 
 export interface BuildWatchErrorEvent {
-  readonly message: string;
-  readonly isAuthError: boolean;
+  // JSON string containing error info of shape { message: string; isAuthError: boolean }
+  readonly data: string;
 }
 
 // BuildStatusEventSource is a minimal subset of the standard EventSource interface we require.
@@ -119,14 +119,22 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
               invokeListeners(listeners, { data: event.data }, 'build-status');
               break;
             case 'error':
-              invokeListeners(errorListeners, { message: event.data, isAuthError: false }, 'error');
+              invokeListeners(
+                errorListeners,
+                { data: JSON.stringify({ message: event.data, isAuthError: false }) },
+                'error',
+              );
               break;
           }
         }
       } catch (err: unknown) {
         if (!streaming) return;
         const message = (err instanceof Error && err.message) || String(err) || 'Unknown error';
-        invokeListeners(errorListeners, { message, isAuthError: isAuthError(err) }, 'error');
+        invokeListeners(
+          errorListeners,
+          { data: JSON.stringify({ message, isAuthError: isAuthError(err) }) },
+          'error',
+        );
         if (isAuthError(err)) return;
       }
       if (streaming) {

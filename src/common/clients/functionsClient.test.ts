@@ -474,7 +474,12 @@ describe('createBuildStatusEventSource', () => {
   function captureErrors(eventSource: ReturnType<typeof createBuildStatusEventSource>) {
     const queue = new AsyncQueue<{ message: string; isAuthError: boolean }>();
     eventSource.addEventListener('error', (e) => {
-      queue.enqueue(e);
+      try {
+        const error = JSON.parse(e.data) as { message: string; isAuthError: boolean };
+        queue.enqueue(error);
+      } catch {
+        queue.enqueue({ message: 'captureErrors failed to parse the event', isAuthError: false });
+      }
     });
     return queue;
   }

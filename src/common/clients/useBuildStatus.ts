@@ -31,7 +31,12 @@ export function useBuildStatus(
     });
 
     es.addEventListener('error', (e) => {
-      setError(e.message);
+      try {
+        const error = JSON.parse(e.data) as { message: string };
+        setError(error.message);
+      } catch {
+        setError('Unknown error');
+      }
     });
 
     es.addEventListener('open', () => {

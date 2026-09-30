@@ -6,16 +6,7 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
 
 import { renderHook, waitFor } from '@testing-library/react';
 import { useBuildStatus } from './useBuildStatus';
-import { WorkflowRunMap } from './functionsClient';
-
-interface BuildSnapshotEvent {
-  readonly data: string;
-}
-
-interface BuildWatchErrorEvent {
-  readonly message: string;
-  readonly isAuthError: boolean;
-}
+import { BuildSnapshotEvent, BuildWatchErrorEvent, WorkflowRunMap } from './functionsClient';
 
 interface BuildStatusEventSource {
   addEventListener(
@@ -169,7 +160,7 @@ describe('useBuildStatus', () => {
   function createFakeEventSource(): {
     eventSource: BuildStatusEventSource;
     emitSnapshot: (snap: WorkflowRunMap) => void;
-    emitError: (err: BuildWatchErrorEvent) => void;
+    emitError: (err: { message: string; isAuthError: boolean }) => void;
     emitOpen: () => void;
     emitRaw: (data: string) => void;
   } {
@@ -217,8 +208,8 @@ describe('useBuildStatus', () => {
       emitSnapshot(snap: WorkflowRunMap) {
         invokeListeners(listeners, { data: JSON.stringify(snap) });
       },
-      emitError(err: BuildWatchErrorEvent) {
-        invokeListeners(errorListeners, err);
+      emitError(err: { message: string; isAuthError: boolean }) {
+        invokeListeners(errorListeners, { data: JSON.stringify(err) });
       },
       emitOpen() {
         invokeListeners(openListeners, undefined);
