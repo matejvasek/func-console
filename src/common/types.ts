@@ -86,7 +86,7 @@ export interface ClusterFunction {
 }
 
 export interface BuildStatus {
-  buildStatus: 'Building' | 'Succeeded' | 'Failed' | 'None';
-  runURL?: string;
+  status: 'Building' | 'Succeeded' | 'Failed' | 'None';
+  url?: string;
   error?: string;
 }

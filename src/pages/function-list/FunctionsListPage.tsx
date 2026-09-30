@@ -297,21 +297,21 @@ function mergeBuild(
   inCluster: boolean,
 ): FunctionTableItem {
   if (inCluster) {
-    if (build.buildStatus === 'Building') {
+    if (build.status === 'Building') {
       return { ...item, buildActivity: 'Building' };
     }
-    if (build.buildStatus === 'Failed') {
-      return { ...item, buildActivity: 'Failed', buildRunURL: build.runURL };
+    if (build.status === 'Failed') {
+      return { ...item, buildActivity: 'Failed', buildRunURL: build.url };
     }
     // Succeeded / None: nothing to overlay on a cluster-known function.
     return item;
   }
   // Not in the cluster at all: surface building as a secondary indicator alongside NotDeployed.
-  if (build.buildStatus === 'Building') {
+  if (build.status === 'Building') {
     return { ...item, buildActivity: 'Building' };
   }
-  if (build.buildStatus === 'Failed') {
-    return { ...item, status: 'BuildFailed', buildRunURL: build.runURL };
+  if (build.status === 'Failed') {
+    return { ...item, status: 'BuildFailed', buildRunURL: build.url };
   }
   // Succeeded / None: fall through to the cluster-derived status.
   return item;

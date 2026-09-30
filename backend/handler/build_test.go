@@ -103,7 +103,7 @@ var _ = Describe("BuildWatch", func() {
 		}
 		first, ok := readSSEDataWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a frame for the first snapshot")
-		Expect(first).To(ContainSubstring(`"alice/fn":{"buildStatus":"Building"}`))
+		Expect(first).To(ContainSubstring(`"alice/fn":{"status":"Building"}`))
 
 		ch <- scm.WorkflowRunsOrErr{
 			Runs: map[string]scm.WorkflowRun{
@@ -115,8 +115,8 @@ var _ = Describe("BuildWatch", func() {
 		}
 		second, ok := readSSEDataWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a frame for the second snapshot")
-		Expect(second).To(ContainSubstring(`"buildStatus":"Failed"`))
-		Expect(second).To(ContainSubstring(`"runURL":"https://github.com/alice/fn/actions/runs/1"`))
+		Expect(second).To(ContainSubstring(`"status":"Failed"`))
+		Expect(second).To(ContainSubstring(`"url":"https://github.com/alice/fn/actions/runs/1"`))
 	})
 
 	It("omits the optional fields for a repo with no run", func() {
@@ -134,7 +134,7 @@ var _ = Describe("BuildWatch", func() {
 		}
 		frame, ok := readSSEDataWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a frame for the snapshot")
-		Expect(frame).To(ContainSubstring(`"alice/fn":{"buildStatus":"None"}`))
+		Expect(frame).To(ContainSubstring(`"alice/fn":{"status":"None"}`))
 	})
 
 	It("ends the stream when the watch channel closes", func() {
@@ -153,7 +153,7 @@ var _ = Describe("BuildWatch", func() {
 		}
 		first, ok := readSSEDataWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an initial frame")
-		Expect(first).To(ContainSubstring(`"buildStatus":"Building"`))
+		Expect(first).To(ContainSubstring(`"status":"Building"`))
 
 		// Closing the channel signals the watch ended (e.g. the token was revoked
 		// mid-stream); the handler ends the SSE stream, so the body reaches EOF.

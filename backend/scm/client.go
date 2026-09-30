@@ -137,8 +137,8 @@ func (b BuildStatus) MarshalJSON() ([]byte, error) {
 // repo branch. A nil *WorkflowRun means the workflow has no runs on that branch
 // (including when the workflow file does not exist in the repo).
 type WorkflowRun struct {
-	BuildStatus BuildStatus `json:"buildStatus"`
-	HTMLURL     string      `json:"runURL,omitempty"`
+	BuildStatus BuildStatus `json:"status"`
+	HTMLURL     string      `json:"url,omitempty"`
 }
 
 type ClientStub struct {

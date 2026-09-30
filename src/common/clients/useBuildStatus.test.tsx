@@ -34,14 +34,14 @@ describe('useBuildStatus', () => {
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
     emitSnapshot({
-      'alice/fn': { buildStatus: 'Building' },
-      'alice/gn': { buildStatus: 'Failed', runURL: 'u' },
+      'alice/fn': { status: 'Building' },
+      'alice/gn': { status: 'Failed', url: 'u' },
     });
 
     await waitFor(() => expect(Object.keys(result.current.statuses).length).toBe(2));
-    expect(result.current.statuses['alice/fn']?.buildStatus).toBe('Building');
-    expect(result.current.statuses['alice/gn']?.buildStatus).toBe('Failed');
-    expect(result.current.statuses['alice/gn']?.runURL).toBe('u');
+    expect(result.current.statuses['alice/fn']?.status).toBe('Building');
+    expect(result.current.statuses['alice/gn']?.status).toBe('Failed');
+    expect(result.current.statuses['alice/gn']?.url).toBe('u');
   });
 
   it('closes the stream on unmount, stopping updates', async () => {
@@ -49,13 +49,13 @@ describe('useBuildStatus', () => {
 
     const { result, unmount } = renderHook(() => useBuildStatus(0, eventSource));
 
-    emitSnapshot({ 'a/b': { buildStatus: 'Building' } });
+    emitSnapshot({ 'a/b': { status: 'Building' } });
     await waitFor(() => expect(Object.keys(result.current.statuses).length).toBe(1));
 
     unmount();
 
     expect(() => {
-      emitSnapshot({ 'c/d': { buildStatus: 'Succeeded' } });
+      emitSnapshot({ 'c/d': { status: 'Succeeded' } });
     }).toThrow(CLOSED_ERROR);
   });
 
@@ -63,21 +63,21 @@ describe('useBuildStatus', () => {
     const { eventSource, emitSnapshot } = createFakeEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
-    emitSnapshot({ 'bob/repo': { buildStatus: 'Succeeded' } });
+    emitSnapshot({ 'bob/repo': { status: 'Succeeded' } });
 
     await waitFor(() => expect(Object.keys(result.current.statuses).length).toBe(1));
-    expect(result.current.statuses['bob/repo']?.buildStatus).toBe('Succeeded');
+    expect(result.current.statuses['bob/repo']?.status).toBe('Succeeded');
   });
 
   it('updates state multiple times as snapshots arrive', async () => {
     const { eventSource, emitSnapshot } = createFakeEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
-    emitSnapshot({ 'x/y': { buildStatus: 'Building' } });
-    await waitFor(() => expect(result.current.statuses['x/y']?.buildStatus).toBe('Building'));
+    emitSnapshot({ 'x/y': { status: 'Building' } });
+    await waitFor(() => expect(result.current.statuses['x/y']?.status).toBe('Building'));
 
-    emitSnapshot({ 'x/y': { buildStatus: 'Succeeded' } });
-    await waitFor(() => expect(result.current.statuses['x/y']?.buildStatus).toBe('Succeeded'));
+    emitSnapshot({ 'x/y': { status: 'Succeeded' } });
+    await waitFor(() => expect(result.current.statuses['x/y']?.status).toBe('Succeeded'));
   });
 
   it('closes the stream when connectionId changes', async () => {
@@ -93,7 +93,7 @@ describe('useBuildStatus', () => {
       initialProps: { connId: 0 },
     });
 
-    emitSnapshot({ 'a/b': { buildStatus: 'Building' } });
+    emitSnapshot({ 'a/b': { status: 'Building' } });
     await waitFor(() => expect(Object.keys(result.current.statuses).length).toBe(1));
 
     rerender({ connId: 1 });
@@ -114,14 +114,14 @@ describe('useBuildStatus', () => {
     const { eventSource, emitSnapshot, emitError } = createFakeEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
-    emitSnapshot({ 'repo/owner': { buildStatus: 'Building' } });
+    emitSnapshot({ 'repo/owner': { status: 'Building' } });
     await waitFor(() => expect(Object.keys(result.current.statuses).length).toBe(1));
 
     emitError({ message: 'Network error', isAuthError: false });
     await waitFor(() => expect(result.current.error).toBe('Network error'));
 
     // Statuses should still be present
-    expect(result.current.statuses['repo/owner']?.buildStatus).toBe('Building');
+    expect(result.current.statuses['repo/owner']?.status).toBe('Building');
   });
 
   it('clears error when open event is emitted', async () => {
@@ -156,7 +156,7 @@ describe('useBuildStatus', () => {
     const { eventSource, emitSnapshot, emitRaw } = createFakeEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
-    emitSnapshot({ 'a/b': { buildStatus: 'Building' } });
+    emitSnapshot({ 'a/b': { status: 'Building' } });
     await waitFor(() => expect(Object.keys(result.current.statuses).length).toBe(1));
 
     emitRaw('invalid json data');

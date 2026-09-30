@@ -113,7 +113,7 @@ describe('FunctionsListPage', () => {
     });
 
     // Update MSW to return successful stream (reconnection will retry after RECONNECT_DELAY_MS)
-    watchBuildsStub({ 'twoGiants/my-repo': { buildStatus: 'Succeeded' } });
+    watchBuildsStub({ 'twoGiants/my-repo': { status: 'Succeeded' } });
 
     // Advance past reconnect delay (3000ms)
     await act(async () => {
@@ -156,7 +156,7 @@ describe('FunctionsListPage', () => {
     expect(screen.queryByLabelText('Build in progress')).not.toBeInTheDocument();
 
     // Emit Building status
-    buildStatusesSeq.enqueue({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } });
+    buildStatusesSeq.enqueue({ [`twoGiants/${funcName}`]: { status: 'Building' } });
 
     // Should show building indicator
     await waitFor(() => {
@@ -164,7 +164,7 @@ describe('FunctionsListPage', () => {
     });
 
     // Emit Succeeded status
-    buildStatusesSeq.enqueue({ [`twoGiants/${funcName}`]: { buildStatus: 'Succeeded' } });
+    buildStatusesSeq.enqueue({ [`twoGiants/${funcName}`]: { status: 'Succeeded' } });
 
     // Building indicator should disappear (Succeeded on NotDeployed shows nothing)
     await waitFor(() => {
@@ -193,7 +193,7 @@ describe('FunctionsListPage', () => {
 
     // Snapshot: func-alpha Building
     buildStatusesSeq.enqueue({
-      [`twoGiants/repo-alpha`]: { buildStatus: 'Building' },
+      [`twoGiants/repo-alpha`]: { status: 'Building' },
     });
     await waitFor(() => {
       const row1 = screen.getByText(func1).closest('tr');
@@ -204,8 +204,8 @@ describe('FunctionsListPage', () => {
 
     // Snapshot: func-alpha Succeeded, func-beta Building
     buildStatusesSeq.enqueue({
-      [`twoGiants/repo-alpha`]: { buildStatus: 'Succeeded' },
-      [`twoGiants/repo-beta`]: { buildStatus: 'Building' },
+      [`twoGiants/repo-alpha`]: { status: 'Succeeded' },
+      [`twoGiants/repo-beta`]: { status: 'Building' },
     });
     await waitFor(() => {
       const row1 = screen.getByText(func1).closest('tr');
@@ -216,8 +216,8 @@ describe('FunctionsListPage', () => {
 
     // Snapshot: both Succeeded
     buildStatusesSeq.enqueue({
-      [`twoGiants/repo-alpha`]: { buildStatus: 'Succeeded' },
-      [`twoGiants/repo-beta`]: { buildStatus: 'Succeeded' },
+      [`twoGiants/repo-alpha`]: { status: 'Succeeded' },
+      [`twoGiants/repo-beta`]: { status: 'Succeeded' },
     });
     await waitFor(() => {
       const row1 = screen.getByText(func1).closest('tr');
@@ -471,7 +471,7 @@ describe('FunctionsListPage', () => {
     // No cluster fixture, so the function is NotDeployed. Building is always shown
     // as a secondary indicator regardless of whether there is an existing deployment.
     listFunctionsStub({ responses: [repoListItem(funcName)] });
-    watchBuildsStub({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } });
+    watchBuildsStub({ [`twoGiants/${funcName}`]: { status: 'Building' } });
 
     render(
       <MemoryRouter>
@@ -489,7 +489,7 @@ describe('FunctionsListPage', () => {
     // new revision builds; the build is surfaced only as a secondary spinner.
     listFunctionsStub({ responses: [repoListItem(funcName)] });
     sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
-    watchBuildsStub({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } });
+    watchBuildsStub({ [`twoGiants/${funcName}`]: { status: 'Building' } });
 
     render(
       <MemoryRouter>
@@ -507,8 +507,8 @@ describe('FunctionsListPage', () => {
     sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
     watchBuildsStub({
       [`twoGiants/${funcName}`]: {
-        buildStatus: 'Failed',
-        runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+        status: 'Failed',
+        url: 'https://github.com/twoGiants/my-func/actions/runs/1',
       },
     });
 
@@ -537,8 +537,8 @@ describe('FunctionsListPage', () => {
     });
     watchBuildsStub({
       [`twoGiants/${funcName}`]: {
-        buildStatus: 'Failed',
-        runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+        status: 'Failed',
+        url: 'https://github.com/twoGiants/my-func/actions/runs/1',
       },
     });
 
@@ -562,7 +562,7 @@ describe('FunctionsListPage', () => {
     // it had already passed on every redeploy.
     listFunctionsStub({ responses: [repoListItem(funcName)] });
     sdkTestDoubles.setWatchFixtures({ knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')] });
-    watchBuildsStub({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } });
+    watchBuildsStub({ [`twoGiants/${funcName}`]: { status: 'Building' } });
 
     render(
       <MemoryRouter>
@@ -585,8 +585,8 @@ describe('FunctionsListPage', () => {
     });
     watchBuildsStub({
       [`twoGiants/${funcName}`]: {
-        buildStatus: 'Failed',
-        runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+        status: 'Failed',
+        url: 'https://github.com/twoGiants/my-func/actions/runs/1',
       },
     });
 
@@ -610,8 +610,8 @@ describe('FunctionsListPage', () => {
     listFunctionsStub({ responses: [{ ...repoListItem(funcName), err: 'cannot read func.yaml' }] });
     watchBuildsStub({
       [`twoGiants/${funcName}`]: {
-        buildStatus: 'Failed',
-        runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+        status: 'Failed',
+        url: 'https://github.com/twoGiants/my-func/actions/runs/1',
       },
     });
 
@@ -628,8 +628,8 @@ describe('FunctionsListPage', () => {
     listFunctionsStub({ responses: [repoListItem(funcName)] });
     watchBuildsStub({
       [`twoGiants/${funcName}`]: {
-        buildStatus: 'Failed',
-        runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+        status: 'Failed',
+        url: 'https://github.com/twoGiants/my-func/actions/runs/1',
       },
     });
 
