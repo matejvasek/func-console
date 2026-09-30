@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 )
 
 var (
@@ -89,13 +90,16 @@ type WorkflowWatch interface {
 	Stop()
 }
 
-type stubWatch struct {
-	ch chan WorkflowRunsOrErr
+type StubWatch struct {
+	C chan WorkflowRunsOrErr
+	o sync.Once
 }
 
-func (w *stubWatch) ResultChan() <-chan WorkflowRunsOrErr { return w.ch }
-func (w *stubWatch) Stop() {
-	close(w.ch)
+func (w *StubWatch) ResultChan() <-chan WorkflowRunsOrErr { return w.C }
+func (w *StubWatch) Stop() {
+	w.o.Do(func() {
+		close(w.C)
+	})
 }
 
 type BuildStatus int
@@ -230,5 +234,5 @@ func (s *ClientStub) WatchWorkflowRuns(ctx context.Context, workflowFile string)
 	// fail.
 	ch := make(chan WorkflowRunsOrErr)
 	close(ch)
-	return &stubWatch{ch: ch}, nil
+	return &StubWatch{C: ch}, nil
 }

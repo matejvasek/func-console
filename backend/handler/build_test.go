@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -75,7 +74,7 @@ var _ = Describe("BuildWatch", func() {
 		ch := make(chan scm.WorkflowRunsOrErr)
 		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
-				return &testWatch{ch: ch}, nil
+				return &scm.StubWatch{C: ch}, nil
 			},
 		}
 
@@ -92,7 +91,7 @@ var _ = Describe("BuildWatch", func() {
 		ch := make(chan scm.WorkflowRunsOrErr, 4)
 		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
-				return &testWatch{ch: ch}, nil
+				return &scm.StubWatch{C: ch}, nil
 			},
 		}
 
@@ -125,7 +124,7 @@ var _ = Describe("BuildWatch", func() {
 		ch := make(chan scm.WorkflowRunsOrErr, 1)
 		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
-				return &testWatch{ch: ch}, nil
+				return &scm.StubWatch{C: ch}, nil
 			},
 		}
 
@@ -141,7 +140,7 @@ var _ = Describe("BuildWatch", func() {
 
 	It("ends the stream when the watch channel closes", func() {
 		ch := make(chan scm.WorkflowRunsOrErr)
-		tw := &testWatch{ch: ch}
+		tw := &scm.StubWatch{C: ch}
 		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
 				return tw, nil
@@ -177,7 +176,7 @@ var _ = Describe("BuildWatch", func() {
 		ch := make(chan scm.WorkflowRunsOrErr, 1)
 		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
-				return &testWatch{ch: ch}, nil
+				return &scm.StubWatch{C: ch}, nil
 			},
 		}
 
@@ -214,7 +213,7 @@ var _ = Describe("BuildWatch", func() {
 		ch := make(chan scm.WorkflowRunsOrErr)
 		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
-				return &testWatch{ch: ch}, nil
+				return &scm.StubWatch{C: ch}, nil
 			},
 		}
 
@@ -252,7 +251,7 @@ var _ = Describe("BuildWatch", func() {
 		ch := make(chan scm.WorkflowRunsOrErr, 2)
 		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
-				return &testWatch{ch: ch}, nil
+				return &scm.StubWatch{C: ch}, nil
 			},
 		}
 		reader := startWatchStream(stub, ticker.SilentTickerFactory())
@@ -278,19 +277,6 @@ var _ = Describe("BuildWatch", func() {
 		expectStatuses(`{}`)
 	})
 })
-
-// testWatch wraps a channel for testing; it implements scm.WorkflowWatch.
-type testWatch struct {
-	ch       chan scm.WorkflowRunsOrErr
-	stopOnce sync.Once
-}
-
-func (w *testWatch) ResultChan() <-chan scm.WorkflowRunsOrErr { return w.ch }
-func (w *testWatch) Stop() {
-	w.stopOnce.Do(func() {
-		close(w.ch)
-	})
-}
 
 // buildWatchWithStub returns the handler wired to stub instead of the SCM
 // registry it defaults to, ignoring the token the way the stubs ignore
