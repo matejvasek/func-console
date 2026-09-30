@@ -211,17 +211,10 @@ var _ = Describe("BuildWatch", func() {
 	})
 
 	It("calls watch.Stop() when the request context is cancelled to halt polling", func() {
-		stopCalled := make(chan bool)
-		ch := make(chan scm.WorkflowRunsOrErr, 1)
-
-		mockWatch := &trackingWatch{
-			ch:         ch,
-			stopCalled: stopCalled,
-		}
-
+		ch := make(chan scm.WorkflowRunsOrErr)
 		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
-				return mockWatch, nil
+				return &testWatch{ch: ch}, nil
 			},
 		}
 
@@ -248,7 +241,7 @@ var _ = Describe("BuildWatch", func() {
 		cancel()
 
 		select {
-		case <-stopCalled:
+		case <-ch:
 			// Success: Stop was called
 		case <-time.After(2 * time.Second):
 			Fail("expected watch.Stop() to be called when request context is cancelled")
@@ -297,21 +290,6 @@ func (w *testWatch) Stop() {
 	w.stopOnce.Do(func() {
 		close(w.ch)
 	})
-}
-
-// trackingWatch is a mock that tracks whether Stop() was called.
-type trackingWatch struct {
-	ch         chan scm.WorkflowRunsOrErr
-	stopCalled chan bool
-}
-
-func (w *trackingWatch) ResultChan() <-chan scm.WorkflowRunsOrErr { return w.ch }
-func (w *trackingWatch) Stop() {
-	close(w.ch)
-	select {
-	case w.stopCalled <- true:
-	default:
-	}
 }
 
 // buildWatchWithStub returns the handler wired to stub instead of the SCM
