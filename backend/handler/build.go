@@ -91,7 +91,7 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 					return
 				}
 				flusher.Flush()
-				return
+				continue
 			}
 			if err := writeEvent(w, "build-status", event.Runs); err != nil {
 				return
