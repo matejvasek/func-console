@@ -10,7 +10,7 @@ import { BuildSnapshotEvent, BuildWatchErrorEvent, WorkflowRunMap } from './func
 
 interface BuildStatusEventSource {
   addEventListener(
-    event: 'build-status' | 'error' | 'open',
+    event: 'build-status' | 'app-error' | 'open' | 'error',
     cbk: ((e: BuildSnapshotEvent) => void) | ((e: BuildWatchErrorEvent) => void) | (() => void),
   ): void;
   close(): void;
@@ -93,22 +93,22 @@ describe('useBuildStatus', () => {
   });
 
   it('captures error events from the event source', async () => {
-    const { eventSource, emitError } = createFakeEventSource();
+    const { eventSource, emitAppError } = createFakeEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
-    emitError({ message: 'Connection failed', isAuthError: false });
+    emitAppError({ message: 'Connection failed', isAuthError: false });
 
     await waitFor(() => expect(result.current.error).toBe('Connection failed'));
   });
 
   it('preserves statuses while error is present', async () => {
-    const { eventSource, emitSnapshot, emitError } = createFakeEventSource();
+    const { eventSource, emitSnapshot, emitAppError } = createFakeEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
     emitSnapshot({ 'repo/owner': { status: 'Building' } });
     await waitFor(() => expect(Object.keys(result.current.statuses).length).toBe(1));
 
-    emitError({ message: 'Network error', isAuthError: false });
+    emitAppError({ message: 'Network error', isAuthError: false });
     await waitFor(() => expect(result.current.error).toBe('Network error'));
 
     // Statuses should still be present
@@ -116,14 +116,27 @@ describe('useBuildStatus', () => {
   });
 
   it('clears error when open event is emitted', async () => {
-    const { eventSource, emitError, emitOpen } = createFakeEventSource();
+    const { eventSource, emitAppError, emitOpen } = createFakeEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
-    emitError({ message: 'Connection failed', isAuthError: false });
+    emitAppError({ message: 'Connection failed', isAuthError: false });
     await waitFor(() => expect(result.current.error).toBe('Connection failed'));
 
     emitOpen();
     await waitFor(() => expect(result.current.error).toBeUndefined());
+  });
+
+  it('ignores bare error event that follows app-error (for EventSource migration)', async () => {
+    const { eventSource, emitAppError, emitError } = createFakeEventSource();
+    const { result } = renderHook(() => useBuildStatus(0, eventSource));
+
+    // Emit app-error followed immediately by bare error
+    emitAppError({ message: 'Build failed', isAuthError: false });
+    emitError();
+
+    // Should show the app-error message, not be affected by bare error
+    await waitFor(() => expect(result.current.error).toBe('Build failed'));
+    expect(result.current.error).toBe('Build failed');
   });
 
   it('does not set up stream when connectionId is undefined', () => {
@@ -160,12 +173,14 @@ describe('useBuildStatus', () => {
   function createFakeEventSource(): {
     eventSource: BuildStatusEventSource;
     emitSnapshot: (snap: WorkflowRunMap) => void;
-    emitError: (err: { message: string; isAuthError: boolean }) => void;
+    emitAppError: (err: { message: string; isAuthError: boolean }) => void;
+    emitError: () => void;
     emitOpen: () => void;
     emitRaw: (data: string) => void;
   } {
     const listeners: Array<(e: BuildSnapshotEvent) => void> = [];
-    const errorListeners: Array<(e: BuildWatchErrorEvent) => void> = [];
+    const errorAppListeners: Array<(e: BuildWatchErrorEvent) => void> = [];
+    const errorListeners: Array<() => void> = [];
     const openListeners: Array<() => void> = [];
     let open = true;
 
@@ -186,36 +201,41 @@ describe('useBuildStatus', () => {
     return {
       eventSource: {
         addEventListener(
-          event: 'build-status' | 'error' | 'open',
+          event: 'build-status' | 'app-error' | 'open' | 'error',
           cbk:
             ((e: BuildSnapshotEvent) => void) | ((e: BuildWatchErrorEvent) => void) | (() => void),
         ) {
           if (event === 'build-status') {
             listeners.push(cbk as (e: BuildSnapshotEvent) => void);
-          } else if (event === 'error') {
-            errorListeners.push(cbk as (e: BuildWatchErrorEvent) => void);
+          } else if (event === 'app-error') {
+            errorAppListeners.push(cbk as (e: BuildWatchErrorEvent) => void);
           } else if (event === 'open') {
             openListeners.push(cbk as () => void);
+          } else if (event === 'error') {
+            errorListeners.push(cbk as () => void);
           }
         },
         close() {
           open = false;
           listeners.length = 0;
-          errorListeners.length = 0;
+          errorAppListeners.length = 0;
           openListeners.length = 0;
         },
       },
       emitSnapshot(snap: WorkflowRunMap) {
         invokeListeners(listeners, { data: JSON.stringify(snap) });
       },
-      emitError(err: { message: string; isAuthError: boolean }) {
-        invokeListeners(errorListeners, { data: JSON.stringify(err) });
+      emitAppError(err: { message: string; isAuthError: boolean }) {
+        invokeListeners(errorAppListeners, { data: JSON.stringify(err) });
       },
       emitOpen() {
         invokeListeners(openListeners, undefined);
       },
       emitRaw(data: string) {
         invokeListeners(listeners, { data });
+      },
+      emitError() {
+        invokeListeners(errorListeners, undefined);
       },
     };
   }

@@ -32,8 +32,11 @@ export interface BuildWatchErrorEvent {
 // BuildStatusEventSource is a minimal subset of the standard EventSource interface we require.
 export interface BuildStatusEventSource {
   addEventListener(_: 'build-status', cbk: (e: BuildSnapshotEvent) => void): void;
-  addEventListener(_: 'error', cbk: (e: BuildWatchErrorEvent) => void): void;
+  addEventListener(_: 'app-error', cbk: (e: BuildWatchErrorEvent) => void): void;
   addEventListener(_: 'open', cbk: () => void): void;
+  // Standard 'error' carries no context; we use structured 'app-error'.
+  // Defined for future EventSource migration.
+  addEventListener(_: 'error', cbk: () => void): void;
   close(): void;
 }
 
@@ -152,11 +155,11 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
   run(); // Fire and forget; runs until close() is called
 
   return {
-    addEventListener(event: 'build-status' | 'error' | 'open', cbk) {
+    addEventListener(event: 'build-status' | 'app-error' | 'open' | 'error', cbk) {
       if (!streaming) return;
       if (event === 'build-status') {
         listeners.push(cbk as (e: BuildSnapshotEvent) => void);
-      } else if (event === 'error') {
+      } else if (event === 'app-error') {
         errorListeners.push(cbk as (e: BuildWatchErrorEvent) => void);
       } else if (event === 'open') {
         openListeners.push(cbk as () => void);

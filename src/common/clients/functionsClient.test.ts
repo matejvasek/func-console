@@ -166,7 +166,7 @@ describe('createBuildStatusEventSource', () => {
     );
 
     using eventSource = createEventSource();
-    eventSource.addEventListener('error', () => {
+    eventSource.addEventListener('app-error', () => {
       errorCount++;
     });
 
@@ -359,7 +359,7 @@ describe('createBuildStatusEventSource', () => {
       gotBuildStatus = true;
     });
 
-    eventSource.addEventListener('error', () => {
+    eventSource.addEventListener('app-error', () => {
       gotError = true;
     });
 
@@ -474,7 +474,7 @@ describe('createBuildStatusEventSource', () => {
 
   function captureErrors(eventSource: ReturnType<typeof createBuildStatusEventSource>) {
     const queue = new AsyncQueue<{ message: string; isAuthError: boolean }>();
-    eventSource.addEventListener('error', (e) => {
+    eventSource.addEventListener('app-error', (e) => {
       try {
         const error = JSON.parse(e.data) as { message: string; isAuthError: boolean };
         queue.enqueue(error);
