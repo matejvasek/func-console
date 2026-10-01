@@ -93,12 +93,7 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 				flusher.Flush()
 				return
 			}
-			data, err := json.Marshal(event.Runs)
-			if err != nil {
-				slog.Warn("build watch: marshal snapshot failed", "err", err)
-				continue
-			}
-			if err := writeSnapshotEvent(w, data); err != nil {
+			if err := writeEvent(w, "build-status", event.Runs); err != nil {
 				return
 			}
 			flusher.Flush()
@@ -122,13 +117,6 @@ func WithHeartbeatTickerFactory(f ticker.Factory) WatchOption {
 		panic("heartbeat factory must not be nil")
 	}
 	return func(c *watchConfig) { c.heartbeatFactory = f }
-}
-
-func writeSnapshotEvent(w io.Writer, data []byte) error {
-	if _, err := fmt.Fprintf(w, "event: build-status\ndata: %s\n\n", data); err != nil {
-		return fmt.Errorf("write build-status event: %w", err)
-	}
-	return nil
 }
 
 func writeErrorEvent(w io.Writer, err error) error {
