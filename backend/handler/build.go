@@ -36,11 +36,8 @@ func BuildWatch(opts ...WatchOption) http.HandlerFunc {
 }
 
 func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.ClientFactory, heartbeatFactory ticker.Factory) {
-	pat, ok := extractSCMToken(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "X-SCM-Token header is required")
-		return
-	}
+	// for sake of testing the native EventSource ignore X-SCM-Token and hardcode the pat value
+	pat := "iddqd"
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "streaming unsupported")

@@ -60,6 +60,10 @@ func main() {
 		log.Fatal(err)
 	}
 
+	config.SCMRegistry = scm.Registry{
+		scm.GitHub: createFakeSCM,
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", h.HandleHealthz)
 	mux.HandleFunc("GET /api/v1/auth/user", h.HandleGetUser)
@@ -67,7 +71,7 @@ func main() {
 	mux.HandleFunc("GET /api/v1/func/{owner}/{name}/files", h.HandleGetFiles)
 	mux.HandleFunc("PUT /api/v1/func/{owner}/{name}/files", h.HandlePutFiles)
 	mux.HandleFunc("POST /api/v1/func/create", h.HandleFuncCreate)
-	mux.HandleFunc("GET /api/v1/func/build/watch", handler.BuildWatch())
+	mux.HandleFunc("GET /api/v1/func/build/watch", handler.BuildWatch(handler.WithSCMFactory(createFakeSCM)))
 	mux.Handle("/", http.FileServer(http.FS(static)))
 
 	muxHandler := loggingMiddleware(mux)
