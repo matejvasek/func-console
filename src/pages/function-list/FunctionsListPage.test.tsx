@@ -7,7 +7,7 @@ import { server } from '../../common/testing/mswServer';
 import { FunctionListItem } from '../../common/types';
 import { AsyncQueue } from '../../common/utils/AsyncQueue';
 import FunctionsListPage from './FunctionsListPage';
-import { WorkflowRunMap } from '../../common/clients/functionsClient';
+import { WorkflowRunRecord } from '../../common/types';
 
 // vi.mock is hoisted above imports, so regular imports aren't available in the factory.
 // vi.hoisted runs before vi.mock, making the sdkTestDoubles available to the factory.
@@ -141,7 +141,7 @@ describe('FunctionsListPage', () => {
   }
 
   it('transitions build status from NotDeployed -> Building -> Succeeded', async () => {
-    using buildStatusesSeq = new AsyncQueue<WorkflowRunMap>();
+    using buildStatusesSeq = new AsyncQueue<WorkflowRunRecord>();
     listFunctionsStub({ responses: [repoListItem(funcName)] });
     watchBuildsStub(buildStatusesSeq);
 
@@ -173,7 +173,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('updates multiple functions with different status transitions', async () => {
-    using buildStatusesSeq = new AsyncQueue<WorkflowRunMap>();
+    using buildStatusesSeq = new AsyncQueue<WorkflowRunRecord>();
     const func1 = 'func-alpha';
     const func2 = 'func-beta';
     listFunctionsStub({

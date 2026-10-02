@@ -11,11 +11,8 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
 import { http, HttpResponse } from 'msw';
 import { server } from '../testing/mswServer';
 import { consoleFetch } from '@openshift-console/dynamic-plugin-sdk';
-import {
-  BuildStatusEventSource,
-  WorkflowRunMap,
-  createBuildStatusEventSource,
-} from './functionsClient';
+import { BuildStatusEventSource, createBuildStatusEventSource } from './functionsClient';
+import { WorkflowRunRecord } from '../types';
 import { AsyncQueue } from '../utils/AsyncQueue';
 
 const BUILD_WATCH_URL =
@@ -465,7 +462,7 @@ describe('createBuildStatusEventSource', () => {
   }
 
   function captureBuildStatuses(eventSource: ReturnType<typeof createBuildStatusEventSource>) {
-    const queue = new AsyncQueue<WorkflowRunMap>();
+    const queue = new AsyncQueue<WorkflowRunRecord>();
     eventSource.addEventListener('build-status', (e) => {
       queue.enqueue(JSON.parse(e.data));
     });

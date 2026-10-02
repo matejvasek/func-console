@@ -1,9 +1,6 @@
 import { useEffect, useState } from 'react';
-import {
-  BuildStatusEventSource,
-  WorkflowRunMap,
-  createBuildStatusEventSource,
-} from './functionsClient';
+import { BuildStatusEventSource, createBuildStatusEventSource } from './functionsClient';
+import { WorkflowRunRecord } from '../types';
 
 // useBuildStatus streams GitHub Actions build status over SSE, keyed by
 // "owner/repo". Pass the auth connectionId so the stream tears down and
@@ -12,8 +9,8 @@ import {
 export function useBuildStatus(
   connectionId?: number,
   eventSource?: BuildStatusEventSource,
-): { statuses: Readonly<WorkflowRunMap>; error?: string } {
-  const [statuses, setStatuses] = useState<WorkflowRunMap>({});
+): { statuses: Readonly<WorkflowRunRecord>; error?: string } {
+  const [statuses, setStatuses] = useState<WorkflowRunRecord>({});
   const [error, setError] = useState<string>();
 
   useEffect(() => {
@@ -23,7 +20,7 @@ export function useBuildStatus(
 
     es.addEventListener('build-status', (e) => {
       try {
-        const snap = JSON.parse(e.data) as WorkflowRunMap;
+        const snap = JSON.parse(e.data) as WorkflowRunRecord;
         setStatuses(snap);
         setError(undefined); // clear the recoverable error, if any
       } catch {

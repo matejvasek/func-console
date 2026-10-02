@@ -4,13 +4,14 @@ import {
   isAllNamespacesKey,
 } from '@openshift-console/dynamic-plugin-sdk';
 import {
-  WorkflowRun,
   CreateFunctionRequest,
   FileEntry,
   FunctionListItem,
   PAT_KEY,
   PROXY_BASE,
+  WorkflowRunRecord,
 } from '../types';
+import { createSSEEventSource } from '../transport/sseEventSource';
 
 /**
  * listFunctions returns a list of function metadata.
@@ -67,10 +68,48 @@ export async function putFiles(
   );
 }
 
+interface WorkflowRunEventsConnection {
+  onData(cbk: (runs: WorkflowRunRecord) => void): void;
+  onError(cbk: (message: string) => void): void;
+  close(): void;
+}
+
 /**
- * Map of workflow runs, keyed by repository full name (e.g., "owner/repo")
+ * receiveWorkflowRunEvents opens an SSE connection to the build watch endpoint
+ * and returns a connection object for receiving workflow run updates.
+ *
+ * The connection handles auth errors internally: when the backend reports an
+ * auth failure via an app-error event, the connection closes itself. The
+ * consumer is notified via onError with the message but does not need to
+ * manage the connection lifecycle for auth failures.
  */
-export type WorkflowRunMap = Record<string, WorkflowRun>;
+export function receiveWorkflowRunEvents(): WorkflowRunEventsConnection {
+  const es = createSSEEventSource(`${PROXY_BASE}/api/v1/func/build/watch`, {
+    headers: scmHeaders(),
+    fetchFn: consoleFetch,
+  });
+
+  return {
+    onData(cbk) {
+      es.addEventListener('build-status', (e) => {
+        cbk(JSON.parse(e.data) as WorkflowRunRecord);
+      });
+    },
+    onError(cbk) {
+      es.addEventListener('app-error', (e) => {
+        const parsed = JSON.parse(e.data) as { message: string; isAuthError: boolean };
+        cbk(parsed.message);
+        if (parsed.isAuthError) es.close();
+      });
+      es.addEventListener('error', (e) => {
+        cbk(e instanceof Error ? e.message : 'Connection error');
+      });
+    },
+    close() {
+      es.close();
+    },
+  };
+}
 
 export interface BuildSnapshotEvent {
   // JSON string containing a WorkflowRunMap; parse with JSON.parse(data) as WorkflowRunMap

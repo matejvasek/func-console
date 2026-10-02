@@ -365,7 +365,7 @@ describe('createSSEEventSource', () => {
     opts?: { reconnectDelayMs?: number },
   ): SSEEventSource & Disposable {
     const source = createSSEEventSource(url, {
-      fetchFn: (u, init, _timeout) => fetch(u, init),
+      fetchFn: (u, init) => fetch(u, init),
       ...opts,
     });
     return Object.assign(source, {

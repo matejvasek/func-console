@@ -90,3 +90,9 @@ export interface WorkflowRun {
   url?: string;
   error?: string;
 }
+
+/**
+ * Record of workflow runs, keyed by repository full name (e.g., "owner/repo")
+ */
+export type WorkflowRunRecord = Record<string, WorkflowRun>;
+
