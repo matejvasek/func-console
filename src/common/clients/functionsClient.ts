@@ -12,34 +12,6 @@ import {
   PROXY_BASE,
 } from '../types';
 
-const RECONNECT_DELAY_MS = 3000;
-
-/**
- * Map of workflow runs, keyed by repository full name (e.g., "owner/repo")
- */
-export type WorkflowRunMap = Record<string, WorkflowRun>;
-
-export interface BuildSnapshotEvent {
-  // JSON string containing a WorkflowRunMap; parse with JSON.parse(data) as WorkflowRunMap
-  readonly data: string;
-}
-
-export interface BuildWatchErrorEvent {
-  // JSON string containing error info of shape { message: string; isAuthError: boolean }
-  readonly data: string;
-}
-
-// BuildStatusEventSource is a minimal subset of the standard EventSource interface we require.
-export interface BuildStatusEventSource {
-  addEventListener(_: 'build-status', cbk: (e: BuildSnapshotEvent) => void): void;
-  addEventListener(_: 'app-error', cbk: (e: BuildWatchErrorEvent) => void): void;
-  addEventListener(_: 'open', cbk: () => void): void;
-  // Standard 'error' carries no context; we use structured 'app-error'.
-  // Defined for future EventSource migration.
-  addEventListener(_: 'error', cbk: () => void): void;
-  close(): void;
-}
-
 /**
  * listFunctions returns a list of function metadata.
  *
@@ -95,6 +67,32 @@ export async function putFiles(
   );
 }
 
+/**
+ * Map of workflow runs, keyed by repository full name (e.g., "owner/repo")
+ */
+export type WorkflowRunMap = Record<string, WorkflowRun>;
+
+export interface BuildSnapshotEvent {
+  // JSON string containing a WorkflowRunMap; parse with JSON.parse(data) as WorkflowRunMap
+  readonly data: string;
+}
+
+export interface BuildWatchErrorEvent {
+  // JSON string containing error info of shape { message: string; isAuthError: boolean }
+  readonly data: string;
+}
+
+// BuildStatusEventSource is a minimal subset of the standard EventSource interface we require.
+export interface BuildStatusEventSource {
+  addEventListener(_: 'build-status', cbk: (e: BuildSnapshotEvent) => void): void;
+  addEventListener(_: 'app-error', cbk: (e: BuildWatchErrorEvent) => void): void;
+  addEventListener(_: 'open', cbk: () => void): void;
+  // Standard 'error' carries no context; we use structured 'app-error'.
+  // Defined for future EventSource migration.
+  addEventListener(_: 'error', cbk: () => void): void;
+  close(): void;
+}
+
 // createBuildStatusEventSource returns a BuildStatusEventSource that manages the complete
 // SSE stream lifecycle: fetch, parsing, event emission, error handling, and reconnection
 // with fixed backoff. The stream runs fire-and-forget until close() is called.
@@ -103,6 +101,7 @@ export async function putFiles(
 // Ideally we would use standard EventSource instead of our own implementation.
 // The standard EventSource however does not support custom fetch function that we need.
 export function createBuildStatusEventSource(): BuildStatusEventSource {
+  const RECONNECT_DELAY_MS = 3000;
   const listeners: Array<(e: BuildSnapshotEvent) => void> = [];
   const errorListeners: Array<(e: BuildWatchErrorEvent) => void> = [];
   const openListeners: Array<() => void> = [];
@@ -141,6 +140,7 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
       }
     }
   }
+
   function invokeListeners<T>(listeners: Array<(arg: T) => void>, arg: T, label = 'listener') {
     if (!streaming) return;
     listeners.forEach((cbk) => {

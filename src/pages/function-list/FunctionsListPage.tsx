@@ -20,16 +20,16 @@ import { SyncAltIcon } from '@patternfly/react-icons';
 import { useContext, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
+import { listFunctions } from '../../common/clients/functionsClient';
+import { useBuildStatus } from '../../common/clients/useBuildStatus';
+import { useCluster } from '../../common/clients/useCluster';
+import { UserAvatar } from '../../common/components/UserAvatar';
+import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
+import { ClusterFunction, WorkflowRun } from '../../common/types';
+import { errorMessage } from '../../common/utils/utils';
 import { FunctionsEmptyState } from './components/EmptyState';
 import { FunctionTable, FunctionTableItem } from './components/FunctionTable';
 import { SetupGuide } from './components/SetupGuide';
-import { UserAvatar } from '../../common/components/UserAvatar';
-import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
-import { WorkflowRun, ClusterFunction, FunctionListItem } from '../../common/types';
-import { useCluster } from '../../common/clients/useCluster';
-import { useBuildStatus } from '../../common/clients/useBuildStatus';
-import { listFunctions } from '../../common/clients/functionsClient';
-import { errorMessage } from '../../common/utils/utils';
 
 export default function FunctionsListPage() {
   return (
@@ -229,7 +229,7 @@ function useFunctionListPage(): {
         const cf = clusterFunctions.get(`${item.namespace}/${item.name}`);
         const enriched = cf ? enrichItem(item, cf) : item;
         const build = buildStatuses[`${item.owner}/${item.repoName}`];
-        return build ? mergeBuild(enriched, build, Boolean(cf)) : enriched;
+        return build ? mergeBuildStatusWith(enriched, build, Boolean(cf)) : enriched;
       }),
     [functionItems, clusterFunctions, buildStatuses],
   );
@@ -254,11 +254,7 @@ function useFunctionListPage(): {
 
 async function loadFunctionTableItems(namespace: string): Promise<FunctionTableItem[]> {
   const items = await listFunctions(namespace);
-  return items.map((item) => newItem(item));
-}
-
-function newItem(item: FunctionListItem): FunctionTableItem {
-  return {
+  return items.map((item) => ({
     name: item.name || item.repoName,
     repoName: item.repoName,
     owner: item.owner,
@@ -268,7 +264,7 @@ function newItem(item: FunctionListItem): FunctionTableItem {
     url: '',
     replicas: 0,
     source: item.source,
-  };
+  }));
 }
 
 function enrichItem(item: FunctionTableItem, cf: ClusterFunction): FunctionTableItem {
@@ -281,17 +277,7 @@ function enrichItem(item: FunctionTableItem, cf: ClusterFunction): FunctionTable
   };
 }
 
-// mergeBuild overlays build status onto a function: whether or not the cluster
-// knows about the function, a build in progress is always shown as a secondary
-// indicator alongside the primary status.
-//
-// The gate is cluster presence (inCluster), not the status value. A live
-// function reports Deploying for a moment while a new revision rolls out, and
-// overwriting that with Building made the row flicker through Building on every
-// redeploy. Cluster presence also separates the two sources of Error: a broken
-// ksvc keeps Error as primary, while a repo-level error (no cluster resource)
-// still falls through to the build status.
-function mergeBuild(
+function mergeBuildStatusWith(
   item: FunctionTableItem,
   build: WorkflowRun,
   inCluster: boolean,
@@ -303,7 +289,6 @@ function mergeBuild(
     if (build.status === 'Failed') {
       return { ...item, buildActivity: 'Failed', buildRunURL: build.url };
     }
-    // Succeeded / None: nothing to overlay on a cluster-known function.
     return item;
   }
   // Not in the cluster at all: surface building as a secondary indicator alongside NotDeployed.
@@ -313,6 +298,5 @@ function mergeBuild(
   if (build.status === 'Failed') {
     return { ...item, status: 'BuildFailed', buildRunURL: build.url };
   }
-  // Succeeded / None: fall through to the cluster-derived status.
   return item;
 }

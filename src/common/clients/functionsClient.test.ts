@@ -124,7 +124,7 @@ describe('createBuildStatusEventSource', () => {
       openQueue.enqueue(undefined);
     });
 
-    await openQueue.dequeue();
+    await expect(openQueue.dequeue()).resolves.toBeUndefined();
   });
 
   it('logs listener errors and continues streaming', async () => {
