@@ -25,37 +25,24 @@ export function useBuildStatus(
       try {
         const snap = JSON.parse(e.data) as WorkflowRunMap;
         setStatuses(snap);
+        setError(undefined); // clear the recoverable error, if any
       } catch {
         setError('Invalid build status data');
       }
     });
 
-    let suppressNextError = false;
     es.addEventListener('app-error', (e) => {
       try {
-        const error = JSON.parse(e.data) as { message: string };
+        const error = JSON.parse(e.data) as { message: string; isAuthError: boolean };
         setError(error.message);
+        if (error.isAuthError) es.close(); // non-recoverable error close EventSource
       } catch {
         setError('Unknown error');
       }
-      // Suppress the browser's 'error' event that fires on connection close after 'app-error'.
-      // Otherwise our descriptive error gets overwritten with a generic one.
-      suppressNextError = true;
-      setTimeout(() => {
-        suppressNextError = false;
-      }, 10);
     });
 
     es.addEventListener('error', () => {
-      if (suppressNextError) {
-        return;
-      }
       setError('Unknown error');
-    });
-
-    es.addEventListener('open', () => {
-      // clear the error on the re-connect
-      setError(undefined);
     });
 
     return () => {

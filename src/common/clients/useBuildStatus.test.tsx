@@ -115,30 +115,6 @@ describe('useBuildStatus', () => {
     expect(result.current.statuses['repo/owner']?.status).toBe('Building');
   });
 
-  it('clears error when open event is emitted', async () => {
-    const { eventSource, emitAppError, emitOpen } = createFakeEventSource();
-    const { result } = renderHook(() => useBuildStatus(0, eventSource));
-
-    emitAppError({ message: 'Connection failed', isAuthError: false });
-    await waitFor(() => expect(result.current.error).toBe('Connection failed'));
-
-    emitOpen();
-    await waitFor(() => expect(result.current.error).toBeUndefined());
-  });
-
-  it('ignores bare error event that follows app-error (for EventSource migration)', async () => {
-    const { eventSource, emitAppError, emitError } = createFakeEventSource();
-    const { result } = renderHook(() => useBuildStatus(0, eventSource));
-
-    // Emit app-error followed immediately by bare error
-    emitAppError({ message: 'Build failed', isAuthError: false });
-    emitError();
-
-    // Should show the app-error message, not be affected by bare error
-    await waitFor(() => expect(result.current.error).toBe('Build failed'));
-    expect(result.current.error).toBe('Build failed');
-  });
-
   it('does not set up stream when connectionId is undefined', () => {
     const eventSource = {
       addEventListener: vi.fn(),
