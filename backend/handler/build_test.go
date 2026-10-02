@@ -172,8 +172,8 @@ var _ = Describe("BuildWatch", func() {
 		}
 	})
 
-	It("sends an SSE error event and exits the stream when the watch fails", func() {
-		ch := make(chan scm.WorkflowRunsOrErr, 1)
+	It("sends an SSE error event and continues the stream when the watch fails", func() {
+		ch := make(chan scm.WorkflowRunsOrErr, 2)
 		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
 				return &scm.StubWatch{C: ch}, nil
@@ -185,6 +185,12 @@ var _ = Describe("BuildWatch", func() {
 		// Emit an error from the watch
 		watchErr := errors.New("github API rate limited")
 		ch <- scm.WorkflowRunsOrErr{Err: watchErr}
+		ch <- scm.WorkflowRunsOrErr{Runs: map[string]scm.WorkflowRun{
+			"alice/fn": {
+				BuildStatus: scm.Succeeded,
+				HTMLURL:     "example.com/run/1",
+			},
+		}}
 
 		// Verify the error event is sent
 		line, ok := readLineWithin(reader, 2*time.Second)
@@ -203,18 +209,9 @@ var _ = Describe("BuildWatch", func() {
 		Expect(errorData.Message).To(Equal("github API rate limited"))
 		Expect(errorData.IsAuthError).To(BeFalse())
 
-		// Verify the stream closes after the error event
-		errCh := make(chan error, 1)
-		go func() {
-			_, err := io.Copy(io.Discard, reader)
-			errCh <- err
-		}()
-		select {
-		case err := <-errCh:
-			Expect(err).To(BeNil())
-		case <-time.After(2 * time.Second):
-			Fail("expected the stream to close after the error event")
-		}
+		first, ok := readSSEDataWithin(reader, 2*time.Second)
+		Expect(ok).To(BeTrue())
+		Expect(first).To(MatchJSON(`{"alice/fn":{"status":"Succeeded","url":"example.com/run/1"}}`))
 	})
 
 	It("calls watch.Stop() when the request context is cancelled to halt polling", func() {
