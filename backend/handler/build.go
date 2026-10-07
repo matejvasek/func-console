@@ -18,6 +18,29 @@ import (
 
 const defaultHeartbeat = 15 * time.Second
 
+// BuildWatch returns an HTTP handler that streams build status updates via SSE.
+//
+// Request:
+//   - Header X-SCM-Token: GitHub Personal Access Token
+//   - Method: GET
+//
+// Response:
+//   - Content-Type: text/event-stream
+//   - Events:
+//   - build-status: map of repo -> {"status": "Building"|"Succeeded"|"Failed"|"None", "url": "...", "error": "..."}
+//   - app-error: {"message": "...", "isAuthError": true|false}
+//   - heartbeat (SSE comment): keepalive, no data
+//
+// Per-repo errors (rate limits, individual repo failures) appear in the "error"
+// field of the build-status event; catastrophic errors (token revocation, repo
+// rediscovery failure) emit app-error events. The stream continues until the
+// client disconnects or the context is cancelled.
+//
+// Status codes:
+//   - 200: stream started successfully
+//   - 401: missing or invalid X-SCM-Token
+//   - 500: streaming unsupported (no http.Flusher)
+//   - 502: failed to list repositories
 func BuildWatch(opts ...WatchOption) http.HandlerFunc {
 	cfg := watchConfig{
 		newSCMClient: func(pat string) scm.Client {
