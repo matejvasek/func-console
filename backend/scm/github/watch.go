@@ -108,11 +108,9 @@ func (w *workflowWatch) Stop() {
 	w.cancel()
 }
 
-// pollRuns fetches the latest run for each repo concurrently. A per-repo error
-// carries that repo's last-known run forward from prevRuns instead of breaking
-// the snapshot. Per-repo failures are logged but do not fail the poll; the
-// snapshot always succeeds with partial data. prevRuns is only read here (the
-// caller updates it), so the concurrent reads are safe.
+// pollRuns fetches the latest workflow run for each repo concurrently. On
+// per-repo errors, carries forward the last-known run from prevRuns with Error
+// set. Always succeeds, returning partial data when some repos fail.
 func (c *ghClient) pollRuns(ctx context.Context, repos []scm.Repo, workflowFile string, prevRuns map[string]scm.WorkflowRun) map[string]scm.WorkflowRun {
 	var snapshot = make(map[string]scm.WorkflowRun, len(repos))
 	var mu sync.Mutex
