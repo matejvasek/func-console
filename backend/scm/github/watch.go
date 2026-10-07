@@ -21,9 +21,19 @@ const (
 	defaultWatchRediscoverInterval = 30 * time.Second
 )
 
-// WatchWorkflowRuns implements scm.Client. Repo discovery runs synchronously so
-// auth failures are returned to the caller rather than lost in the goroutine.
-// The returned watch's lifetime is independent of ctx; call Stop() to terminate.
+// WatchWorkflowRuns polls GitHub for the latest workflow run of the given workflow
+// file across the authenticated user's function repos (topic:serverless-function),
+// emitting snapshots when the status changes. Polls every 3s; rediscovers repos
+// (re-runs ListRepos to pick up new/deleted functions) every 30s. Uses ETag
+// conditional requests (304s are rate-limit exempt) to reduce API consumption.
+//
+// Error handling: per-repo failures set WorkflowRun.Error and carry forward the
+// last-known status (anti-flicker). Catastrophic failures (repo rediscovery, token
+// revocation) set WorkflowRunsOrErr.Err. Unchanged snapshots are suppressed.
+//
+// Initial repo discovery runs synchronously on the caller's ctx, so auth failures
+// are returned immediately rather than lost in the goroutine. The polling loop runs
+// independently; call Stop() to terminate.
 func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
 	repos, err := c.ListRepos(ctx)
 	if err != nil {
