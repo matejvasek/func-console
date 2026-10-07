@@ -44,28 +44,20 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFile string) (
 		// error would otherwise reset the run to nil and flicker the status.
 		var prevRuns map[string]scm.WorkflowRun
 
-		emitWithErr := func(runs map[string]scm.WorkflowRun, err error) bool {
+		emit := func(runs map[string]scm.WorkflowRun, err error) {
 			// Skip emitting if the snapshot hasn't changed and there's no error.
 			if reflect.DeepEqual(runs, prevRuns) && err == nil {
-				return true
+				return
 			}
 			select {
 			case ch <- scm.WorkflowRunsOrErr{Runs: runs, Err: err}:
 				prevRuns = runs
-				return true
 			case <-pollCtx.Done():
-				return false
 			}
 		}
 
-		pollAndEmit := func() bool {
-			snapshot := c.pollRuns(pollCtx, repos, workflowFile, prevRuns)
-			return emitWithErr(snapshot, nil)
-		}
-
-		if !pollAndEmit() {
-			return
-		}
+		runs := c.pollRuns(pollCtx, repos, workflowFile, prevRuns)
+		emit(runs, nil)
 
 		poll := c.pollTickerFactory()
 		defer poll.Stop()
@@ -79,15 +71,14 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFile string) (
 			case <-rediscover.Chan():
 				latest, err := c.ListRepos(pollCtx)
 				if err != nil {
-					if !emitWithErr(prevRuns, fmt.Errorf("repository rediscovery failed: %w", err)) {
-						return
-					}
 					slog.Warn("watch workflow runs: rediscover failed", "err", err)
+					emit(prevRuns, err)
 					continue
 				}
 				repos = latest
 			case <-poll.Chan():
-				pollAndEmit()
+				runs = c.pollRuns(pollCtx, repos, workflowFile, prevRuns)
+				emit(runs, nil)
 			}
 		}
 	}()
