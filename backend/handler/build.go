@@ -93,7 +93,7 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 				flusher.Flush()
 				continue
 			}
-			if err := writeEvent(w, "build-status", event.Runs); err != nil {
+			if err := writeBuildStatus(w, event.Runs); err != nil {
 				return
 			}
 			flusher.Flush()
@@ -117,6 +117,23 @@ func WithHeartbeatTickerFactory(f ticker.Factory) WatchOption {
 		panic("heartbeat factory must not be nil")
 	}
 	return func(c *watchConfig) { c.heartbeatFactory = f }
+}
+
+func writeBuildStatus(w http.ResponseWriter, runs map[string]scm.WorkflowRun) error {
+	type runDTO struct {
+		Status string `json:"status"`
+		URL    string `json:"url,omitempty"`
+		Error  string `json:"error,omitempty"`
+	}
+	runsDTO := make(map[string]runDTO, len(runs))
+	for k, v := range runs {
+		runsDTO[k] = runDTO{
+			Status: v.BuildStatus.String(),
+			URL:    v.HTMLURL,
+			Error:  sanitizeError(v.Error),
+		}
+	}
+	return writeEvent(w, "build-status", runsDTO)
 }
 
 func writeErrorEvent(w io.Writer, err error) error {

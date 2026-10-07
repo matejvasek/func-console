@@ -2,7 +2,6 @@ package scm
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -125,21 +124,13 @@ func (b BuildStatus) String() string {
 	return fmt.Sprintf("unknown BuildStatus: %d", b)
 }
 
-func (b BuildStatus) MarshalJSON() ([]byte, error) {
-	bs, err := json.Marshal(b.String())
-	if err != nil {
-		return nil, fmt.Errorf("cannot deserialize BuildStatus: %w", err)
-	}
-	return bs, nil
-}
-
 // WorkflowRun is the latest GitHub Actions run of a specific workflow file on a
 // repo branch. A nil *WorkflowRun means the workflow has no runs on that branch
 // (including when the workflow file does not exist in the repo).
 type WorkflowRun struct {
-	BuildStatus BuildStatus `json:"status"`
-	HTMLURL     string      `json:"url,omitempty"`
-	Error       error       `json:"-"` // Retrieval error, not yet serialized to client
+	BuildStatus BuildStatus
+	HTMLURL     string
+	Error       error
 }
 
 type ClientStub struct {
