@@ -251,6 +251,47 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		}
 	})
 
+	It("suppresses repeated identical transient failures from fresh upstream errors", func() {
+		var phase atomic.Int32
+		tickPoll, pollFactory := ticker.CreateFakeTickerFactory()
+		cl := newWatchClientWithFactories(pollFactory, ticker.SilentTickerFactory(), watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
+			func(w http.ResponseWriter, r *http.Request) {
+				switch phase.Add(1) {
+				case 1, 4:
+					writeRuns(w, map[string]any{"id": 1, "status": "in_progress"})
+				case 2, 3:
+					w.WriteHeader(http.StatusInternalServerError)
+					json.NewEncoder(w).Encode(map[string]string{"message": "upstream unavailable"})
+				}
+			}))
+
+		ctx, cancel := context.WithCancel(context.Background())
+		DeferCleanup(cancel)
+		w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(w.Stop)
+
+		initial, ok := recvWithin(w.ResultChan(), 2*time.Second)
+		Expect(ok).To(BeTrue(), "expected an initial snapshot")
+		Expect(initial["alice/fn"].Error).To(BeNil())
+
+		go tickPoll()
+		failed, ok := recvWithin(w.ResultChan(), 2*time.Second)
+		Expect(ok).To(BeTrue(), "expected the first failure snapshot")
+		Expect(failed["alice/fn"].BuildStatus).To(Equal(scm.Building))
+		Expect(failed["alice/fn"].Error).To(HaveOccurred())
+
+		go tickPoll()
+		Consistently(w.ResultChan(), 100*time.Millisecond).ShouldNot(Receive(), "expected a fresh error with the same semantics to be suppressed")
+
+		// A following emitting poll proves the watch loop processed the silent poll
+		// before the test finishes, rather than merely completing its HTTP handler.
+		go tickPoll()
+		recovered, ok := recvWithin(w.ResultChan(), 2*time.Second)
+		Expect(ok).To(BeTrue(), "expected recovery after the suppressed failure")
+		Expect(recovered["alice/fn"].Error).To(BeNil())
+	})
+
 	It("propagate error when token is revoked at rediscover", func() {
 		var mu sync.Mutex
 		userCalls := 0

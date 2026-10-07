@@ -130,10 +130,18 @@ func (c *ghClient) pollRuns(ctx context.Context, repos []scm.Repo, workflowFile 
 			run := c.latestWorkflowRun(ctx, repo.Owner, repo.Name, repo.DefaultBranch, workflowFile)
 			if run.Error != nil {
 				// Carry forward the last-known run (anti-flicker) but mark it as
-				// stale by setting Error. This signals degradation to the client
-				// and ensures the snapshot differs from prevRuns for dedup.
+				// stale by setting Error. This signals degradation to the client.
 				stale := prevRuns[repo.FullName()]
-				stale.Error = run.Error
+
+				// Reuse the previous error instance if the message matches. Error
+				// instances with identical messages are distinct objects, so
+				// reflect.DeepEqual(err1, err2) fails even when semantically the same.
+				// Reusing the instance lets dedup suppress redundant SSE events when
+				// a repo fails repeatedly with the same error (e.g., rate limit).
+				if stale.Error == nil || stale.Error.Error() != run.Error.Error() {
+					stale.Error = run.Error
+				}
+
 				put(repo.FullName(), stale)
 				slog.Warn("watch workflow runs: get run failed", "repo", repo.FullName(), "err", run.Error)
 			} else {
