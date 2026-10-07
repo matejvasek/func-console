@@ -456,6 +456,61 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		}
 	})
 
+	It("one status check failure does not break other", func() {
+		_, pollFactory := ticker.CreateFakeTickerFactory()
+		_, rediscoverFactory := ticker.CreateFakeTickerFactory()
+		repos := make([]map[string]any, 0, 100)
+		for i := range 100 {
+			repoName := fmt.Sprintf("fn-%03d-testing", i)
+			repos = append(repos, repoItem("alice", repoName, "main"))
+		}
+
+		broken := map[int]bool{13: true, 41: true, 73: true, 97: true}
+
+		handleRuns := http.NewServeMux()
+		handleRuns.HandleFunc("/repos/{owner}/{repo}/actions/workflows/{workflow}/runs",
+			func(w http.ResponseWriter, r *http.Request) {
+				var n int
+				repo := r.PathValue("repo")
+				_, e := fmt.Sscanf(repo, "fn-%03d-testing", &n)
+				if e != nil {
+					panic(e)
+				}
+				if broken[n] {
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+				w.WriteHeader(200)
+				writeRuns(w, map[string]any{"id": 1, "status": "in_progress"})
+			},
+		)
+
+		cl := newWatchClientWithFactories(pollFactory, rediscoverFactory, watchFake(
+			"alice",
+			repos,
+			handleRuns.ServeHTTP,
+		))
+
+		ctx, cancel := context.WithCancel(context.Background())
+		DeferCleanup(cancel)
+		w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(w.Stop)
+
+		select {
+		case runs := <-w.ResultChan():
+			var inProgress int
+			for _, run := range runs.Runs {
+				if run.BuildStatus == scm.Building {
+					inProgress++
+				}
+			}
+			Expect(inProgress).To(Equal(len(repos) - len(broken)))
+		case <-time.After(time.Second * 2):
+			Fail("timeout")
+		}
+	})
+
 	DescribeTable("maps run status and conclusion to a build status",
 		func(status, conclusion string, expected scm.BuildStatus) {
 			cl := newWatchClientWithFactories(ticker.SilentTickerFactory(), ticker.SilentTickerFactory(),

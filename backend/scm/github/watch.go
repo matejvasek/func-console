@@ -121,7 +121,7 @@ func (c *ghClient) pollRuns(ctx context.Context, repos []scm.Repo, workflowFile 
 		snapshot[k] = v
 	}
 
-	g, ctx := errgroup.WithContext(ctx)
+	g, _ := errgroup.WithContext(ctx)
 	g.SetLimit(10)
 
 	for _, repo := range repos {
