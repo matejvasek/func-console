@@ -245,7 +245,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 			Expect(event.Err).To(BeNil(), "poll-level error should be nil")
 			run := event.Runs["alice/fn"]
 			Expect(run.BuildStatus).To(Equal(scm.Building), "should carry forward last-known status")
-			Expect(run.Error).To(ContainSubstring("500"), "should mark as stale with error")
+			Expect(run.Error.Error()).To(ContainSubstring("500"), "should mark as stale with error")
 		case <-time.After(300 * time.Millisecond):
 			Fail("expected event with per-repo Error set")
 		}
@@ -456,7 +456,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 			Expect(event.Err).To(BeNil(), "poll-level error should be nil")
 			run := event.Runs["alice/fn"]
 			Expect(run.BuildStatus).To(Equal(scm.Building), "should carry forward last-known status")
-			Expect(run.Error).To(ContainSubstring("API rate limit exceeded"), "should mark as stale with error")
+			Expect(run.Error.Error()).To(ContainSubstring("API rate limit exceeded"), "should mark as stale with error")
 		case <-time.After(2 * time.Second):
 			Fail("expected event with per-repo Error set")
 		}
@@ -513,7 +513,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 				if run.BuildStatus == scm.Building {
 					inProgress++
 				}
-				if run.Error != "" {
+				if run.Error != nil {
 					withError++
 				}
 			}

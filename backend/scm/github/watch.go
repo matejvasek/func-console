@@ -128,7 +128,7 @@ func (c *ghClient) pollRuns(ctx context.Context, repos []scm.Repo, workflowFile 
 	for _, repo := range repos {
 		g.Go(func() error {
 			run := c.latestWorkflowRun(ctx, repo.Owner, repo.Name, repo.DefaultBranch, workflowFile)
-			if run.Error != "" {
+			if run.Error != nil {
 				// Carry forward the last-known run (anti-flicker) but mark it as
 				// stale by setting Error. This signals degradation to the client
 				// and ensures the snapshot differs from prevRuns for dedup.
@@ -159,7 +159,7 @@ func (c *ghClient) latestWorkflowRun(ctx context.Context, owner, repo, branch, w
 			return scm.WorkflowRun{}
 		}
 		return scm.WorkflowRun{
-			Error: fmt.Errorf("list workflow runs for %s/%s (%s): %w", owner, repo, workflowFile, mapErr(err)).Error(),
+			Error: fmt.Errorf("list workflow runs for %s/%s (%s): %w", owner, repo, workflowFile, mapErr(err)),
 		}
 	}
 	if len(runs.WorkflowRuns) == 0 {
