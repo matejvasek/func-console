@@ -183,7 +183,7 @@ func deriveBuildStatus(run *ghlib.WorkflowRun) scm.BuildStatus {
 		switch run.GetConclusion() {
 		case "success":
 			return scm.Succeeded
-		case "failure", "cancelled", "timed_out":
+		case "failure", "cancelled", "timed_out", "startup_failure":
 			return scm.Failed
 		default:
 			// GitHub conclusions "skipped", "neutral", "stale", "action_required"

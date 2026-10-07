@@ -489,6 +489,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		Entry("completed+failure -> Failed", "completed", "failure", scm.Failed),
 		Entry("completed+cancelled -> Failed", "completed", "cancelled", scm.Failed),
 		Entry("completed+timed_out -> Failed", "completed", "timed_out", scm.Failed),
+		Entry("completed+startup_failure -> Failed", "completed", "startup_failure", scm.Failed),
 		Entry("completed+skipped -> None", "completed", "skipped", scm.None),
 		Entry("completed+neutral -> None", "completed", "neutral", scm.None),
 		Entry("completed+stale -> None", "completed", "stale", scm.None),
