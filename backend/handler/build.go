@@ -134,6 +134,9 @@ func writeErrorEvent(w io.Writer, err error) error {
 // Full error details are kept in server logs; the browser receives only
 // stable messages that don't leak repo names, API URLs, or token hints.
 func sanitizeError(err error) string {
+	if err == nil {
+		return ""
+	}
 	if errors.Is(err, scm.ErrUnauthorized) {
 		return "Authentication failed. Please check your access token."
 	}
