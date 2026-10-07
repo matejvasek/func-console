@@ -124,10 +124,22 @@ func writeErrorEvent(w io.Writer, err error) error {
 		Message     string `json:"message"`
 		IsAuthError bool   `json:"isAuthError"`
 	}{
-		Message:     err.Error(), // TODO send better user facing error
+		Message:     sanitizeError(err),
 		IsAuthError: errors.Is(err, scm.ErrUnauthorized),
 	}
 	return writeEvent(w, "app-error", &errorDTO)
+}
+
+// sanitizeError converts internal errors to user-facing messages.
+// Full error details are kept in server logs; the browser receives only
+// stable messages that don't leak repo names, API URLs, or token hints.
+func sanitizeError(err error) string {
+	if errors.Is(err, scm.ErrUnauthorized) {
+		return "Authentication failed. Please check your access token."
+	}
+	// All other errors (rediscovery failures, rate limits, network issues)
+	// map to a generic message. The specific error is in server logs.
+	return "Unable to fetch build status. Please try again later."
 }
 
 func writeEvent(w io.Writer, name string, data any) error {

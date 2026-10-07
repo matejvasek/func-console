@@ -206,7 +206,7 @@ var _ = Describe("BuildWatch", func() {
 		}
 		jsonStr := strings.TrimPrefix(dataLine, "data: ")
 		Expect(json.Unmarshal([]byte(jsonStr), &errorData)).To(Succeed())
-		Expect(errorData.Message).To(Equal("github API rate limited"))
+		Expect(errorData.Message).To(Equal("Unable to fetch build status. Please try again later."))
 		Expect(errorData.IsAuthError).To(BeFalse())
 
 		first, ok := readSSEDataWithin(reader, 2*time.Second)
