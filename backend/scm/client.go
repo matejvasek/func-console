@@ -81,8 +81,8 @@ type FileEntry struct {
 }
 
 type WorkflowRunsOrErr struct {
-	Runs map[string]WorkflowRun `json:"statuses"`
-	Err  error                  `json:"error,omitempty"`
+	Runs map[string]WorkflowRun
+	Err  error
 }
 
 type WorkflowWatch interface {
