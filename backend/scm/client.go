@@ -232,7 +232,7 @@ func (s *ClientStub) WatchWorkflowRuns(ctx context.Context, workflowFile string)
 	// A closed channel ends the stream immediately. A nil one would block the
 	// caller's receive forever, so an unconfigured stub would hang rather than
 	// fail.
-	ch := make(chan WorkflowRunsOrErr)
-	close(ch)
-	return &StubWatch{C: ch}, nil
+	w := StubWatch{C: make(chan WorkflowRunsOrErr)}
+	w.Stop()
+	return &w, nil
 }
