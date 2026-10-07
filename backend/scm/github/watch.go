@@ -59,8 +59,8 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFile string) (
 		}
 
 		pollAndEmit := func() bool {
-			snapshot, pollErr := c.pollRuns(pollCtx, repos, workflowFile, prevRuns)
-			return emitWithErr(snapshot, pollErr)
+			snapshot := c.pollRuns(pollCtx, repos, workflowFile, prevRuns)
+			return emitWithErr(snapshot, nil)
 		}
 
 		if !pollAndEmit() {
@@ -109,10 +109,10 @@ func (w *workflowWatch) Stop() {
 
 // pollRuns fetches the latest run for each repo concurrently. A per-repo error
 // carries that repo's last-known run forward from prevRuns instead of breaking
-// the snapshot. The returned error is non-nil if any repo failed; the snapshot
-// is still valid (using carried-forward runs where needed). prevRuns is only
-// read here (the caller updates it), so the concurrent reads are safe.
-func (c *ghClient) pollRuns(ctx context.Context, repos []scm.Repo, workflowFile string, prevRuns map[string]scm.WorkflowRun) (map[string]scm.WorkflowRun, error) {
+// the snapshot. Per-repo failures are logged but do not fail the poll; the
+// snapshot always succeeds with partial data. prevRuns is only read here (the
+// caller updates it), so the concurrent reads are safe.
+func (c *ghClient) pollRuns(ctx context.Context, repos []scm.Repo, workflowFile string, prevRuns map[string]scm.WorkflowRun) map[string]scm.WorkflowRun {
 	var snapshot = make(map[string]scm.WorkflowRun, len(repos))
 	var mu sync.Mutex
 	var put = func(k string, v scm.WorkflowRun) {
@@ -126,24 +126,26 @@ func (c *ghClient) pollRuns(ctx context.Context, repos []scm.Repo, workflowFile 
 
 	for _, repo := range repos {
 		g.Go(func() error {
-			run, err := c.latestWorkflowRun(ctx, repo.Owner, repo.Name, repo.DefaultBranch, workflowFile)
-			if err != nil {
-				put(repo.FullName(), prevRuns[repo.FullName()])
-				slog.Warn("watch workflow runs: get run failed", "repo", repo.FullName(), "err", err)
+			run := c.latestWorkflowRun(ctx, repo.Owner, repo.Name, repo.DefaultBranch, workflowFile)
+			if run.Error != "" {
+				// Carry forward the last-known run (anti-flicker) but mark it as
+				// stale by setting Error. This signals degradation to the client
+				// and ensures the snapshot differs from prevRuns for dedup.
+				stale := prevRuns[repo.FullName()]
+				stale.Error = run.Error
+				put(repo.FullName(), stale)
+				slog.Warn("watch workflow runs: get run failed", "repo", repo.FullName(), "err", run.Error)
 			} else {
 				put(repo.FullName(), run)
 			}
-			return err
+			return nil
 		})
 	}
-	err := g.Wait()
-	if err != nil {
-		return snapshot, fmt.Errorf("poll workflow runs: %w", err)
-	}
-	return snapshot, nil
+	_ = g.Wait()
+	return snapshot
 }
 
-func (c *ghClient) latestWorkflowRun(ctx context.Context, owner, repo, branch, workflowFile string) (scm.WorkflowRun, error) {
+func (c *ghClient) latestWorkflowRun(ctx context.Context, owner, repo, branch, workflowFile string) scm.WorkflowRun {
 	opts := &ghlib.ListWorkflowRunsOptions{
 		Branch:      branch,
 		ListOptions: ghlib.ListOptions{PerPage: 1},
@@ -153,22 +155,23 @@ func (c *ghClient) latestWorkflowRun(ctx context.Context, owner, repo, branch, w
 		if isNotFound(err) {
 			// No such workflow here (a non-func repo, or it has not been
 			// pushed yet). Treat it as a repo with no runs.
-			return scm.WorkflowRun{}, nil
+			return scm.WorkflowRun{}
 		}
-		return scm.WorkflowRun{}, fmt.Errorf("list workflow runs for %s/%s (%s): %w", owner, repo, workflowFile, mapErr(err))
+		return scm.WorkflowRun{
+			Error: fmt.Errorf("list workflow runs for %s/%s (%s): %w", owner, repo, workflowFile, mapErr(err)).Error(),
+		}
 	}
 	if len(runs.WorkflowRuns) == 0 {
-		return scm.WorkflowRun{}, nil
+		return scm.WorkflowRun{}
 	}
 
 	// GitHub returns runs in created_at descending order by default, so with
 	// PerPage 1 the single element WorkflowRuns[0] is the newest run.
 	run := runs.WorkflowRuns[0]
-	result := scm.WorkflowRun{
+	return scm.WorkflowRun{
 		BuildStatus: deriveBuildStatus(run),
 		HTMLURL:     run.GetHTMLURL(),
 	}
-	return result, nil
 }
 
 func deriveBuildStatus(run *ghlib.WorkflowRun) scm.BuildStatus {

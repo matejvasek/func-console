@@ -139,6 +139,7 @@ func (b BuildStatus) MarshalJSON() ([]byte, error) {
 type WorkflowRun struct {
 	BuildStatus BuildStatus `json:"status"`
 	HTMLURL     string      `json:"url,omitempty"`
+	Error       string      `json:"-"` // Retrieval error, not yet serialized to client
 }
 
 type ClientStub struct {

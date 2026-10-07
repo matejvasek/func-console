@@ -235,15 +235,19 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		Expect(ok).To(BeTrue(), "expected an initial snapshot")
 		Expect(first["alice/fn"].BuildStatus).To(Equal(scm.Building))
 
-		// Trigger poll to get the error event
+		// Trigger poll to hit the transient error
 		go tickPoll()
-		// The last-known run is carried forward, so the snapshot is unchanged
-		// and an error is emitted.
+		// The last-known run is carried forward with Error set. Partial failure is
+		// success at the poll level (no channel-level error), but the per-repo Error
+		// field changes the snapshot so dedup doesn't suppress it.
 		select {
 		case event := <-w.ResultChan():
-			Expect(event.Err).NotTo(BeNil(), "expected error to be emitted after transient poll error")
+			Expect(event.Err).To(BeNil(), "poll-level error should be nil")
+			run := event.Runs["alice/fn"]
+			Expect(run.BuildStatus).To(Equal(scm.Building), "should carry forward last-known status")
+			Expect(run.Error).To(ContainSubstring("500"), "should mark as stale with error")
 		case <-time.After(300 * time.Millisecond):
-			Fail("expected error event to be emitted")
+			Fail("expected event with per-repo Error set")
 		}
 	})
 
@@ -444,15 +448,17 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		// Trigger poll to hit the rate-limited endpoint
 		go tickPoll()
 
+		// The last-known run is carried forward with Error set. Partial failure is
+		// success at the poll level (no channel-level error), but the per-repo Error
+		// field changes the snapshot so dedup doesn't suppress it.
 		select {
 		case event := <-w.ResultChan():
-			if event.Err != nil {
-				Expect(event.Err.Error()).To(ContainSubstring("API rate limit exceeded"))
-			} else {
-				Fail("error expected here")
-			}
+			Expect(event.Err).To(BeNil(), "poll-level error should be nil")
+			run := event.Runs["alice/fn"]
+			Expect(run.BuildStatus).To(Equal(scm.Building), "should carry forward last-known status")
+			Expect(run.Error).To(ContainSubstring("API rate limit exceeded"), "should mark as stale with error")
 		case <-time.After(2 * time.Second):
-			Fail("timeout")
+			Fail("expected event with per-repo Error set")
 		}
 	})
 
@@ -499,13 +505,20 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 		select {
 		case runs := <-w.ResultChan():
-			var inProgress int
+			// Partial failure is success: poll-level Err should be nil, but per-repo
+			// Error field signals degradation for broken repos.
+			Expect(runs.Err).To(BeNil(), "poll-level error should be nil")
+			var inProgress, withError int
 			for _, run := range runs.Runs {
 				if run.BuildStatus == scm.Building {
 					inProgress++
 				}
+				if run.Error != "" {
+					withError++
+				}
 			}
-			Expect(inProgress).To(Equal(len(repos) - len(broken)))
+			Expect(inProgress).To(Equal(len(repos)-len(broken)), "healthy repos should show Building")
+			Expect(withError).To(Equal(len(broken)), "broken repos should have Error set")
 		case <-time.After(time.Second * 2):
 			Fail("timeout")
 		}
