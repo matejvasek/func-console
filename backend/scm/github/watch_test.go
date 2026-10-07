@@ -48,14 +48,30 @@ import (
 // You have been warned.
 
 var _ = Describe("WatchWorkflowRuns", func() {
-	// Caching must not depend on how big the payload happens to be. It is easy
-	// for it to: the cache only stores a response whose body is read to EOF, and
-	// a JSON decoder stops as soon as the top-level value is complete, so
-	// whether it reads that far comes down to where its buffer boundaries fall.
-	// A live workflow_runs entry embeds whole repository objects and runs
-	// 10-20 KB, and grows whenever GitHub adds a field, so a cache that works
-	// only at the size of a tiny fixture would break silently in production.
-	// These sizes were measured to straddle the boundary.
+	// This test verifies that the ETag cache works correctly through the polling
+	// loop, regardless of response payload size (the drain bug in httpcache
+	// makes caching non-deterministic at certain body sizes).
+	//
+	// Three requests are scripted via the states array:
+	//
+	// Request 1 (initial poll):
+	//   No If-None-Match (nothing cached yet).
+	//   Server responds 200 with ETag "a" and status "in_progress".
+	//   Cache stores the response body + ETag.
+	//
+	// Request 2 (first tickPoll):
+	//   Cache sends If-None-Match: "a".
+	//   Server sees matching ETag, responds 304.
+	//   Cache replays the stored "in_progress" body.
+	//   Snapshot unchanged, watch suppresses the emit.
+	//   If the cache failed (drain bug), there would be no cached body,
+	//   no If-None-Match header, and the request would hit the forceCache
+	//   branch, returning a 429 rate limit error. The test would fail.
+	//
+	// Request 3 (second tickPoll):
+	//   Cache sends If-None-Match: "a".
+	//   Server has new ETag "b", responds 200 with status "completed".
+	//   Snapshot changed, watch emits.
 	DescribeTable("revalidates each poll with If-None-Match so unchanged runs cost a free 304",
 		func(payload int) {
 			tickPoll, pollFactory := ticker.CreateFakeTickerFactory()
