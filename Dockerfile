@@ -5,13 +5,13 @@ WORKDIR /usr/src/app
 
 COPY package.json yarn.lock .yarnrc.yml ./
 COPY .yarn/ .yarn/
-RUN if [ -f /cachi2/cachi2.env ]; then . /cachi2/cachi2.env; fi && CYPRESS_INSTALL_BINARY=0 node ./.yarn/releases/yarn-4.18.1.cjs install --immutable
+RUN if [ -f /cachi2/cachi2.env ]; then . /cachi2/cachi2.env; fi && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 node .yarn/releases/yarn-*.cjs install --immutable
 
 COPY console-extensions.json tsconfig.json webpack.config.mts ./
 COPY src/ src/
 COPY locales/ locales/
 COPY config/ config/
-RUN if [ -f /cachi2/cachi2.env ]; then . /cachi2/cachi2.env; fi && node ./.yarn/releases/yarn-4.18.1.cjs build
+RUN if [ -f /cachi2/cachi2.env ]; then . /cachi2/cachi2.env; fi && node .yarn/releases/yarn-*.cjs build
 
 FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.26.7-1791275853@sha256:890b54e8d329f33f094ab17881bd37e20b80a54cc39141637310911d8dd9c575 AS gobuilder
 ARG TARGETOS TARGETARCH
