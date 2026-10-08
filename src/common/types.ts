@@ -95,3 +95,33 @@ export interface WorkflowRun {
  * Record of workflow runs, keyed by repository full name (e.g., "owner/repo")
  */
 export type WorkflowRunRecord = Record<string, WorkflowRun>;
+
+export interface Function {
+  readonly owner: string;
+  readonly repoName: string;
+  readonly runtime: string;
+  readonly source: FunctionSource;
+  readonly name: string;
+  readonly namespace: string;
+  readonly status: FunctionStatusV2;
+  readonly url?: string;
+  readonly replicas?: number;
+  readonly mainResource?: K8sResourceCommon;
+  readonly error?: Error;
+}
+
+export interface FunctionStatusV2 {
+  cluster: ClusterStatus;
+  workflow: WorkflowStatus;
+}
+
+export interface ClusterStatus {
+  status: 'None' | 'NotDeployed' | 'Deploying' | 'Running' | 'ScaledToZero' | 'Undeploying';
+  error?: Error;
+}
+
+export interface WorkflowStatus {
+  status: 'None' | 'Building' | 'Succeeded' | 'Failed';
+  url?: string;
+  error?: Error;
+}
