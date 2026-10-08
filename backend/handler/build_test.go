@@ -105,19 +105,21 @@ var _ = Describe("BuildWatch", func() {
 		events := readWorkflowEventStream(reader)
 
 		first := <-events
-		Expect(first.buildStatus).To(HaveKey("alice/fn"))
-		Expect(first.buildStatus["alice/fn"].Status).To(Equal("Building"))
-		Expect(first.buildStatus["alice/fn"].URL).To(BeEmpty())
-		Expect(first.buildStatus["alice/fn"].Error).To(BeEmpty())
-		Expect(first.appError).To(BeNil())
-		Expect(first.err).To(BeNil())
+		Expect(first).To(Equal(workflowEvent{
+			buildStatus: map[string]handler.WorkflowRunDTO{
+				"alice/fn": {Status: "Building"},
+			},
+		}))
 
 		second := <-events
-		Expect(second.buildStatus["alice/fn"].Status).To(Equal("Failed"))
-		Expect(second.buildStatus["alice/fn"].URL).To(Equal("https://github.com/alice/fn/actions/runs/1"))
-		Expect(second.buildStatus["alice/fn"].Error).To(BeEmpty())
-		Expect(second.appError).To(BeNil())
-		Expect(second.err).To(BeNil())
+		Expect(second).To(Equal(workflowEvent{
+			buildStatus: map[string]handler.WorkflowRunDTO{
+				"alice/fn": {
+					Status: "Failed",
+					URL:    "https://github.com/alice/fn/actions/runs/1",
+				},
+			},
+		}))
 	})
 
 	It("omits the optional fields for a repo with no run", func() {
@@ -136,11 +138,11 @@ var _ = Describe("BuildWatch", func() {
 
 		events := readWorkflowEventStream(reader)
 		evt := <-events
-		Expect(evt.buildStatus["alice/fn"].Status).To(Equal("None"))
-		Expect(evt.buildStatus["alice/fn"].URL).To(BeEmpty())
-		Expect(evt.buildStatus["alice/fn"].Error).To(BeEmpty())
-		Expect(evt.appError).To(BeNil())
-		Expect(evt.err).To(BeNil())
+		Expect(evt).To(Equal(workflowEvent{
+			buildStatus: map[string]handler.WorkflowRunDTO{
+				"alice/fn": {Status: "None"},
+			},
+		}))
 	})
 
 	It("ends the stream when the watch channel closes", func() {
@@ -160,8 +162,11 @@ var _ = Describe("BuildWatch", func() {
 
 		events := readWorkflowEventStream(reader)
 		first := <-events
-		Expect(first.buildStatus["alice/fn"].Status).To(Equal("Building"))
-		Expect(first.err).To(BeNil())
+		Expect(first).To(Equal(workflowEvent{
+			buildStatus: map[string]handler.WorkflowRunDTO{
+				"alice/fn": {Status: "Building"},
+			},
+		}))
 
 		// Closing the channel signals the watch ended (e.g. the token was revoked
 		// mid-stream); the handler ends the SSE stream, so the body reaches EOF.
@@ -203,20 +208,23 @@ var _ = Describe("BuildWatch", func() {
 
 		// Verify the error event is sent
 		errorEvt := <-events
-		Expect(errorEvt.appError).NotTo(BeNil())
-		Expect(errorEvt.appError.Message).To(Equal("Unable to fetch build status. Please try again later."))
-		Expect(errorEvt.appError.IsAuthError).To(BeFalse())
-		Expect(errorEvt.buildStatus).To(BeNil())
-		Expect(errorEvt.err).To(BeNil())
+		Expect(errorEvt).To(Equal(workflowEvent{
+			appError: &handler.ErrorDTO{
+				Message:     "Unable to fetch build status. Please try again later.",
+				IsAuthError: false,
+			},
+		}))
 
 		// Verify the stream continues with build status
 		statusEvt := <-events
-		Expect(statusEvt.buildStatus).NotTo(BeEmpty())
-		Expect(statusEvt.buildStatus["alice/fn"].Status).To(Equal("Succeeded"))
-		Expect(statusEvt.buildStatus["alice/fn"].URL).To(Equal("example.com/run/1"))
-		Expect(statusEvt.buildStatus["alice/fn"].Error).To(BeEmpty())
-		Expect(statusEvt.appError).To(BeNil())
-		Expect(statusEvt.err).To(BeNil())
+		Expect(statusEvt).To(Equal(workflowEvent{
+			buildStatus: map[string]handler.WorkflowRunDTO{
+				"alice/fn": {
+					Status: "Succeeded",
+					URL:    "example.com/run/1",
+				},
+			},
+		}))
 	})
 
 	It("calls watch.Stop() when the request context is cancelled to halt polling", func() {
@@ -272,16 +280,18 @@ data: {"alice/fn": {"status": "Building"}}
 
 		var events = readWorkflowEventStream(r)
 		first := <-events
-		Expect(first.appError).NotTo(BeNil())
-		Expect(first.appError.Message).To(Equal("some error"))
-		Expect(first.appError.IsAuthError).To(BeTrue())
-		Expect(first.buildStatus).To(BeEmpty())
-		Expect(first.err).To(BeNil())
+		Expect(first).To(Equal(workflowEvent{
+			appError: &handler.ErrorDTO{
+				Message:     "some error",
+				IsAuthError: true,
+			},
+		}))
 		second := <-events
-		Expect(second.buildStatus).NotTo(BeEmpty())
-		Expect(second.buildStatus["alice/fn"].Status).To(Equal("Building"))
-		Expect(second.appError).To(BeNil())
-		Expect(second.err).To(BeNil())
+		Expect(second).To(Equal(workflowEvent{
+			buildStatus: map[string]handler.WorkflowRunDTO{
+				"alice/fn": {Status: "Building"},
+			},
+		}))
 	})
 })
 
