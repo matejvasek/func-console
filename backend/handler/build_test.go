@@ -74,20 +74,23 @@ var _ = Describe("BuildWatch", func() {
 	})
 
 	It("emits a heartbeat comment on demand", func() {
-		ch := make(chan scm.WorkflowRunsOrErr)
+		w := scm.StubWatch{C: make(chan scm.WorkflowRunsOrErr)}
 		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
-				return &scm.StubWatch{C: ch}, nil
+				return &w, nil
 			},
 		}
 
 		beat, factory := ticker.CreateFakeTickerFactory()
 		reader := startWatchStream(stub, factory)
 
-		go beat()
-		line, ok := readLineWithin(reader)
-		Expect(ok).To(BeTrue(), "expected a heartbeat line")
-		Expect(line).To(Equal(":"))
+		go func() {
+			beat()
+			w.Stop()
+		}()
+		bs, err := io.ReadAll(reader)
+		Expect(err).To(BeNil())
+		Expect(bs).To(Equal([]byte{':', '\n', '\n'}))
 	})
 
 	It("emits an SSE frame per snapshot, keyed by owner/repo in build vocabulary", func() {
@@ -105,16 +108,6 @@ var _ = Describe("BuildWatch", func() {
 				"alice/fn": {BuildStatus: scm.Building},
 			},
 		}
-		firstData, ok := readSSEDataWithin(reader)
-		Expect(ok).To(BeTrue(), "expected a frame for the first snapshot")
-
-		var first map[string]handler.WorkflowRunDTO
-		Expect(json.Unmarshal([]byte(firstData), &first)).To(Succeed())
-		Expect(first).To(HaveKey("alice/fn"))
-		Expect(first["alice/fn"].Status).To(Equal("Building"))
-		Expect(first["alice/fn"].URL).To(BeEmpty())
-		Expect(first["alice/fn"].Error).To(BeEmpty())
-
 		ch <- scm.WorkflowRunsOrErr{
 			Runs: map[string]scm.WorkflowRun{
 				"alice/fn": {
@@ -123,14 +116,23 @@ var _ = Describe("BuildWatch", func() {
 				},
 			},
 		}
-		secondData, ok := readSSEDataWithin(reader)
-		Expect(ok).To(BeTrue(), "expected a frame for the second snapshot")
 
-		var second map[string]handler.WorkflowRunDTO
-		Expect(json.Unmarshal([]byte(secondData), &second)).To(Succeed())
-		Expect(second["alice/fn"].Status).To(Equal("Failed"))
-		Expect(second["alice/fn"].URL).To(Equal("https://github.com/alice/fn/actions/runs/1"))
-		Expect(second["alice/fn"].Error).To(BeEmpty())
+		events := readWorkflowEventStream(reader)
+
+		first := <-events
+		Expect(first.buildStatus).To(HaveKey("alice/fn"))
+		Expect(first.buildStatus["alice/fn"].Status).To(Equal("Building"))
+		Expect(first.buildStatus["alice/fn"].URL).To(BeEmpty())
+		Expect(first.buildStatus["alice/fn"].Error).To(BeEmpty())
+		Expect(first.appError).To(BeNil())
+		Expect(first.err).To(BeNil())
+
+		second := <-events
+		Expect(second.buildStatus["alice/fn"].Status).To(Equal("Failed"))
+		Expect(second.buildStatus["alice/fn"].URL).To(Equal("https://github.com/alice/fn/actions/runs/1"))
+		Expect(second.buildStatus["alice/fn"].Error).To(BeEmpty())
+		Expect(second.appError).To(BeNil())
+		Expect(second.err).To(BeNil())
 	})
 
 	It("omits the optional fields for a repo with no run", func() {
@@ -146,14 +148,14 @@ var _ = Describe("BuildWatch", func() {
 		ch <- scm.WorkflowRunsOrErr{
 			Runs: map[string]scm.WorkflowRun{"alice/fn": {}},
 		}
-		frameData, ok := readSSEDataWithin(reader)
-		Expect(ok).To(BeTrue(), "expected a frame for the snapshot")
 
-		var frame map[string]handler.WorkflowRunDTO
-		Expect(json.Unmarshal([]byte(frameData), &frame)).To(Succeed())
-		Expect(frame["alice/fn"].Status).To(Equal("None"))
-		Expect(frame["alice/fn"].URL).To(BeEmpty())
-		Expect(frame["alice/fn"].Error).To(BeEmpty())
+		events := readWorkflowEventStream(reader)
+		evt := <-events
+		Expect(evt.buildStatus["alice/fn"].Status).To(Equal("None"))
+		Expect(evt.buildStatus["alice/fn"].URL).To(BeEmpty())
+		Expect(evt.buildStatus["alice/fn"].Error).To(BeEmpty())
+		Expect(evt.appError).To(BeNil())
+		Expect(evt.err).To(BeNil())
 	})
 
 	It("ends the stream when the watch channel closes", func() {
@@ -170,12 +172,11 @@ var _ = Describe("BuildWatch", func() {
 		ch <- scm.WorkflowRunsOrErr{
 			Runs: map[string]scm.WorkflowRun{"alice/fn": {BuildStatus: scm.Building}},
 		}
-		firstData, ok := readSSEDataWithin(reader)
-		Expect(ok).To(BeTrue(), "expected an initial frame")
 
-		var first map[string]handler.WorkflowRunDTO
-		Expect(json.Unmarshal([]byte(firstData), &first)).To(Succeed())
-		Expect(first["alice/fn"].Status).To(Equal("Building"))
+		events := readWorkflowEventStream(reader)
+		first := <-events
+		Expect(first.buildStatus["alice/fn"].Status).To(Equal("Building"))
+		Expect(first.err).To(BeNil())
 
 		// Closing the channel signals the watch ended (e.g. the token was revoked
 		// mid-stream); the handler ends the SSE stream, so the body reaches EOF.
@@ -213,29 +214,24 @@ var _ = Describe("BuildWatch", func() {
 			},
 		}}
 
+		events := readWorkflowEventStream(reader)
+
 		// Verify the error event is sent
-		line, ok := readLineWithin(reader)
-		Expect(ok).To(BeTrue(), "expected an error event line")
-		Expect(line).To(Equal("event: app-error"))
+		errorEvt := <-events
+		Expect(errorEvt.appError).NotTo(BeNil())
+		Expect(errorEvt.appError.Message).To(Equal("Unable to fetch build status. Please try again later."))
+		Expect(errorEvt.appError.IsAuthError).To(BeFalse())
+		Expect(errorEvt.buildStatus).To(BeNil())
+		Expect(errorEvt.err).To(BeNil())
 
-		dataLine, ok := readLineWithin(reader)
-		Expect(ok).To(BeTrue(), "expected a data line")
-		Expect(dataLine).To(HavePrefix("data: "))
-
-		var errorEvent handler.ErrorDTO
-		jsonStr := strings.TrimPrefix(dataLine, "data: ")
-		Expect(json.Unmarshal([]byte(jsonStr), &errorEvent)).To(Succeed())
-		Expect(errorEvent.Message).To(Equal("Unable to fetch build status. Please try again later."))
-		Expect(errorEvent.IsAuthError).To(BeFalse())
-
-		firstData, ok := readSSEDataWithin(reader)
-		Expect(ok).To(BeTrue())
-
-		var first map[string]handler.WorkflowRunDTO
-		Expect(json.Unmarshal([]byte(firstData), &first)).To(Succeed())
-		Expect(first["alice/fn"].Status).To(Equal("Succeeded"))
-		Expect(first["alice/fn"].URL).To(Equal("example.com/run/1"))
-		Expect(first["alice/fn"].Error).To(BeEmpty())
+		// Verify the stream continues with build status
+		statusEvt := <-events
+		Expect(statusEvt.buildStatus).NotTo(BeEmpty())
+		Expect(statusEvt.buildStatus["alice/fn"].Status).To(Equal("Succeeded"))
+		Expect(statusEvt.buildStatus["alice/fn"].URL).To(Equal("example.com/run/1"))
+		Expect(statusEvt.buildStatus["alice/fn"].Error).To(BeEmpty())
+		Expect(statusEvt.appError).To(BeNil())
+		Expect(statusEvt.err).To(BeNil())
 	})
 
 	It("calls watch.Stop() when the request context is cancelled to halt polling", func() {
@@ -310,62 +306,6 @@ data: {"alice/fn": {"status": "Building"}}
 func buildWatchWithStub(stub scm.Client, opts ...handler.WatchOption) http.HandlerFunc {
 	withStub := handler.WithSCMFactory(func(string) scm.Client { return stub })
 	return handler.BuildWatch(append([]handler.WatchOption{withStub}, opts...)...)
-}
-
-// readSSEDataWithin runs readSSEData with a timeout so a handler that never
-// emits fails fast instead of blocking until the spec timeout. It returns the
-// payload and true on success, or "" and false if the timeout elapses first.
-func readSSEDataWithin(reader *bufio.Reader) (string, bool) {
-	ch := make(chan string, 1)
-	go func() { ch <- readSSEData(reader) }()
-	select {
-	case data := <-ch:
-		return data, true
-	case <-time.After(time.Second * 2):
-		return "", false
-	}
-}
-
-// readLineWithin reads a single line (newline trimmed) with a timeout, so a
-// handler that never writes fails fast instead of blocking until the spec
-// timeout. Returns "" and false if the timeout elapses first.
-func readLineWithin(reader *bufio.Reader) (string, bool) {
-	ch := make(chan string, 1)
-	go func() {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			ch <- ""
-			return
-		}
-		ch <- strings.TrimRight(line, "\n")
-	}()
-	select {
-	case line := <-ch:
-		return line, true
-	case <-time.After(time.Second * 2):
-		return "", false
-	}
-}
-
-// readSSEData reads frames until it finds one with a data: line and returns that payload.
-func readSSEData(reader *bufio.Reader) string {
-	var data []string
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			return strings.Join(data, "\n")
-		}
-		line = strings.TrimRight(line, "\n")
-		if line == "" {
-			if len(data) > 0 {
-				return strings.Join(data, "\n")
-			}
-			continue // heartbeat or blank separator, keep reading
-		}
-		if strings.HasPrefix(line, "data:") {
-			data = append(data, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
-		}
-	}
 }
 
 type workflowEvent struct {
