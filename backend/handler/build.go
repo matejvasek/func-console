@@ -19,39 +19,46 @@ import (
 const defaultHeartbeat = 15 * time.Second
 
 type WorkflowRunDTO struct {
-	Status string `json:"status"`
-	URL    string `json:"url,omitempty"`
-	Error  string `json:"error,omitempty"`
+	Status string    `json:"status"`
+	URL    string    `json:"url,omitempty"`
+	Error  *ErrorDTO `json:"error,omitempty"`
 }
 
 type ErrorDTO struct {
-	Message     string `json:"message"`
-	IsAuthError bool   `json:"isAuthError"`
+	Message string `json:"message"`
+	Code    *int   `json:"code,omitempty"`
 }
 
 // BuildWatch returns an HTTP handler that streams build status updates via SSE.
 //
 // Request:
-//   - Header X-SCM-Token: GitHub Personal Access Token
 //   - Method: GET
+//   - Header X-SCM-Token: GitHub Personal Access Token
 //
 // Response:
 //   - Content-Type: text/event-stream
-//   - Events:
-//   - build-status: map of repo -> {"status": "Building"|"Succeeded"|"Failed"|"None", "url": "...", "error": "..."}
-//   - app-error: {"message": "...", "isAuthError": true|false}
-//   - heartbeat (SSE comment): keepalive, no data
+//   - Status: 200 (stream started)
 //
-// Per-repo errors (rate limits, individual repo failures) appear in the "error"
-// field of the build-status event; catastrophic errors (token revocation, repo
-// rediscovery failure) emit app-error events. The stream continues until the
+// Events:
+//
+//	build-status: {[owner/repo]: {status, url?, error?}}
+//	  status: "Building" | "Succeeded" | "Failed" | "None"
+//	  url?: string (workflow run URL, omitted when None)
+//	  error?: {message, code?} (omitted when no error)
+//	app-error: {message, code?}
+//	  message: user-facing error description
+//	  code?: HTTP status code (401 for auth errors)
+//	heartbeat: SSE comment line (keepalive, no data)
+//
+// Per-repo errors (rate limits, individual repo failures) appear in the error
+// field of the build-status event. Catastrophic errors (token revocation, repo
+// discovery failure) emit app-error events. The stream continues until the
 // client disconnects or the context is cancelled.
 //
-// Status codes:
-//   - 200: stream started successfully
+// Error status codes:
 //   - 401: missing or invalid X-SCM-Token
 //   - 500: streaming unsupported (no http.Flusher)
-//   - 502: failed to list repositories
+//   - 502: failed to discover repositories
 func BuildWatch(opts ...WatchOption) http.HandlerFunc {
 	cfg := watchConfig{
 		newSCMClient: func(pat string) scm.Client {
@@ -159,18 +166,24 @@ func writeBuildStatus(w http.ResponseWriter, runs map[string]scm.WorkflowRun) er
 		runsDTO[k] = WorkflowRunDTO{
 			Status: v.BuildStatus.String(),
 			URL:    v.HTMLURL,
-			Error:  sanitizeError(v.Error),
+			Error:  errorToErrorDTO(v.Error),
 		}
 	}
 	return writeEvent(w, "build-status", runsDTO)
 }
 
 func writeErrorEvent(w io.Writer, err error) error {
-	var e = ErrorDTO{
-		Message:     sanitizeError(err),
-		IsAuthError: errors.Is(err, scm.ErrUnauthorized),
+	return writeEvent(w, "app-error", errorToErrorDTO(err))
+}
+
+func errorToErrorDTO(err error) *ErrorDTO {
+	if err == nil {
+		return nil
 	}
-	return writeEvent(w, "app-error", &e)
+	return &ErrorDTO{
+		Message: sanitizeError(err),
+		Code:    errorToCode(err),
+	}
 }
 
 // sanitizeError converts internal errors to user-facing messages.
@@ -186,6 +199,13 @@ func sanitizeError(err error) string {
 	// All other errors (rediscovery failures, rate limits, network issues)
 	// map to a generic message. The specific error is in server logs.
 	return "Unable to fetch build status. Please try again later."
+}
+
+func errorToCode(err error) *int {
+	if errors.Is(err, scm.ErrUnauthorized) {
+		return new(401)
+	}
+	return nil
 }
 
 func writeEvent(w io.Writer, name string, data any) error {

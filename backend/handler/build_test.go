@@ -200,8 +200,7 @@ var _ = Describe("BuildWatch", func() {
 		errorEvt := receiveWTO(events)
 		Expect(errorEvt).To(Equal(workflowEvent{
 			appError: &handler.ErrorDTO{
-				Message:     "Unable to fetch build status. Please try again later.",
-				IsAuthError: false,
+				Message: "Unable to fetch build status. Please try again later.",
 			},
 		}))
 
@@ -259,7 +258,7 @@ var _ = Describe("BuildWatch", func() {
 		r := strings.NewReader(`:
 event: app-error
 data: {"message": "some error",
-data: "isAuthError": true}
+data: "code": 401}
 
 :
 
@@ -272,8 +271,8 @@ data: {"alice/fn": {"status": "Building"}}
 		first := receiveWTO(events)
 		Expect(first).To(Equal(workflowEvent{
 			appError: &handler.ErrorDTO{
-				Message:     "some error",
-				IsAuthError: true,
+				Message: "some error",
+				Code:    new(401),
 			},
 		}))
 		second := receiveWTO(events)
