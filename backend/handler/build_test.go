@@ -104,14 +104,14 @@ var _ = Describe("BuildWatch", func() {
 
 		events := readWorkflowEventStream(reader)
 
-		first := <-events
+		first := receiveWTO(events)
 		Expect(first).To(Equal(workflowEvent{
 			buildStatus: map[string]handler.WorkflowRunDTO{
 				"alice/fn": {Status: "Building"},
 			},
 		}))
 
-		second := <-events
+		second := receiveWTO(events)
 		Expect(second).To(Equal(workflowEvent{
 			buildStatus: map[string]handler.WorkflowRunDTO{
 				"alice/fn": {
@@ -137,7 +137,7 @@ var _ = Describe("BuildWatch", func() {
 		}
 
 		events := readWorkflowEventStream(reader)
-		evt := <-events
+		evt := receiveWTO(events)
 		Expect(evt).To(Equal(workflowEvent{
 			buildStatus: map[string]handler.WorkflowRunDTO{
 				"alice/fn": {Status: "None"},
@@ -161,7 +161,7 @@ var _ = Describe("BuildWatch", func() {
 		}
 
 		events := readWorkflowEventStream(reader)
-		first := <-events
+		first := receiveWTO(events)
 		Expect(first).To(Equal(workflowEvent{
 			buildStatus: map[string]handler.WorkflowRunDTO{
 				"alice/fn": {Status: "Building"},
@@ -171,7 +171,7 @@ var _ = Describe("BuildWatch", func() {
 		// Closing the channel signals the watch ended (e.g. the token was revoked
 		// mid-stream); the handler ends the SSE stream, so the body reaches EOF.
 		tw.Stop()
-		<-events
+		receiveWTO(events)
 	})
 
 	It("sends an SSE error event and continues the stream when the watch fails", func() {
@@ -197,7 +197,7 @@ var _ = Describe("BuildWatch", func() {
 		events := readWorkflowEventStream(reader)
 
 		// Verify the error event is sent
-		errorEvt := <-events
+		errorEvt := receiveWTO(events)
 		Expect(errorEvt).To(Equal(workflowEvent{
 			appError: &handler.ErrorDTO{
 				Message:     "Unable to fetch build status. Please try again later.",
@@ -206,7 +206,7 @@ var _ = Describe("BuildWatch", func() {
 		}))
 
 		// Verify the stream continues with build status
-		statusEvt := <-events
+		statusEvt := receiveWTO(events)
 		Expect(statusEvt).To(Equal(workflowEvent{
 			buildStatus: map[string]handler.WorkflowRunDTO{
 				"alice/fn": {
@@ -269,14 +269,14 @@ data: {"alice/fn": {"status": "Building"}}
 `)
 
 		var events = readWorkflowEventStream(r)
-		first := <-events
+		first := receiveWTO(events)
 		Expect(first).To(Equal(workflowEvent{
 			appError: &handler.ErrorDTO{
 				Message:     "some error",
 				IsAuthError: true,
 			},
 		}))
-		second := <-events
+		second := receiveWTO(events)
 		Expect(second).To(Equal(workflowEvent{
 			buildStatus: map[string]handler.WorkflowRunDTO{
 				"alice/fn": {Status: "Building"},
@@ -291,6 +291,16 @@ data: {"alice/fn": {"status": "Building"}}
 func buildWatchWithStub(stub scm.Client, opts ...handler.WatchOption) http.HandlerFunc {
 	withStub := handler.WithSCMFactory(func(string) scm.Client { return stub })
 	return handler.BuildWatch(append([]handler.WatchOption{withStub}, opts...)...)
+}
+
+func receiveWTO(ch <-chan workflowEvent) workflowEvent {
+	select {
+	case e := <-ch:
+		return e
+	case <-time.After(time.Second):
+		Fail("message not received in time")
+		return workflowEvent{err: errors.New("timeout")}
+	}
 }
 
 type workflowEvent struct {
