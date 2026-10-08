@@ -2,12 +2,15 @@ package handler_test
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"time"
 
@@ -272,6 +275,33 @@ var _ = Describe("BuildWatch", func() {
 			Fail("expected watch.Stop() to be called when request context is cancelled")
 		}
 	})
+
+	It("validate test auxiliaries", func() {
+		r := strings.NewReader(`:
+event: app-error
+data: {"message": "some error",
+data: "isAuthError": true}
+
+:
+
+event: build-status
+data: {"alice/fn": {"status": "Building"}}
+
+`)
+
+		var events = readWorkflowEventStream(r)
+		first := <-events
+		Expect(first.appError).NotTo(BeNil())
+		Expect(first.appError.Message).To(Equal("some error"))
+		Expect(first.appError.IsAuthError).To(BeTrue())
+		Expect(first.buildStatus).To(BeEmpty())
+		Expect(first.err).To(BeNil())
+		second := <-events
+		Expect(second.buildStatus).NotTo(BeEmpty())
+		Expect(second.buildStatus["alice/fn"].Status).To(Equal("Building"))
+		Expect(second.appError).To(BeNil())
+		Expect(second.err).To(BeNil())
+	})
 })
 
 // buildWatchWithStub returns the handler wired to stub instead of the SCM
@@ -334,6 +364,178 @@ func readSSEData(reader *bufio.Reader) string {
 		}
 		if strings.HasPrefix(line, "data:") {
 			data = append(data, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
+		}
+	}
+}
+
+type workflowEvent struct {
+	buildStatus map[string]handler.WorkflowRunDTO
+	appError    *handler.ErrorDTO
+	err         error
+}
+
+func readWorkflowEventStream(r io.Reader) <-chan workflowEvent {
+	ch := make(chan workflowEvent)
+	stream := readSSEEventStream(bufio.NewReader(r), map[string]reflect.Type{
+		"app-error":    reflect.TypeFor[handler.ErrorDTO](),
+		"build-status": reflect.TypeFor[map[string]handler.WorkflowRunDTO](),
+	})
+	go func() {
+		defer close(ch)
+		for e := range stream {
+			if e.Err != nil {
+				ch <- workflowEvent{err: e.Err}
+				continue
+			}
+			switch d := e.Data.(type) {
+			case map[string]handler.WorkflowRunDTO:
+				ch <- workflowEvent{buildStatus: d}
+			case handler.ErrorDTO:
+				ch <- workflowEvent{appError: &d}
+			default:
+				ch <- workflowEvent{err: fmt.Errorf("unexpected event: (name: %q; type: %T)", e.Name, e.Data)}
+			}
+		}
+	}()
+	return ch
+}
+
+type event struct {
+	Name string
+	Data any
+	Err  error
+}
+
+func readSSEEventStream(
+	r io.Reader,
+	eventMapping map[string]reflect.Type,
+) <-chan event {
+	out := make(chan event)
+
+	go func() {
+		defer close(out)
+
+		for {
+			name, raw, err := readSSEEvent[json.RawMessage](r)
+			if err != nil {
+				if !errors.Is(err, io.EOF) {
+					out <- event{Name: name, Err: err}
+				}
+				return
+			}
+
+			typ, ok := eventMapping[name]
+			if !ok || typ == nil {
+				out <- event{
+					Name: name,
+					Err:  fmt.Errorf("no data type registered for SSE event %q", name),
+				}
+				return
+			}
+
+			// New(T) yields *T, which Unmarshal can populate.
+			// This also works when T itself is a pointer type.
+			value := reflect.New(typ)
+			if err := json.Unmarshal(raw, value.Interface()); err != nil {
+				out <- event{
+					Name: name,
+					Err:  fmt.Errorf("cannot decode SSE event %q as %v: %w", name, typ, err),
+				}
+				return
+			}
+
+			out <- event{Name: name, Data: value.Elem().Interface()}
+		}
+	}()
+
+	return out
+}
+
+func readSSEEvent[T any](r io.Reader) (name string, data T, err error) {
+	var payload bytes.Buffer
+	var hasData bool
+
+	var reader = bufio.NewReader(r)
+
+	for {
+		line, readErr := readSSELine(reader)
+		if readErr != nil {
+			// EOF does not dispatch an unterminated event.
+			if readErr == io.EOF {
+				return "", data, io.EOF
+			}
+			return "", data, fmt.Errorf("cannot read SSE line: %w", readErr)
+		}
+
+		if len(line) == 0 {
+			if !hasData {
+				// Discard this block, including any event name.
+				name = ""
+				continue
+			}
+
+			if name == "" {
+				name = "message"
+			}
+
+			// Each data field appends a newline; remove only the last one.
+			body := payload.Bytes()
+			body = body[:len(body)-1]
+			if err := json.Unmarshal(body, &data); err != nil {
+				var zero T
+				return name, zero, fmt.Errorf("cannot deserialize event JSON: %w", err)
+			}
+			return name, data, nil
+		}
+
+		if line[0] == ':' {
+			continue // A comment consumes only its own line.
+		}
+
+		var field []byte
+		var value []byte
+		var ok bool
+		if field, value, ok = bytes.Cut(line, []byte{':'}); ok {
+			if len(value) > 0 && value[0] == ' ' {
+				value = value[1:] // Strip exactly one ASCII space.
+			}
+		}
+
+		switch string(field) {
+		case "event":
+			name = string(value)
+		case "data":
+			hasData = true
+			payload.Write(value)
+			payload.WriteByte('\n')
+		default:
+			// Includes id/retry: this API does not expose that metadata.
+		}
+	}
+}
+
+// readSSELine reads one complete line without its terminator.
+// Unlike ReadLine, it handles bare CR and has no buffer-fragment boundary.
+func readSSELine(r *bufio.Reader) ([]byte, error) {
+	var line []byte
+	for {
+		b, err := r.ReadByte()
+		if err != nil {
+			return nil, err
+		}
+		switch b {
+		case '\n':
+			return line, nil
+		case '\r':
+			// CRLF is one terminator; leave any other byte unread.
+			if next, err := r.Peek(1); err == nil && next[0] == '\n' {
+				if _, err := r.ReadByte(); err != nil {
+					return nil, err
+				}
+			}
+			return line, nil
+		default:
+			line = append(line, b)
 		}
 	}
 }
