@@ -102,9 +102,15 @@ var _ = Describe("BuildWatch", func() {
 				"alice/fn": {BuildStatus: scm.Building},
 			},
 		}
-		first, ok := readSSEDataWithin(reader, 2*time.Second)
+		firstData, ok := readSSEDataWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a frame for the first snapshot")
-		Expect(first).To(ContainSubstring(`"alice/fn":{"status":"Building"}`))
+
+		var first map[string]handler.WorkflowRunDTO
+		Expect(json.Unmarshal([]byte(firstData), &first)).To(Succeed())
+		Expect(first).To(HaveKey("alice/fn"))
+		Expect(first["alice/fn"].Status).To(Equal("Building"))
+		Expect(first["alice/fn"].URL).To(BeEmpty())
+		Expect(first["alice/fn"].Error).To(BeEmpty())
 
 		ch <- scm.WorkflowRunsOrErr{
 			Runs: map[string]scm.WorkflowRun{
@@ -114,10 +120,14 @@ var _ = Describe("BuildWatch", func() {
 				},
 			},
 		}
-		second, ok := readSSEDataWithin(reader, 2*time.Second)
+		secondData, ok := readSSEDataWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a frame for the second snapshot")
-		Expect(second).To(ContainSubstring(`"status":"Failed"`))
-		Expect(second).To(ContainSubstring(`"url":"https://github.com/alice/fn/actions/runs/1"`))
+
+		var second map[string]handler.WorkflowRunDTO
+		Expect(json.Unmarshal([]byte(secondData), &second)).To(Succeed())
+		Expect(second["alice/fn"].Status).To(Equal("Failed"))
+		Expect(second["alice/fn"].URL).To(Equal("https://github.com/alice/fn/actions/runs/1"))
+		Expect(second["alice/fn"].Error).To(BeEmpty())
 	})
 
 	It("omits the optional fields for a repo with no run", func() {
@@ -133,9 +143,14 @@ var _ = Describe("BuildWatch", func() {
 		ch <- scm.WorkflowRunsOrErr{
 			Runs: map[string]scm.WorkflowRun{"alice/fn": {}},
 		}
-		frame, ok := readSSEDataWithin(reader, 2*time.Second)
+		frameData, ok := readSSEDataWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a frame for the snapshot")
-		Expect(frame).To(ContainSubstring(`"alice/fn":{"status":"None"}`))
+
+		var frame map[string]handler.WorkflowRunDTO
+		Expect(json.Unmarshal([]byte(frameData), &frame)).To(Succeed())
+		Expect(frame["alice/fn"].Status).To(Equal("None"))
+		Expect(frame["alice/fn"].URL).To(BeEmpty())
+		Expect(frame["alice/fn"].Error).To(BeEmpty())
 	})
 
 	It("ends the stream when the watch channel closes", func() {
@@ -152,9 +167,12 @@ var _ = Describe("BuildWatch", func() {
 		ch <- scm.WorkflowRunsOrErr{
 			Runs: map[string]scm.WorkflowRun{"alice/fn": {BuildStatus: scm.Building}},
 		}
-		first, ok := readSSEDataWithin(reader, 2*time.Second)
+		firstData, ok := readSSEDataWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an initial frame")
-		Expect(first).To(ContainSubstring(`"status":"Building"`))
+
+		var first map[string]handler.WorkflowRunDTO
+		Expect(json.Unmarshal([]byte(firstData), &first)).To(Succeed())
+		Expect(first["alice/fn"].Status).To(Equal("Building"))
 
 		// Closing the channel signals the watch ended (e.g. the token was revoked
 		// mid-stream); the handler ends the SSE stream, so the body reaches EOF.
@@ -200,18 +218,21 @@ var _ = Describe("BuildWatch", func() {
 		dataLine, ok := readLineWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a data line")
 		Expect(dataLine).To(HavePrefix("data: "))
-		var errorData struct {
-			Message     string `json:"message"`
-			IsAuthError bool   `json:"isAuthError"`
-		}
-		jsonStr := strings.TrimPrefix(dataLine, "data: ")
-		Expect(json.Unmarshal([]byte(jsonStr), &errorData)).To(Succeed())
-		Expect(errorData.Message).To(Equal("Unable to fetch build status. Please try again later."))
-		Expect(errorData.IsAuthError).To(BeFalse())
 
-		first, ok := readSSEDataWithin(reader, 2*time.Second)
+		var errorEvent handler.ErrorDTO
+		jsonStr := strings.TrimPrefix(dataLine, "data: ")
+		Expect(json.Unmarshal([]byte(jsonStr), &errorEvent)).To(Succeed())
+		Expect(errorEvent.Message).To(Equal("Unable to fetch build status. Please try again later."))
+		Expect(errorEvent.IsAuthError).To(BeFalse())
+
+		firstData, ok := readSSEDataWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue())
-		Expect(first).To(MatchJSON(`{"alice/fn":{"status":"Succeeded","url":"example.com/run/1"}}`))
+
+		var first map[string]handler.WorkflowRunDTO
+		Expect(json.Unmarshal([]byte(firstData), &first)).To(Succeed())
+		Expect(first["alice/fn"].Status).To(Equal("Succeeded"))
+		Expect(first["alice/fn"].URL).To(Equal("example.com/run/1"))
+		Expect(first["alice/fn"].Error).To(BeEmpty())
 	})
 
 	It("calls watch.Stop() when the request context is cancelled to halt polling", func() {
