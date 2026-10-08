@@ -23,15 +23,26 @@ import (
 
 var _ = Describe("BuildWatch", func() {
 
-	Describe("failures before stream starts", func() {
-		It("returns 401 without an SCM token", func() {
+	Describe("early failures", func() {
+		It("sends 401 app-error event without an SCM token", func() {
 			req := httptest.NewRequest(http.MethodGet, "/watch", nil)
 			w := httptest.NewRecorder()
 			buildWatchWithStub(&scm.ClientStub{})(w, req)
-			Expect(w.Code).To(Equal(http.StatusUnauthorized))
+
+			Expect(w.Code).To(Equal(http.StatusOK))
+			Expect(w.Header().Get("Content-Type")).To(Equal("text/event-stream"))
+
+			events := readWorkflowEventStream(w.Body)
+			evt := receiveWTO(events)
+			Expect(evt).To(Equal(workflowEvent{
+				appError: &handler.ErrorDTO{
+					Message: "X-SCM-Token header is required",
+					Code:    new(401),
+				},
+			}))
 		})
 
-		It("returns 401 when the SCM token is rejected during discovery", func() {
+		It("sends 401 app-error event when the SCM token is rejected during discovery", func() {
 			stub := &scm.ClientStub{
 				OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
 					return nil, scm.ErrUnauthorized
@@ -41,10 +52,21 @@ var _ = Describe("BuildWatch", func() {
 			req.Header.Set("X-SCM-Token", "pat")
 			w := httptest.NewRecorder()
 			buildWatchWithStub(stub)(w, req)
-			Expect(w.Code).To(Equal(http.StatusUnauthorized))
+
+			Expect(w.Code).To(Equal(http.StatusOK))
+			Expect(w.Header().Get("Content-Type")).To(Equal("text/event-stream"))
+
+			events := readWorkflowEventStream(w.Body)
+			evt := receiveWTO(events)
+			Expect(evt).To(Equal(workflowEvent{
+				appError: &handler.ErrorDTO{
+					Message: "invalid SCM token",
+					Code:    new(401),
+				},
+			}))
 		})
 
-		It("returns 502 when discovery fails with a non-auth error", func() {
+		It("sends 502 app-error event when discovery fails with a non-auth error", func() {
 			stub := &scm.ClientStub{
 				OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
 					return nil, errors.New("github unreachable")
@@ -54,7 +76,18 @@ var _ = Describe("BuildWatch", func() {
 			req.Header.Set("X-SCM-Token", "pat")
 			w := httptest.NewRecorder()
 			buildWatchWithStub(stub)(w, req)
-			Expect(w.Code).To(Equal(http.StatusBadGateway))
+
+			Expect(w.Code).To(Equal(http.StatusOK))
+			Expect(w.Header().Get("Content-Type")).To(Equal("text/event-stream"))
+
+			events := readWorkflowEventStream(w.Body)
+			evt := receiveWTO(events)
+			Expect(evt).To(Equal(workflowEvent{
+				appError: &handler.ErrorDTO{
+					Message: "failed to list repositories",
+					Code:    new(502),
+				},
+			}))
 		})
 	})
 

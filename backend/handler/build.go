@@ -55,9 +55,12 @@ type ErrorDTO struct {
 // discovery failure) emit app-error events. The stream continues until the
 // client disconnects or the context is cancelled.
 //
-// Error status codes:
-//   - 401: missing or invalid X-SCM-Token
+// HTTP status codes:
+//   - 200: stream started (all requests that pass Flusher check)
 //   - 500: streaming unsupported (no http.Flusher)
+//
+// Error event codes (in app-error JSON payload):
+//   - 401: missing or invalid X-SCM-Token
 //   - 502: failed to discover repositories
 func BuildWatch(opts ...WatchOption) http.HandlerFunc {
 	cfg := watchConfig{
@@ -77,14 +80,26 @@ func BuildWatch(opts ...WatchOption) http.HandlerFunc {
 }
 
 func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.ClientFactory, heartbeatFactory ticker.Factory) {
-	pat, ok := extractSCMToken(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "X-SCM-Token header is required")
-		return
-	}
+	// SSE requires explicit flushing to stream events in real-time. Go's net/http
+	// server always implements http.Flusher, but middleware that wraps ResponseWriter
+	// without forwarding the interface can break this. If flushing is unavailable,
+	// fail fast rather than buffering events (which breaks heartbeats and delays updates).
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "streaming unsupported")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	pat, ok := extractSCMToken(r)
+	if !ok {
+		writeErrorEventHTTPLike(w, http.StatusUnauthorized, "X-SCM-Token header is required")
 		return
 	}
 	client := newSCMClient(pat)
@@ -93,21 +108,14 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 	watch, err := client.WatchWorkflowRuns(ctx, functions.WorkflowFilename)
 	if err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
-			writeError(w, http.StatusUnauthorized, "invalid SCM token")
+			writeErrorEventHTTPLike(w, http.StatusUnauthorized, "invalid SCM token")
 			return
 		}
 		slog.Error("build watch: watch workflow runs failed", "err", err)
-		writeError(w, http.StatusBadGateway, "failed to list repositories")
+		writeErrorEventHTTPLike(w, http.StatusBadGateway, "failed to list repositories")
 		return
 	}
 	defer watch.Stop()
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-	w.WriteHeader(http.StatusOK)
-	flusher.Flush()
 
 	beat := heartbeatFactory()
 	defer beat.Stop()
@@ -170,6 +178,16 @@ func writeBuildStatus(w http.ResponseWriter, runs map[string]scm.WorkflowRun) er
 		}
 	}
 	return writeEvent(w, "build-status", runsDTO)
+}
+
+func writeErrorEventHTTPLike(w io.Writer, code int, msg string) {
+	err := writeEvent(w, "app-error", &ErrorDTO{
+		Message: msg,
+		Code:    new(code),
+	})
+	if err != nil {
+		slog.Error("failed to encode response", "err", err)
+	}
 }
 
 func writeErrorEvent(w io.Writer, err error) error {
