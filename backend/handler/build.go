@@ -18,6 +18,17 @@ import (
 
 const defaultHeartbeat = 15 * time.Second
 
+type WorkflowRunDTO struct {
+	Status string `json:"status"`
+	URL    string `json:"url,omitempty"`
+	Error  string `json:"error,omitempty"`
+}
+
+type ErrorDTO struct {
+	Message     string `json:"message"`
+	IsAuthError bool   `json:"isAuthError"`
+}
+
 // BuildWatch returns an HTTP handler that streams build status updates via SSE.
 //
 // Request:
@@ -143,14 +154,9 @@ func WithHeartbeatTickerFactory(f ticker.Factory) WatchOption {
 }
 
 func writeBuildStatus(w http.ResponseWriter, runs map[string]scm.WorkflowRun) error {
-	type runDTO struct {
-		Status string `json:"status"`
-		URL    string `json:"url,omitempty"`
-		Error  string `json:"error,omitempty"`
-	}
-	runsDTO := make(map[string]runDTO, len(runs))
+	var runsDTO = make(map[string]WorkflowRunDTO, len(runs))
 	for k, v := range runs {
-		runsDTO[k] = runDTO{
+		runsDTO[k] = WorkflowRunDTO{
 			Status: v.BuildStatus.String(),
 			URL:    v.HTMLURL,
 			Error:  sanitizeError(v.Error),
@@ -160,14 +166,11 @@ func writeBuildStatus(w http.ResponseWriter, runs map[string]scm.WorkflowRun) er
 }
 
 func writeErrorEvent(w io.Writer, err error) error {
-	var errorDTO = struct {
-		Message     string `json:"message"`
-		IsAuthError bool   `json:"isAuthError"`
-	}{
+	var e = ErrorDTO{
 		Message:     sanitizeError(err),
 		IsAuthError: errors.Is(err, scm.ErrUnauthorized),
 	}
-	return writeEvent(w, "app-error", &errorDTO)
+	return writeEvent(w, "app-error", &e)
 }
 
 // sanitizeError converts internal errors to user-facing messages.
