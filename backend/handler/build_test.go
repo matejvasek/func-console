@@ -82,7 +82,7 @@ var _ = Describe("BuildWatch", func() {
 		reader := startWatchStream(stub, factory)
 
 		go beat()
-		line, ok := readLineWithin(reader, 2*time.Second)
+		line, ok := readLineWithin(reader)
 		Expect(ok).To(BeTrue(), "expected a heartbeat line")
 		Expect(line).To(Equal(":"))
 	})
@@ -102,7 +102,7 @@ var _ = Describe("BuildWatch", func() {
 				"alice/fn": {BuildStatus: scm.Building},
 			},
 		}
-		firstData, ok := readSSEDataWithin(reader, 2*time.Second)
+		firstData, ok := readSSEDataWithin(reader)
 		Expect(ok).To(BeTrue(), "expected a frame for the first snapshot")
 
 		var first map[string]handler.WorkflowRunDTO
@@ -120,7 +120,7 @@ var _ = Describe("BuildWatch", func() {
 				},
 			},
 		}
-		secondData, ok := readSSEDataWithin(reader, 2*time.Second)
+		secondData, ok := readSSEDataWithin(reader)
 		Expect(ok).To(BeTrue(), "expected a frame for the second snapshot")
 
 		var second map[string]handler.WorkflowRunDTO
@@ -143,7 +143,7 @@ var _ = Describe("BuildWatch", func() {
 		ch <- scm.WorkflowRunsOrErr{
 			Runs: map[string]scm.WorkflowRun{"alice/fn": {}},
 		}
-		frameData, ok := readSSEDataWithin(reader, 2*time.Second)
+		frameData, ok := readSSEDataWithin(reader)
 		Expect(ok).To(BeTrue(), "expected a frame for the snapshot")
 
 		var frame map[string]handler.WorkflowRunDTO
@@ -167,7 +167,7 @@ var _ = Describe("BuildWatch", func() {
 		ch <- scm.WorkflowRunsOrErr{
 			Runs: map[string]scm.WorkflowRun{"alice/fn": {BuildStatus: scm.Building}},
 		}
-		firstData, ok := readSSEDataWithin(reader, 2*time.Second)
+		firstData, ok := readSSEDataWithin(reader)
 		Expect(ok).To(BeTrue(), "expected an initial frame")
 
 		var first map[string]handler.WorkflowRunDTO
@@ -211,11 +211,11 @@ var _ = Describe("BuildWatch", func() {
 		}}
 
 		// Verify the error event is sent
-		line, ok := readLineWithin(reader, 2*time.Second)
+		line, ok := readLineWithin(reader)
 		Expect(ok).To(BeTrue(), "expected an error event line")
 		Expect(line).To(Equal("event: app-error"))
 
-		dataLine, ok := readLineWithin(reader, 2*time.Second)
+		dataLine, ok := readLineWithin(reader)
 		Expect(ok).To(BeTrue(), "expected a data line")
 		Expect(dataLine).To(HavePrefix("data: "))
 
@@ -225,7 +225,7 @@ var _ = Describe("BuildWatch", func() {
 		Expect(errorEvent.Message).To(Equal("Unable to fetch build status. Please try again later."))
 		Expect(errorEvent.IsAuthError).To(BeFalse())
 
-		firstData, ok := readSSEDataWithin(reader, 2*time.Second)
+		firstData, ok := readSSEDataWithin(reader)
 		Expect(ok).To(BeTrue())
 
 		var first map[string]handler.WorkflowRunDTO
@@ -285,13 +285,13 @@ func buildWatchWithStub(stub scm.Client, opts ...handler.WatchOption) http.Handl
 // readSSEDataWithin runs readSSEData with a timeout so a handler that never
 // emits fails fast instead of blocking until the spec timeout. It returns the
 // payload and true on success, or "" and false if the timeout elapses first.
-func readSSEDataWithin(reader *bufio.Reader, timeout time.Duration) (string, bool) {
+func readSSEDataWithin(reader *bufio.Reader) (string, bool) {
 	ch := make(chan string, 1)
 	go func() { ch <- readSSEData(reader) }()
 	select {
 	case data := <-ch:
 		return data, true
-	case <-time.After(timeout):
+	case <-time.After(time.Second * 2):
 		return "", false
 	}
 }
@@ -299,7 +299,7 @@ func readSSEDataWithin(reader *bufio.Reader, timeout time.Duration) (string, boo
 // readLineWithin reads a single line (newline trimmed) with a timeout, so a
 // handler that never writes fails fast instead of blocking until the spec
 // timeout. Returns "" and false if the timeout elapses first.
-func readLineWithin(reader *bufio.Reader, timeout time.Duration) (string, bool) {
+func readLineWithin(reader *bufio.Reader) (string, bool) {
 	ch := make(chan string, 1)
 	go func() {
 		line, err := reader.ReadString('\n')
@@ -312,7 +312,7 @@ func readLineWithin(reader *bufio.Reader, timeout time.Duration) (string, bool) 
 	select {
 	case line := <-ch:
 		return line, true
-	case <-time.After(timeout):
+	case <-time.After(time.Second * 2):
 		return "", false
 	}
 }
