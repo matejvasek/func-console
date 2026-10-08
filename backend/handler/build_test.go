@@ -22,21 +22,6 @@ import (
 )
 
 var _ = Describe("BuildWatch", func() {
-	startWatchStream := func(stub scm.Client, factory ticker.Factory) *bufio.Reader {
-		mux := http.NewServeMux()
-		mux.HandleFunc("GET /watch", buildWatchWithStub(stub, handler.WithHeartbeatTickerFactory(factory)))
-		ts := httptest.NewServer(mux)
-		DeferCleanup(ts.Close)
-
-		req, err := http.NewRequest(http.MethodGet, ts.URL+"/watch", nil)
-		Expect(err).NotTo(HaveOccurred())
-		req.Header.Set("X-SCM-Token", "pat")
-		resp, err := ts.Client().Do(req)
-		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(func() { resp.Body.Close() })
-		Expect(resp.Header.Get("Content-Type")).To(Equal("text/event-stream"))
-		return bufio.NewReader(resp.Body)
-	}
 
 	Describe("failures before stream starts", func() {
 		It("returns 401 without an SCM token", func() {
@@ -478,4 +463,20 @@ func readSSELine(r *bufio.Reader) ([]byte, error) {
 			line = append(line, b)
 		}
 	}
+}
+
+func startWatchStream(stub scm.Client, factory ticker.Factory) io.Reader {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /watch", buildWatchWithStub(stub, handler.WithHeartbeatTickerFactory(factory)))
+	ts := httptest.NewServer(mux)
+	DeferCleanup(ts.Close)
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+"/watch", nil)
+	Expect(err).NotTo(HaveOccurred())
+	req.Header.Set("X-SCM-Token", "pat")
+	resp, err := ts.Client().Do(req) //nolint:bodyclose // DeferCleanup handles response body closure
+	Expect(err).NotTo(HaveOccurred())
+	DeferCleanup(func() { resp.Body.Close() })
+	Expect(resp.Header.Get("Content-Type")).To(Equal("text/event-stream"))
+	return resp.Body
 }
