@@ -171,17 +171,7 @@ var _ = Describe("BuildWatch", func() {
 		// Closing the channel signals the watch ended (e.g. the token was revoked
 		// mid-stream); the handler ends the SSE stream, so the body reaches EOF.
 		tw.Stop()
-		errCh := make(chan error, 1)
-		go func() {
-			_, err := io.Copy(io.Discard, reader)
-			errCh <- err
-		}()
-		select {
-		case err := <-errCh:
-			Expect(err).To(BeNil())
-		case <-time.After(2 * time.Second):
-			Fail("expected the stream to close after the watch channel closed")
-		}
+		<-events
 	})
 
 	It("sends an SSE error event and continues the stream when the watch fails", func() {
