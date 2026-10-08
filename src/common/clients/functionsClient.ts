@@ -68,47 +68,40 @@ export async function putFiles(
   );
 }
 
-interface WorkflowRunEventsConnection {
-  onData(cbk: (runs: WorkflowRunRecord) => void): void;
-  onError(cbk: (message: string) => void): void;
-  close(): void;
-}
-
 /**
  * receiveWorkflowRunEvents opens an SSE connection to the build watch endpoint
- * and returns a connection object for receiving workflow run updates.
+ * and delivers workflow run updates via eventCbk. Errors (connection failures
+ * and backend app-errors) are surfaced via errorCbk as a message string.
  *
- * The connection handles auth errors internally: when the backend reports an
- * auth failure via an app-error event, the connection closes itself. The
- * consumer is notified via onError with the message but does not need to
- * manage the connection lifecycle for auth failures.
+ * Auth errors are handled internally: when the backend reports an auth failure
+ * via an app-error event, the connection closes itself. The consumer is
+ * notified via errorCbk but does not need to manage the connection lifecycle.
+ *
+ * Returns a close function to tear down the connection.
  */
-export function receiveWorkflowRunEvents(): WorkflowRunEventsConnection {
+export function receiveWorkflowRunEvents(
+  eventCbk: (runs: WorkflowRunRecord) => void,
+  errorCbk: (message: string) => void,
+): () => void {
   const es = createSSEEventSource(`${PROXY_BASE}/api/v1/func/build/watch`, {
     headers: scmHeaders(),
     fetchFn: consoleFetch,
   });
 
-  return {
-    onData(cbk) {
-      es.addEventListener('build-status', (e) => {
-        cbk(JSON.parse(e.data) as WorkflowRunRecord);
-      });
-    },
-    onError(cbk) {
-      es.addEventListener('app-error', (e) => {
-        const parsed = JSON.parse(e.data) as { message: string; isAuthError: boolean };
-        cbk(parsed.message);
-        if (parsed.isAuthError) es.close();
-      });
-      es.addEventListener('error', (e) => {
-        cbk(e instanceof Error ? e.message : 'Connection error');
-      });
-    },
-    close() {
-      es.close();
-    },
-  };
+  es.addEventListener('build-status', (e) => {
+    eventCbk(JSON.parse(e.data) as WorkflowRunRecord);
+  });
+
+  es.addEventListener('app-error', (e) => {
+    const parsed = JSON.parse(e.data) as { message: string; isAuthError: boolean };
+    errorCbk(parsed.message);
+    if (parsed.isAuthError) es.close();
+  });
+  es.addEventListener('error', (e) => {
+    errorCbk(e instanceof Error ? e.message : 'Connection error');
+  });
+
+  return es.close;
 }
 
 export interface BuildSnapshotEvent {

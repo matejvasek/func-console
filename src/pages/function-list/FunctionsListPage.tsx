@@ -253,8 +253,8 @@ function useFunctionListPage(): {
 }
 
 async function loadFunctionTableItems(namespace: string): Promise<FunctionTableItem[]> {
-  const items = await listFunctions(namespace);
-  return items.map((item) => ({
+  const list = await listFunctions(namespace);
+  return list.map((item) => ({
     name: item.name || item.repoName,
     repoName: item.repoName,
     owner: item.owner,
