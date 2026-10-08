@@ -181,15 +181,13 @@ func errorToErrorDTO(err error) *ErrorDTO {
 		return nil
 	}
 	return &ErrorDTO{
-		Message: sanitizeError(err),
+		Message: errorToMessage(err),
 		Code:    errorToCode(err),
 	}
 }
 
-// sanitizeError converts internal errors to user-facing messages.
-// Full error details are kept in server logs; the browser receives only
-// stable messages that don't leak repo names, API URLs, or token hints.
-func sanitizeError(err error) string {
+// errorToMessage converts internal errors to user-facing messages.
+func errorToMessage(err error) string {
 	if err == nil {
 		return ""
 	}
