@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router';
 import { authenticateGithubFake, logoutGithubFake } from '../../common/testing/authFake';
 import { listFunctionsStub, watchBuildsStub } from '../../common/testing/functionsClientStub';
 import { server } from '../../common/testing/mswServer';
+import { repoListItem } from '../../common/testing/testData';
 import { FunctionListItem } from '../../common/types';
 import { AsyncQueue } from '../../common/utils/AsyncQueue';
 import FunctionsListPage from './FunctionsListPage';
@@ -18,37 +19,27 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('@openshift-console/dynamic-plugin-sdk', async () => {
-  const consoleFetchJSON = async (url: string, _method?: string, options?: RequestInit) => {
-    const res = await fetch(new URL(url, 'http://localhost').href, options);
-    const json = await res.json();
-    if (!res.ok) throw json;
-    return json;
-  };
-
-  return {
-    NamespaceBar: () => null,
-    DocumentTitle: ({ children }: { children: string }) => children,
-    ListPageHeader: ({ title, children }: { title: string; children?: React.ReactNode }) => (
-      <>
-        {title}
-        {children}
-      </>
-    ),
-    consoleFetchJSON,
-    consoleFetch: async (url: string, options?: RequestInit) =>
-      fetch(new URL(url, 'http://localhost').href, options),
-    SuccessStatus: ({ title }: { title: string }) => `Success: ${title}`,
-    ProgressStatus: ({ title }: { title: string }) => `Progress: ${title}`,
-    ErrorStatus: ({ title }: { title: string }) => `Error: ${title}`,
-    InfoStatus: ({ title }: { title: string }) => `Info: ${title}`,
-    StatusIconAndText: ({ title }: { title: string }) => `Warning: ${title}`,
-    useDeleteModal: () => () => {},
-    useK8sWatchResource: sdkTestDoubles.useK8sWatchResourceStub,
-    useActiveNamespace: sdkTestDoubles.useActiveNamespaceStub,
-    isAllNamespacesKey: sdkTestDoubles.isAllNamespaceKeyFake,
-  };
-});
+vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
+  NamespaceBar: () => null,
+  DocumentTitle: ({ children }: { children: string }) => children,
+  ListPageHeader: ({ title, children }: { title: string; children?: React.ReactNode }) => (
+    <>
+      {title}
+      {children}
+    </>
+  ),
+  consoleFetchJSON: sdkTestDoubles.consoleFetchJSONFake,
+  consoleFetch: sdkTestDoubles.consoleFetchFake,
+  SuccessStatus: ({ title }: { title: string }) => `Success: ${title}`,
+  ProgressStatus: ({ title }: { title: string }) => `Progress: ${title}`,
+  ErrorStatus: ({ title }: { title: string }) => `Error: ${title}`,
+  InfoStatus: ({ title }: { title: string }) => `Info: ${title}`,
+  StatusIconAndText: ({ title }: { title: string }) => `Warning: ${title}`,
+  useDeleteModal: () => () => {},
+  useK8sWatchResource: sdkTestDoubles.useK8sWatchResourceStub,
+  useActiveNamespace: sdkTestDoubles.useActiveNamespaceStub,
+  isAllNamespacesKey: sdkTestDoubles.isAllNamespaceKeyFake,
+}));
 
 describe('FunctionsListPage', () => {
   const funcName = 'my-func';
@@ -888,23 +879,5 @@ function clusterListItem(name: string, namespace = 'demo', runtime = 'node'): Fu
     namespace,
     runtime,
     source: 'cluster',
-  };
-}
-
-function repoListItem(
-  repoName: string,
-  name?: string,
-  namespace = 'demo',
-  runtime = 'go',
-): FunctionListItem {
-  return {
-    owner: 'twoGiants',
-    repoName,
-    repoURL: `https://github.com/twoGiants/${repoName}`,
-    defaultBranch: 'main',
-    name: name ?? repoName,
-    namespace,
-    runtime,
-    source: 'repo',
   };
 }
