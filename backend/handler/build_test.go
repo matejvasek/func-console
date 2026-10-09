@@ -374,7 +374,7 @@ type event struct {
 }
 
 func readSSEEventStream(
-	r io.Reader,
+	r *bufio.Reader,
 	eventMapping map[string]reflect.Type,
 ) <-chan event {
 	out := make(chan event)
@@ -418,14 +418,12 @@ func readSSEEventStream(
 	return out
 }
 
-func readSSEEvent[T any](r io.Reader) (name string, data T, err error) {
+func readSSEEvent[T any](r *bufio.Reader) (name string, data T, err error) {
 	var payload bytes.Buffer
 	var hasData bool
 
-	var reader = bufio.NewReader(r)
-
 	for {
-		line, readErr := readSSELine(reader)
+		line, readErr := readSSELine(r)
 		if readErr != nil {
 			// EOF does not dispatch an unterminated event.
 			if readErr == io.EOF {
