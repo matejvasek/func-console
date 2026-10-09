@@ -85,17 +85,6 @@ export interface ClusterFunction {
   readonly mainResource: K8sResourceCommon;
 }
 
-export interface WorkflowRun {
-  status: 'Building' | 'Succeeded' | 'Failed' | 'None';
-  url?: string;
-  error?: string;
-}
-
-/**
- * Record of workflow runs, keyed by repository full name (e.g., "owner/repo")
- */
-export type WorkflowRunRecord = Record<string, WorkflowRun>;
-
 export interface Function {
   readonly owner: string;
   readonly repoName: string;
@@ -112,7 +101,7 @@ export interface Function {
 
 export interface FunctionStatusV2 {
   cluster: ClusterStatus;
-  workflow: WorkflowStatus;
+  workflow: WorkflowRun;
 }
 
 export interface ClusterStatus {
@@ -120,8 +109,13 @@ export interface ClusterStatus {
   error?: Error;
 }
 
-export interface WorkflowStatus {
+export interface WorkflowRun {
   status: 'None' | 'Building' | 'Succeeded' | 'Failed';
   url?: string;
-  error?: Error;
+  error?: string;
 }
+
+/**
+ * Record of workflow runs, keyed by repository full name (e.g., "owner/repo")
+ */
+export type WorkflowRunRecord = Record<string, WorkflowRun>;

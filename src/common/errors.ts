@@ -6,3 +6,8 @@ export class HttpError extends Error {
     super(`HTTP ${status}: ${statusText}`);
   }
 }
+
+export interface AppError {
+  message: string;
+  code?: number;
+}

@@ -8,6 +8,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { useBuildStatus } from './useBuildStatus';
 import { BuildSnapshotEvent, BuildWatchErrorEvent } from './functionsClient';
 import { WorkflowRunRecord } from '../types';
+import { AppError } from '../errors';
 
 interface BuildStatusEventSource {
   addEventListener(
@@ -97,7 +98,7 @@ describe('useBuildStatus', () => {
     const { eventSource, emitAppError } = createFakeEventSource();
     const { result } = renderHook(() => useBuildStatus(0, eventSource));
 
-    emitAppError({ message: 'Connection failed', isAuthError: false });
+    emitAppError({ message: 'Connection failed' });
 
     await waitFor(() => expect(result.current.error).toBe('Connection failed'));
   });
@@ -109,7 +110,7 @@ describe('useBuildStatus', () => {
     emitSnapshot({ 'repo/owner': { status: 'Building' } });
     await waitFor(() => expect(Object.keys(result.current.statuses).length).toBe(1));
 
-    emitAppError({ message: 'Network error', isAuthError: false });
+    emitAppError({ message: 'Network error' });
     await waitFor(() => expect(result.current.error).toBe('Network error'));
 
     // Statuses should still be present
@@ -150,7 +151,7 @@ describe('useBuildStatus', () => {
   function createFakeEventSource(): {
     eventSource: BuildStatusEventSource;
     emitSnapshot: (snap: WorkflowRunRecord) => void;
-    emitAppError: (err: { message: string; isAuthError: boolean }) => void;
+    emitAppError: (err: AppError) => void;
     emitError: () => void;
     emitOpen: () => void;
     emitRaw: (data: string) => void;
@@ -202,7 +203,7 @@ describe('useBuildStatus', () => {
       emitSnapshot(snap: WorkflowRunRecord) {
         invokeListeners(listeners, { data: JSON.stringify(snap) });
       },
-      emitAppError(err: { message: string; isAuthError: boolean }) {
+      emitAppError(err: AppError) {
         invokeListeners(errorAppListeners, { data: JSON.stringify(err) });
       },
       emitOpen() {

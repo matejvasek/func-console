@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BuildStatusEventSource, createBuildStatusEventSource } from './functionsClient';
 import { WorkflowRunRecord } from '../types';
+import { AppError } from '../errors';
 
 // useBuildStatus streams GitHub Actions build status over SSE, keyed by
 // "owner/repo". Pass the auth connectionId so the stream tears down and
@@ -30,9 +31,9 @@ export function useBuildStatus(
 
     es.addEventListener('app-error', (e) => {
       try {
-        const error = JSON.parse(e.data) as { message: string; isAuthError: boolean };
+        const error = JSON.parse(e.data) as AppError;
         setError(error.message);
-        if (error.isAuthError) es.close(); // non-recoverable error close EventSource
+        if (error.code === 401) es.close(); // non-recoverable error close EventSource
       } catch {
         setError('Unknown error');
       }

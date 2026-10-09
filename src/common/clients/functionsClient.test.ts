@@ -14,6 +14,7 @@ import { consoleFetch } from '@openshift-console/dynamic-plugin-sdk';
 import { BuildStatusEventSource, createBuildStatusEventSource } from './functionsClient';
 import { WorkflowRunRecord } from '../types';
 import { AsyncQueue } from '../utils/AsyncQueue';
+import { AppError } from '../errors';
 
 const BUILD_WATCH_URL =
   '/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch';
@@ -75,7 +76,7 @@ describe('createBuildStatusEventSource', () => {
 
   it('emits error event from SSE stream', async () => {
     const sseFrames =
-      'event: app-error\ndata: {"message":"github API rate limited","isAuthError":false}\n\n';
+      'event: app-error\ndata: {"message":"github API rate limited","code":429}\n\n';
     useStaticEventStream(sseFrames);
 
     using eventSource = createEventSource();
@@ -83,7 +84,7 @@ describe('createBuildStatusEventSource', () => {
 
     const error = await errorQueue.dequeue();
     expect(error.message).toBe('github API rate limited');
-    expect(error.isAuthError).toBe(false);
+    expect(error.code).toBe(429);
   });
 
   it('emits error on 401 auth failure', async () => {
@@ -98,7 +99,7 @@ describe('createBuildStatusEventSource', () => {
     using errorQueue = captureErrors(eventSource);
 
     const error = await errorQueue.dequeue();
-    expect(error.isAuthError).toBe(true);
+    expect(error.code).toBe(401);
   });
 
   it('emits open event on successful connection', async () => {
@@ -199,7 +200,7 @@ describe('createBuildStatusEventSource', () => {
 
     // First error arrives immediately
     const error = await errorQueue.dequeue();
-    expect(error.isAuthError).toBe(false);
+    expect(error.code).toBe(500);
 
     // Advance past reconnect delay (3000ms)
     await vi.advanceTimersByTimeAsync(3100);
@@ -470,13 +471,13 @@ describe('createBuildStatusEventSource', () => {
   }
 
   function captureErrors(eventSource: ReturnType<typeof createBuildStatusEventSource>) {
-    const queue = new AsyncQueue<{ message: string; isAuthError: boolean }>();
+    const queue = new AsyncQueue<AppError>();
     eventSource.addEventListener('app-error', (e) => {
       try {
-        const error = JSON.parse(e.data) as { message: string; isAuthError: boolean };
+        const error = JSON.parse(e.data) as AppError;
         queue.enqueue(error);
       } catch {
-        queue.enqueue({ message: 'captureErrors failed to parse the event', isAuthError: false });
+        queue.enqueue({ message: 'captureErrors failed to parse the event' });
       }
     });
     return queue;

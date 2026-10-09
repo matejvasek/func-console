@@ -55,14 +55,14 @@ describe('createSSEEventSource', () => {
 
     it('passes through app-error as a generic event', async () => {
       useStaticEventStream(
-        'event: app-error\ndata: {"message":"github API rate limited","isAuthError":false}\n\n',
+        'event: app-error\ndata: {"message":"github API rate limited","code":429}\n\n',
       );
 
       using es = createEventSource();
       using events = captureEvents(es, 'app-error');
 
       const data = await events.dequeue();
-      expect(data).toBe('{"message":"github API rate limited","isAuthError":false}');
+      expect(data).toBe('{"message":"github API rate limited","code":429}');
     });
 
     it('handles multiple sequential events', async () => {

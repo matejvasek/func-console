@@ -12,6 +12,7 @@ import {
   WorkflowRunRecord,
 } from '../types';
 import { createSSEEventSource } from '../transport/sseEventSource';
+import { AppError } from '../errors';
 
 /**
  * listFunctions returns a list of function metadata.
@@ -93,9 +94,9 @@ export function receiveWorkflowRunEvents(
   });
 
   es.addEventListener('app-error', (e) => {
-    const parsed = JSON.parse(e.data) as { message: string; isAuthError: boolean };
+    const parsed = JSON.parse(e.data) as AppError;
     errorCbk(parsed.message);
-    if (parsed.isAuthError) es.close();
+    if (parsed.code === 401) es.close();
   });
   es.addEventListener('error', (e) => {
     errorCbk(e instanceof Error ? e.message : 'Connection error');
@@ -110,7 +111,7 @@ export interface BuildSnapshotEvent {
 }
 
 export interface BuildWatchErrorEvent {
-  // JSON string containing error info of shape { message: string; isAuthError: boolean }
+  // JSON string containing error info of shape { message: string; code?: number }
   readonly data: string;
 }
 
@@ -160,12 +161,10 @@ export function createBuildStatusEventSource(): BuildStatusEventSource {
       } catch (err: unknown) {
         if (!streaming) return;
         const message = (err instanceof Error && err.message) || String(err) || 'Unknown error';
-        invokeListeners(
-          errorListeners,
-          { data: JSON.stringify({ message, isAuthError: isAuthError(err) }) },
-          'error',
-        );
-        if (isAuthError(err)) return;
+        const authError = isAuthError(err);
+        const code = errorToCode(err);
+        invokeListeners(errorListeners, { data: JSON.stringify({ message, code }) }, 'error');
+        if (authError) return;
       }
       if (streaming) {
         await delay(RECONNECT_DELAY_MS, controller.signal);
@@ -262,11 +261,15 @@ async function* readEventStream(
   }
 }
 
-function isAuthError(err: unknown): boolean {
-  if (typeof err !== 'object' || err === null) return false;
+function errorToCode(err: unknown): number | undefined {
+  if (typeof err !== 'object' || err === null) return undefined;
   const e = err as { code?: number; response?: { status?: number } };
-  const status = e.code ?? e.response?.status;
-  return status === 401 || status === 403;
+  return e.code ?? e.response?.status;
+}
+
+function isAuthError(err: unknown): boolean {
+  const code = errorToCode(err);
+  return code === 401 || code === 403;
 }
 
 function delay(ms: number, signal: AbortSignal): Promise<void> {
