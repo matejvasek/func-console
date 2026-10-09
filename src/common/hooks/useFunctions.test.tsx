@@ -30,7 +30,7 @@ describe('useFunctions', () => {
 
   describe('Function[] after fetching metadata', () => {
     it('builds initial Function[] from function metadata list', async () => {
-      listFunctionsStub({ responses: [repoListItem('my-func')] });
+      listFunctionsStub({ responses: [repoListItem({ repoName: 'my-func' })] });
 
       const { result } = renderHook(() => useFunctions(namespace, 0));
 
@@ -50,8 +50,8 @@ describe('useFunctions', () => {
     it('builds multiple functions from function metadata list', async () => {
       listFunctionsStub({
         responses: [
-          repoListItem('func-a', 'func-a', namespace, 'node'),
-          repoListItem('func-b', 'func-b', namespace, 'go'),
+          repoListItem({ repoName: 'func-a', name: 'func-a', namespace, runtime: 'node' }),
+          repoListItem({ repoName: 'func-b', name: 'func-b', namespace, runtime: 'go' }),
         ],
       });
 
@@ -64,7 +64,7 @@ describe('useFunctions', () => {
     });
 
     it('reports loaded when list fetch completes', async () => {
-      listFunctionsStub({ responses: [repoListItem('my-func')] });
+      listFunctionsStub({ responses: [repoListItem({ repoName: 'my-func' })] });
 
       const { result } = renderHook(() => useFunctions(namespace, 0));
 
@@ -92,7 +92,7 @@ describe('useFunctions', () => {
     });
 
     it('returns empty errors when list fetch succeeds', async () => {
-      listFunctionsStub({ responses: [repoListItem('my-func')] });
+      listFunctionsStub({ responses: [repoListItem({ repoName: 'my-func' })] });
 
       const { result } = renderHook(() => useFunctions(namespace, 0));
 
@@ -101,7 +101,7 @@ describe('useFunctions', () => {
     });
 
     it('resets functions when namespace changes', async () => {
-      listFunctionsStub({ responses: [repoListItem('my-func')] });
+      listFunctionsStub({ responses: [repoListItem({ repoName: 'my-func' })] });
 
       const { result, rerender } = renderHook(({ ns, connId }) => useFunctions(ns, connId), {
         initialProps: { ns: namespace, connId: 0 },
@@ -109,7 +109,11 @@ describe('useFunctions', () => {
 
       await waitFor(() => expect(result.current.functions).toHaveLength(1));
 
-      listFunctionsStub({ responses: [repoListItem('other-func', 'other-func', 'prod')] });
+      listFunctionsStub({
+        responses: [
+          repoListItem({ repoName: 'other-func', name: 'other-func', namespace: 'prod' }),
+        ],
+      });
       rerender({ ns: 'prod', connId: 0 });
 
       await waitFor(() => {
@@ -119,7 +123,7 @@ describe('useFunctions', () => {
     });
 
     it('resets functions when connectionId changes', async () => {
-      listFunctionsStub({ responses: [repoListItem('my-func')] });
+      listFunctionsStub({ responses: [repoListItem({ repoName: 'my-func' })] });
 
       const { result, rerender } = renderHook(({ ns, connId }) => useFunctions(ns, connId), {
         initialProps: { ns: namespace, connId: 0 },
@@ -142,7 +146,7 @@ describe('useFunctions', () => {
     });
 
     it('re-fetches functions when refreshKey changes', async () => {
-      listFunctionsStub({ responses: [repoListItem('my-func')] });
+      listFunctionsStub({ responses: [repoListItem({ repoName: 'my-func' })] });
 
       const { result, rerender } = renderHook(
         ({ ns, connId, refresh }) => useFunctions(ns, connId, refresh),
@@ -151,7 +155,9 @@ describe('useFunctions', () => {
 
       await waitFor(() => expect(result.current.functions).toHaveLength(1));
 
-      listFunctionsStub({ responses: [repoListItem('my-func'), repoListItem('new-func')] });
+      listFunctionsStub({
+        responses: [repoListItem({ repoName: 'my-func' }), repoListItem({ repoName: 'new-func' })],
+      });
       rerender({ ns: namespace, connId: 0, refresh: 1 });
 
       await waitFor(() => expect(result.current.functions).toHaveLength(2));
@@ -159,7 +165,7 @@ describe('useFunctions', () => {
     });
 
     it('does not reset state when refreshKey changes', async () => {
-      listFunctionsStub({ responses: [repoListItem('my-func')] });
+      listFunctionsStub({ responses: [repoListItem({ repoName: 'my-func' })] });
 
       const { result, rerender } = renderHook(
         ({ ns, connId, refresh }) => useFunctions(ns, connId, refresh),
@@ -170,7 +176,7 @@ describe('useFunctions', () => {
 
       let continueWithRequest = () => {};
       listFunctionsStub({
-        responses: [repoListItem('my-func'), repoListItem('new-func')],
+        responses: [repoListItem({ repoName: 'my-func' }), repoListItem({ repoName: 'new-func' })],
         wait: new Promise<void>((r) => {
           continueWithRequest = r;
         }),

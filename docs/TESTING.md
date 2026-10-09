@@ -21,7 +21,7 @@ Not every test double is a mock. Use the correct term:
 
 | Term | Purpose | Examples |
 |------|---------|----------|
-| **Stub** | Returns canned responses, no behaviour verification | Backend: `scm.ClientStub`, `cluster.ClientStub`. Frontend: `listFunctionsStub` (MSW handler returning configured responses), `useK8sWatchResourceStub` |
+| **Stub** | Returns canned responses, no behaviour verification | Backend: `scm.ClientStub`, `cluster.ClientStub`. Frontend: `listFunctionsStub`, `getFilesStub`, `putFilesStub` (MSW handlers), `useK8sWatchResourceStub` |
 | **Fake** | Working implementation with shortcuts (e.g., in-memory store) | Backend: `fake.NewSimpleClientset` (in-memory K8s client). Frontend: `authenticateGithubFake` (populates sessionStorage instead of real OAuth) |
 | **Mock** | Asserts expectations inside the double | Use sparingly. Prefer stubs with assertions in the test body. |
 | **Spy** | Records calls for later assertion | Not currently used. Prefer asserting on observable output. |
@@ -60,7 +60,8 @@ Shared test infrastructure lives in `src/common/testing/`:
 | File | Purpose |
 | ------ | --------- |
 | `sdkTestDoubles.tsx` | Stubs for OCP SDK hooks: `useK8sWatchResourceStub`, `useActiveNamespaceStub`, fixture builders (`ksvcFixture`, `deploymentFixture`) |
-| `functionsClientStub.ts` | MSW handler that intercepts `listFunctions` requests with configurable responses, errors, and delays |
+| `functionsClientStub.ts` | MSW handlers for the backend API (`listFunctionsStub`, `getFilesStub`, `putFilesStub`) |
+| `testData.ts` | Test data factories for shared test fixtures (`repoListItem`) |
 | `mswServer.ts` | MSW server with default backend API handlers (auth user, function list) |
 | `authFake.ts` | Session storage helpers to simulate GitHub authentication (`authenticateGithubFake`, `logoutGithubFake`) |
 | `constants.ts` | Shared test constants (`BACKEND_API` base URL) |
@@ -97,7 +98,7 @@ Tests replace external dependencies at two boundaries using test doubles:
    ```typescript
    it('shows NotDeployed status for repos without cluster deployment', async () => {
      // Arrange
-     listFunctionsStub({ responses: [repoListItem('orphan-func', 'orphan-func', 'demo', 'node')] });
+     listFunctionsStub({ responses: [repoListItem({ repoName: 'orphan-func', name: 'orphan-func', namespace: 'demo', runtime: 'node' })] });
 
      // Act
      render(
@@ -353,7 +354,7 @@ test.describe('My feature', () => {
 
 Tests import `test` and `expect` from `e2e/fixtures/authenticated-page.ts`, not from `@playwright/test` directly. The fixture injects a placeholder PAT and user into sessionStorage before each test.
 
-The fake GitHub server (`e2e/helpers/fakegithub.ts`) provides helpers for seeding, resetting, and deleting repos. Shared constants live in `e2e/helpers/constants.ts`:
+The fake GitHub server (`e2e/helpers/fakegithub.ts`) provides helpers for seeding, resetting, and deleting repos, reading a repo Actions variable (`getRepoVariable`), and building the standard Node function seed files (`nodeFunctionFiles`). Shared constants live in `e2e/helpers/constants.ts`:
 
 - `PRESEEDED_FUNC_NAME` ('preseeded-test-func'): a seed repo, used by list, edit, and delete tests
 - `E2E_USER` ('e2e-user'): the test user identity
@@ -381,6 +382,7 @@ The fake GitHub server (`e2e/helpers/fakegithub.ts`) provides helpers for seedin
 | `ensureNamespace(page, name)` | Create namespace if it doesn't exist (waits for terminating namespaces) |
 | `ensureSecret(page, ns, name, data)` | Create a Secret if it doesn't exist (base64-encodes data values) |
 | `ensureConfigMap(page, ns, name, data)` | Create a ConfigMap if it doesn't exist |
+| `ensureServiceAccount(page, ns, name)` | Create a ServiceAccount if it doesn't exist |
 | `simulateGitHubActionsDeploy(page, name, ns)` | Create a ksvc and patch the deployment label to simulate `func deploy` |
 | `deleteFunction(page, name, namespace)` | Delete a function's ksvc and deployment from the cluster |
 | `ksvcApiPath(ns)` / `deploymentApiPath(ns)` | Build K8s API paths for Knative services and deployments |

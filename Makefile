@@ -4,6 +4,7 @@ BACKEND_DIR := $(PROJECT_DIR)/backend
 # Backend build
 TEST_TIMEOUT ?= 120s
 CGO_ENABLED ?= 0
+GOFIPS140 ?= v1.0.0
 LDFLAGS ?= -s -w
 BACKEND_BIN ?= $(PROJECT_DIR)/bin/plugin-backend
 FAKEGITHUB_BIN ?= $(PROJECT_DIR)/bin/fakegithub
@@ -62,6 +63,9 @@ lint-frontend: install-frontend ## Run eslint and stylelint
 unit-frontend: install-frontend ## Run Vitest unit tests
 	yarn test
 
+watch-unit-frontend: install-frontend ## Watch Vitest unit tests using dot reporter
+	yarn test:watch:silent
+
 type-check: ## Run TypeScript compiler check
 	yarn type-check
 
@@ -95,6 +99,7 @@ install-backend: ## Download Go module dependencies
 build-backend: ## Compile Go binary to bin/
 	@mkdir -p $(dir $(BACKEND_BIN))
 	CGO_ENABLED=$(CGO_ENABLED) \
+	GOFIPS140=$(GOFIPS140) \
 	$(if $(GOOS),GOOS=$(GOOS)) \
 	$(if $(GOARCH),GOARCH=$(GOARCH)) \
 	go -C $(BACKEND_DIR) build -ldflags="$(LDFLAGS)" -o $(BACKEND_BIN) .

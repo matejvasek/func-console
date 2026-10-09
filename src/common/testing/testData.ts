@@ -1,17 +1,22 @@
 import { FunctionListItem } from '../types';
 
-export function repoListItem(
-  repoName: string,
-  name?: string,
+export function repoListItem({
+  repoName = 'my-func',
+  name = repoName,
   namespace = 'demo',
   runtime = 'go',
-): FunctionListItem {
+}: {
+  repoName?: string;
+  name?: string;
+  namespace?: string;
+  runtime?: string;
+} = {}): FunctionListItem {
   return {
     owner: 'twoGiants',
     repoName,
     repoURL: `https://github.com/twoGiants/${repoName}`,
     defaultBranch: 'main',
-    name: name ?? repoName,
+    name,
     namespace,
     runtime,
     source: 'repo',

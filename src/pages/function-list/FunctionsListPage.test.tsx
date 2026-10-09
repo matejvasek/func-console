@@ -59,7 +59,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('displays build watcher error alert with message when stream fails', async () => {
-    const functionItem = repoListItem('my-repo');
+    const functionItem = repoListItem({ repoName: 'my-repo' });
     listFunctionsStub({ responses: [functionItem] });
     watchBuildsStub({ message: 'Service Unavailable', status: 503 });
 
@@ -84,7 +84,7 @@ describe('FunctionsListPage', () => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     using _ = withFakeTimers();
 
-    const functionItem = repoListItem('my-repo');
+    const functionItem = repoListItem({ repoName: 'my-repo' });
     listFunctionsStub({ responses: [functionItem] });
 
     // Initial endpoint response is an error
@@ -133,7 +133,7 @@ describe('FunctionsListPage', () => {
 
   it('transitions build status from NotDeployed -> Building -> Succeeded', async () => {
     using buildStatusesSeq = new AsyncQueue<WorkflowRunRecord>();
-    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
     watchBuildsStub(buildStatusesSeq);
 
     render(
@@ -168,7 +168,10 @@ describe('FunctionsListPage', () => {
     const func1 = 'func-alpha';
     const func2 = 'func-beta';
     listFunctionsStub({
-      responses: [repoListItem('repo-alpha', func1), repoListItem('repo-beta', func2)],
+      responses: [
+        repoListItem({ repoName: 'repo-alpha', name: func1 }),
+        repoListItem({ repoName: 'repo-beta', name: func2 }),
+      ],
     });
     watchBuildsStub(buildStatusesSeq);
 
@@ -244,7 +247,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('renders table when functions are loaded', async () => {
-    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    listFunctionsStub({ responses: [repoListItem({ repoName: funcName, name: funcName })] });
     sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
 
     render(
@@ -271,7 +274,9 @@ describe('FunctionsListPage', () => {
   });
 
   it('shows NotDeployed status for repos without cluster deployment', async () => {
-    listFunctionsStub({ responses: [repoListItem('orphan-func', 'orphan-func', 'demo', 'node')] });
+    listFunctionsStub({
+      responses: [repoListItem({ repoName: 'orphan-func', name: 'orphan-func', runtime: 'node' })],
+    });
 
     render(
       <MemoryRouter>
@@ -332,7 +337,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('renders the setup guide button in the list description', async () => {
-    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    listFunctionsStub({ responses: [repoListItem({ repoName: funcName, name: funcName })] });
 
     render(
       <MemoryRouter>
@@ -344,7 +349,12 @@ describe('FunctionsListPage', () => {
   });
 
   it('shows repo and cluster-only functions together in a union list', async () => {
-    listFunctionsStub({ responses: [repoListItem('repo-func'), clusterListItem('cluster-func')] });
+    listFunctionsStub({
+      responses: [
+        repoListItem({ repoName: 'repo-func', name: 'repo-func' }),
+        clusterListItem('cluster-func'),
+      ],
+    });
     sdkTestDoubles.setWatchFixtures({
       knSvcs: [
         sdkTestDoubles.ksvcFixture('repo-func', 'True'),
@@ -395,7 +405,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('enriches function with status, replicas, and URL from ClusterFunction', async () => {
-    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    listFunctionsStub({ responses: [repoListItem({ repoName: funcName, name: funcName })] });
     sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
 
     render(
@@ -413,7 +423,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('shows ScaledToZero status and 0 replicas from ClusterFunction', async () => {
-    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    listFunctionsStub({ responses: [repoListItem({ repoName: funcName, name: funcName })] });
     sdkTestDoubles.setWatchFixtures({
       knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')],
       deps: [sdkTestDoubles.deploymentFixture(funcName, 0, 0)],
@@ -430,7 +440,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('shows Deploying status from ClusterFunction', async () => {
-    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    listFunctionsStub({ responses: [repoListItem({ repoName: funcName, name: funcName })] });
     sdkTestDoubles.setWatchFixtures({ knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')] });
 
     render(
@@ -443,7 +453,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('shows Error status from ClusterFunction', async () => {
-    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    listFunctionsStub({ responses: [repoListItem({ repoName: funcName, name: funcName })] });
     sdkTestDoubles.setWatchFixtures({
       knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'False')],
       deps: [sdkTestDoubles.deploymentFixture(funcName, 0, 0)],
@@ -461,7 +471,7 @@ describe('FunctionsListPage', () => {
   it('shows NotDeployed with a build-in-progress indicator when the function is not yet deployed', async () => {
     // No cluster fixture, so the function is NotDeployed. Building is always shown
     // as a secondary indicator regardless of whether there is an existing deployment.
-    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
     watchBuildsStub({ [`twoGiants/${funcName}`]: { status: 'Building' } });
 
     render(
@@ -478,7 +488,7 @@ describe('FunctionsListPage', () => {
   it('keeps Running with a build-in-progress indicator when the cluster is Running', async () => {
     // Non-destructive: a serving function keeps its green Running status while a
     // new revision builds; the build is surfaced only as a secondary spinner.
-    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
     sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
     watchBuildsStub({ [`twoGiants/${funcName}`]: { status: 'Building' } });
 
@@ -494,7 +504,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('keeps Running with a build-failed indicator when the cluster is Running', async () => {
-    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
     sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
     watchBuildsStub({
       [`twoGiants/${funcName}`]: {
@@ -521,7 +531,7 @@ describe('FunctionsListPage', () => {
   it('keeps ScaledToZero with a build-failed indicator when the cluster is scaled to zero', async () => {
     // A scaled-to-zero function is deployed and available (idle, cold-starts on
     // demand), so a failed rebuild must not overwrite it with BuildFailed.
-    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
     sdkTestDoubles.setWatchFixtures({
       knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')],
       deps: [sdkTestDoubles.deploymentFixture(funcName, 0, 0)],
@@ -551,7 +561,7 @@ describe('FunctionsListPage', () => {
     // A live function reports Deploying for a moment when the build applies a new
     // revision. Overwriting that with Building flickered the row through a status
     // it had already passed on every redeploy.
-    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
     sdkTestDoubles.setWatchFixtures({ knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')] });
     watchBuildsStub({ [`twoGiants/${funcName}`]: { status: 'Building' } });
 
@@ -569,7 +579,7 @@ describe('FunctionsListPage', () => {
   it('keeps a cluster Error with a build-failed indicator when the latest build failed', async () => {
     // Ready=False means a deployed revision is broken, which matters more than
     // the failed rebuild, so the build drops to a secondary indicator.
-    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
     sdkTestDoubles.setWatchFixtures({
       knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'False')],
       deps: [sdkTestDoubles.deploymentFixture(funcName, 1, 0)],
@@ -598,7 +608,9 @@ describe('FunctionsListPage', () => {
   it('shows BuildFailed for a repo-level error with no cluster resource', async () => {
     // Error from FunctionListItem.err is not a cluster status, so the build
     // status still takes over as it does for NotDeployed.
-    listFunctionsStub({ responses: [{ ...repoListItem(funcName), err: 'cannot read func.yaml' }] });
+    listFunctionsStub({
+      responses: [{ ...repoListItem({ repoName: funcName }), err: 'cannot read func.yaml' }],
+    });
     watchBuildsStub({
       [`twoGiants/${funcName}`]: {
         status: 'Failed',
@@ -616,7 +628,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('shows BuildFailed with a run link from the build stream', async () => {
-    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
     watchBuildsStub({
       [`twoGiants/${funcName}`]: {
         status: 'Failed',
@@ -638,7 +650,9 @@ describe('FunctionsListPage', () => {
   });
 
   it('uses func.yaml name instead of repo name for cluster matching', async () => {
-    listFunctionsStub({ responses: [repoListItem('my-repo', funcName, 'demo', 'node')] });
+    listFunctionsStub({
+      responses: [repoListItem({ repoName: 'my-repo', name: funcName, runtime: 'node' })],
+    });
     sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
     render(
       <MemoryRouter>
@@ -652,8 +666,11 @@ describe('FunctionsListPage', () => {
 
   describe('Refresh button behaviour', () => {
     it('re-fetch updates list after refresh if a repo was deleted', async () => {
-      const salesFuncRepoItem = repoListItem('sales-aggregator', 'sales-aggregator', 'demo', 'go');
-      const transcribeFuncRepoItem = repoListItem('transcriber', 'transcriber', 'demo', 'go');
+      const salesFuncRepoItem = repoListItem({
+        repoName: 'sales-aggregator',
+        name: 'sales-aggregator',
+      });
+      const transcribeFuncRepoItem = repoListItem({ repoName: 'transcriber', name: 'transcriber' });
 
       listFunctionsStub({
         responses: [salesFuncRepoItem, transcribeFuncRepoItem],
@@ -682,7 +699,7 @@ describe('FunctionsListPage', () => {
     });
 
     it('does not show spinner on refresh button during initial page load', async () => {
-      listFunctionsStub({ responses: [repoListItem(funcName)] });
+      listFunctionsStub({ responses: [repoListItem({ repoName: funcName, name: funcName })] });
 
       render(
         <MemoryRouter>
@@ -697,7 +714,7 @@ describe('FunctionsListPage', () => {
 
     it('shows spinner on refresh button only while a button-triggered refresh is in flight', async () => {
       listFunctionsStub({
-        responses: [repoListItem('fn-a')],
+        responses: [repoListItem({ repoName: 'fn-a', name: 'fn-a' })],
       });
 
       render(
@@ -712,7 +729,7 @@ describe('FunctionsListPage', () => {
       // verify that the spinner is gone
       let continueWithRequest = () => {};
       listFunctionsStub({
-        responses: [repoListItem('fn-a')],
+        responses: [repoListItem({ repoName: 'fn-a', name: 'fn-a' })],
         wait: new Promise<void>((r) => {
           continueWithRequest = r;
         }),
