@@ -296,7 +296,8 @@ data: "code": 401}
 :
 
 event: build-status
-data: {"alice/fn": {"status": "Building"}}
+data: {"alice/fn": 
+data: {"status": "Building"}}
 
 `)
 
