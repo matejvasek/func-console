@@ -63,57 +63,57 @@ export function watchBuildsStub(
   } else {
     watchBuildsSnapshotStub(val as WorkflowRunRecord);
   }
-}
 
-function watchBuildsErrorStub(err: { message: string; status: number }) {
-  server.use(
-    http.get(`${BACKEND_API}/api/v1/func/build/watch`, () =>
-      HttpResponse.json({ error: err.message }, { status: err.status }),
-    ),
-  );
-}
+  function watchBuildsErrorStub(err: { message: string; status: number }) {
+    server.use(
+      http.get(`${BACKEND_API}/api/v1/func/build/watch`, () =>
+        HttpResponse.json({ error: err.message }, { status: err.status }),
+      ),
+    );
+  }
 
-function watchBuildsSnapshotStub(snapshot: WorkflowRunRecord) {
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      const frame = `event: build-status\ndata: ${JSON.stringify(snapshot)}\n\n`;
-      controller.enqueue(encoder.encode(frame));
-    },
-  });
-  server.use(
-    http.get(
-      `${BACKEND_API}/api/v1/func/build/watch`,
-      () =>
-        new Response(stream, {
-          headers: { 'Content-Type': 'text/event-stream' },
-        }),
-    ),
-  );
-}
+  function watchBuildsSnapshotStub(snapshot: WorkflowRunRecord) {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const frame = `event: build-status\ndata: ${JSON.stringify(snapshot)}\n\n`;
+        controller.enqueue(encoder.encode(frame));
+      },
+    });
+    server.use(
+      http.get(
+        `${BACKEND_API}/api/v1/func/build/watch`,
+        () =>
+          new Response(stream, {
+            headers: { 'Content-Type': 'text/event-stream' },
+          }),
+      ),
+    );
+  }
 
-function watchBuildsStreamStub(buildStatusesSeq: AsyncIterable<WorkflowRunRecord>) {
-  server.use(
-    http.get(`${BACKEND_API}/api/v1/func/build/watch`, async () => {
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream<Uint8Array>({
-        async start(controller) {
-          try {
-            for await (const buildStatuses of buildStatusesSeq) {
-              const frame = `event: build-status\ndata: ${JSON.stringify(buildStatuses)}\n\n`;
-              controller.enqueue(encoder.encode(frame));
+  function watchBuildsStreamStub(buildStatusesSeq: AsyncIterable<WorkflowRunRecord>) {
+    server.use(
+      http.get(`${BACKEND_API}/api/v1/func/build/watch`, async () => {
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream<Uint8Array>({
+          async start(controller) {
+            try {
+              for await (const buildStatuses of buildStatusesSeq) {
+                const frame = `event: build-status\ndata: ${JSON.stringify(buildStatuses)}\n\n`;
+                controller.enqueue(encoder.encode(frame));
+              }
+              controller.close();
+            } catch (e) {
+              controller.error(e);
             }
-            controller.close();
-          } catch (e) {
-            controller.error(e);
-          }
-        },
-      });
-      return new Response(stream, {
-        headers: { 'Content-Type': 'text/event-stream' },
-      });
-    }),
-  );
+          },
+        });
+        return new Response(stream, {
+          headers: { 'Content-Type': 'text/event-stream' },
+        });
+      }),
+    );
+  }
 }
 
 export function getFilesStub(
@@ -170,6 +170,58 @@ export function putFilesStub({
       if (wait) await wait;
 
       return new HttpResponse(null, { status: 204 });
+    }),
+  );
+}
+
+export type WorkflowRunStreamEvent =
+  | { type: 'build-status'; runs: WorkflowRunRecord }
+  | { type: 'app-error'; message: string; code?: number };
+
+export function receiveWorkflowRunEventsStub({
+  snapshot,
+  stream,
+  errorResponse,
+}: {
+  snapshot?: WorkflowRunRecord;
+  stream?: AsyncIterable<WorkflowRunStreamEvent>;
+  errorResponse?: { message: string; status: number };
+} = {}) {
+  const encoder = new TextEncoder();
+  let start: (controller: ReadableStreamDefaultController<Uint8Array<ArrayBufferLike>>) => void;
+
+  if (stream)
+    start = async (controller: ReadableStreamDefaultController<Uint8Array<ArrayBufferLike>>) => {
+      try {
+        for await (const event of stream) {
+          const data =
+            event.type === 'build-status'
+              ? `event: build-status\ndata: ${JSON.stringify(event.runs)}\n\n`
+              : `event: app-error\ndata: ${JSON.stringify({ message: event.message, code: event.code })}\n\n`;
+          controller.enqueue(encoder.encode(data));
+        }
+        controller.close();
+      } catch (e) {
+        controller.error(e);
+      }
+    };
+  else if (snapshot)
+    start = (controller) => {
+      controller.enqueue(
+        encoder.encode(`event: build-status\ndata: ${JSON.stringify(snapshot)}\n\n`),
+      );
+    };
+
+  server.use(
+    http.get(`${BACKEND_API}/api/v1/func/build/watch`, () => {
+      if (errorResponse?.message && errorResponse?.status)
+        return HttpResponse.json(
+          { message: errorResponse?.message },
+          { status: errorResponse.status },
+        );
+
+      const body = new ReadableStream<Uint8Array>({ start });
+      return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } });
     }),
   );
 }

@@ -89,6 +89,34 @@ function TextOrDash({ value }: { value?: string }) {
 function StatusCell({ functionStatus }: { functionStatus: FunctionStatusV2 }) {
   const { t } = useTranslation('plugin__console-functions-plugin');
 
+  const building = (
+    <Tooltip content={t('Build in progress')}>
+      <Icon role="img" aria-label={t('Build in progress')}>
+        <RhUiSyncIcon className="co-spin" />
+      </Icon>
+    </Tooltip>
+  );
+
+  // When not deployed, workflow status is the primary display
+  if (functionStatus.cluster.status === 'NotDeployed') {
+    switch (functionStatus.workflow.status) {
+      case 'Building':
+        return building;
+      case 'Succeeded':
+        return <InfoStatus title={t('Deploying')} />;
+      case 'Failed': {
+        const badge = <ErrorStatus title={t('BuildFailed')} />;
+        return functionStatus.workflow.url ? (
+          <RunLink url={functionStatus.workflow.url}>{badge}</RunLink>
+        ) : (
+          badge
+        );
+      }
+      default:
+        return <InfoStatus title={t('NotDeployed')} />;
+    }
+  }
+
   const cluster = (() => {
     switch (functionStatus.cluster.status) {
       case 'None':
@@ -101,8 +129,6 @@ function StatusCell({ functionStatus }: { functionStatus: FunctionStatusV2 }) {
         return <InfoStatus title={t('Deploying')} />;
       case 'Undeploying':
         return <InfoStatus title={t('Undeploying')} />;
-      case 'NotDeployed':
-        return <InfoStatus title={t('NotDeployed')} />;
       case 'Error': {
         const badge = <ErrorStatus title={t('Error')} />;
         return functionStatus.cluster.error ? (
@@ -120,13 +146,7 @@ function StatusCell({ functionStatus }: { functionStatus: FunctionStatusV2 }) {
       case 'Succeeded':
         return null;
       case 'Building':
-        return (
-          <Tooltip content={t('Build in progress')}>
-            <Icon role="img" aria-label={t('Build in progress')}>
-              <RhUiSyncIcon className="co-spin" />
-            </Icon>
-          </Tooltip>
-        );
+        return building;
       case 'Failed': {
         const icon = (
           <Icon status="danger">

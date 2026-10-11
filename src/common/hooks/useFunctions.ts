@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import { listFunctions as getFunctionMetadataList } from '../clients/functionsClient';
+import {
+  listFunctions as getFunctionMetadataList,
+  receiveWorkflowRunEvents,
+} from '../clients/functionsClient';
 import {
   ClusterStatus,
   Function,
   FUNCTION_NAME_LABEL,
   FunctionListItem as FunctionMetadata,
   REVISION_LABEL,
+  WorkflowRunRecord,
 } from '../types';
 import { errorMessage } from '../utils/utils';
 import {
@@ -69,6 +73,7 @@ export function useFunctions(
     };
   }, [connectionId, namespace, refreshKey]);
 
+  // when you get the functions metadata, assemble an initial functions map
   const initialFunctions: Map<string, Function> = useMemo(() => {
     const result = new Map<string, Function>();
 
@@ -95,46 +100,94 @@ export function useFunctions(
     [functionMetadataList],
   );
 
-  const ksvcConfig = useMemo(
-    () => newKsvcWatchConfig(functionNames, isAllNamespacesKey(namespace) ? undefined : namespace),
-    [functionNames, namespace],
-  );
-  const depConfig = useMemo(
-    () =>
-      newDeploymentWatchConfig(
-        functionNames,
-        isAllNamespacesKey(namespace) ? undefined : namespace,
-      ),
-    [functionNames, namespace],
-  );
+  const [ksvcConfig, depConfig] = useMemo(() => {
+    const ns = isAllNamespacesKey(namespace) ? undefined : namespace;
+    return [newKsvcWatchConfig(functionNames, ns), newDeploymentWatchConfig(functionNames, ns)];
+  }, [functionNames, namespace]);
 
   const [knSvcs, knLoaded, knError] = useK8sWatchResource<K8sResourceKind[]>(ksvcConfig);
   const [deps, depLoaded, depError] = useK8sWatchResource<K8sResourceKind[]>(depConfig);
 
+  // when you get the functions cluster data, add it to the functions
   const functionsWithClusterData = useMemo(() => {
     const safeKnSvcs = knLoaded ? (knSvcs ?? []) : [];
     const safeDeps = depLoaded ? (deps ?? []) : [];
     return withClusterData(initialFunctions, safeKnSvcs, safeDeps);
   }, [initialFunctions, knSvcs, knLoaded, deps, depLoaded]);
 
+  // Source 3: Workflow status via SSE
+  const [workflowRuns, setWorkflowRuns] = useState<WorkflowRunRecord>({});
+  const [receiveError, setReceiveError] = useState<string>();
+
+  useEffect(() => {
+    if (connectionId === undefined) return;
+
+    const close = receiveWorkflowRunEvents(
+      (runs) => {
+        setWorkflowRuns(runs);
+        setReceiveError(undefined);
+      },
+      (errMessage) => {
+        setReceiveError(errMessage);
+      },
+    );
+
+    return () => close();
+  }, [connectionId, refreshKey]);
+
+  // when you get the functions workflow data, add it to the functions map and
+  // then they are complete
+  const functions = useMemo(
+    () => withWorkflowRunData(functionsWithClusterData, workflowRuns),
+    [functionsWithClusterData, workflowRuns],
+  );
 
   const errors: string[] = useMemo(
     () =>
-      [listError, knError?.message, depError?.message].filter(
+      [listError, knError?.message, depError?.message, receiveError].filter(
         (errMsg): errMsg is string => !!errMsg,
       ),
-    [listError, knError, depError],
+    [listError, knError, depError, receiveError],
   );
 
-  return { functions: functionsWithClusterData, loaded: listLoaded, errors };
+  return { functions: Array.from(functions.values()), loaded: listLoaded, errors };
+}
+
+function newKsvcWatchConfig(functionNames: string[], namespace?: string): WatchK8sResource | null {
+  return functionNames.length > 0
+    ? {
+        groupVersionKind: { group: 'serving.knative.dev', version: 'v1', kind: 'Service' },
+        isList: true,
+        namespace,
+        selector: {
+          matchExpressions: [{ key: FUNCTION_NAME_LABEL, operator: 'In', values: functionNames }],
+        },
+      }
+    : null;
+}
+
+function newDeploymentWatchConfig(
+  functionNames: string[],
+  namespace?: string,
+): WatchK8sResource | null {
+  return functionNames.length > 0
+    ? {
+        groupVersionKind: { group: 'apps', version: 'v1', kind: 'Deployment' },
+        isList: true,
+        namespace,
+        selector: {
+          matchExpressions: [{ key: FUNCTION_NAME_LABEL, operator: 'In', values: functionNames }],
+        },
+      }
+    : null;
 }
 
 function withClusterData(
   functions: Map<string, Function>,
   knSvcs: K8sResourceKind[],
   deployments: K8sResourceKind[],
-): Function[] {
-  const fnsCopy = new Map(functions);
+): Map<string, Function> {
+  const result = new Map(functions);
   knSvcs.forEach((ksvc) => {
     const name = ksvc.metadata?.labels?.[FUNCTION_NAME_LABEL] ?? ksvc.metadata?.name ?? '';
     const namespace = ksvc.metadata?.namespace ?? '';
@@ -148,8 +201,8 @@ function withClusterData(
 
     // Every ksvc is scoped by functionNames from the function metadata list,
     // so a match must exist.
-    const fn = fnsCopy.get(key)!;
-    fnsCopy.set(key, {
+    const fn = result.get(key)!;
+    result.set(key, {
       ...fn,
       status: {
         cluster: deriveClusterStatus(ksvc, deployment),
@@ -161,7 +214,7 @@ function withClusterData(
     });
   });
 
-  return Array.from(fnsCopy.values());
+  return result;
 
   function deriveClusterStatus(
     ksvc: K8sResourceKind,
@@ -199,33 +252,23 @@ function withClusterData(
   }
 }
 
-// --- K8s watch configs ---
+function withWorkflowRunData(
+  functions: Map<string, Function>,
+  workflowRuns: WorkflowRunRecord,
+): Map<string, Function> {
+  const result = new Map(functions);
 
-function newKsvcWatchConfig(functionNames: string[], namespace?: string): WatchK8sResource | null {
-  return functionNames.length > 0
-    ? {
-        groupVersionKind: { group: 'serving.knative.dev', version: 'v1', kind: 'Service' },
-        isList: true,
-        namespace,
-        selector: {
-          matchExpressions: [{ key: FUNCTION_NAME_LABEL, operator: 'In', values: functionNames }],
+  result.forEach((fn, key) => {
+    const workflowRun = workflowRuns[`${fn.owner}/${fn.repoName}`];
+    if (workflowRun)
+      result.set(key, {
+        ...fn,
+        status: {
+          cluster: fn.status.cluster,
+          workflow: workflowRun,
         },
-      }
-    : null;
-}
+      });
+  });
 
-function newDeploymentWatchConfig(
-  functionNames: string[],
-  namespace?: string,
-): WatchK8sResource | null {
-  return functionNames.length > 0
-    ? {
-        groupVersionKind: { group: 'apps', version: 'v1', kind: 'Deployment' },
-        isList: true,
-        namespace,
-        selector: {
-          matchExpressions: [{ key: FUNCTION_NAME_LABEL, operator: 'In', values: functionNames }],
-        },
-      }
-    : null;
+  return result;
 }

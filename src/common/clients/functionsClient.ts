@@ -12,7 +12,7 @@ import {
   WorkflowRunRecord,
 } from '../types';
 import { createSSEEventSource } from '../transport/sseEventSource';
-import { AppError } from '../errors';
+import { AppError, HttpError } from '../errors';
 
 /**
  * listFunctions returns a list of function metadata.
@@ -95,11 +95,15 @@ export function receiveWorkflowRunEvents(
 
   es.addEventListener('app-error', (e) => {
     const parsed = JSON.parse(e.data) as AppError;
-    errorCbk(parsed.message);
-    if (parsed.code === 401) es.close();
+    if (parsed.code === 401) {
+      errorCbk('Authentication expired. Reconnect to GitHub and refresh.');
+      es.close();
+    } else errorCbk(parsed.message);
   });
+
   es.addEventListener('error', (e) => {
-    errorCbk(e instanceof Error ? e.message : 'Connection error');
+    if (e instanceof HttpError) errorCbk(`Server error (${e.status})`);
+    else errorCbk(e instanceof Error ? e.message : 'Connection error');
   });
 
   return es.close;

@@ -1,8 +1,13 @@
 import { renderHook, waitFor } from '@testing-library/react';
-import { listFunctionsStub } from '../testing/functionsClientStub';
+import {
+  listFunctionsStub,
+  receiveWorkflowRunEventsStub,
+  WorkflowRunStreamEvent,
+} from '../testing/functionsClientStub';
 import { server } from '../testing/mswServer';
 import { repoListItem } from '../testing/testData';
 import { FUNCTION_NAME_LABEL } from '../types';
+import { AsyncQueue } from '../utils/AsyncQueue';
 import { useFunctions } from './useFunctions';
 
 // vi.mock is hoisted above imports, so regular imports aren't available in the factory.
@@ -457,6 +462,216 @@ describe('useFunctions', () => {
       await waitFor(() => expect(result.current.errors).toHaveLength(2));
       expect(result.current.errors![0]).toBe('ksvc watch failed');
       expect(result.current.errors![1]).toBe('dep watch failed');
+    });
+  });
+
+  describe('workflow status (source 3)', () => {
+    it('produces correct function status with both cluster and workflow data', async () => {
+      listFunctionsStub({ responses: [repoListItem()] });
+      sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture('my-func'));
+      receiveWorkflowRunEventsStub({
+        snapshot: { 'twoGiants/my-func': { status: 'Building' } },
+      });
+
+      const { result } = renderHook(() => useFunctions(namespace, 0));
+
+      await waitFor(() => {
+        const fn = result.current.functions[0];
+        expect(fn.status.cluster.status).toBe('Running');
+        expect(fn.status.workflow.status).toBe('Building');
+      });
+    });
+
+    it('updates workflow status when new snapshot arrives', async () => {
+      using stream = new AsyncQueue<WorkflowRunStreamEvent>();
+      listFunctionsStub({ responses: [repoListItem()] });
+      receiveWorkflowRunEventsStub({ stream });
+
+      const { result } = renderHook(() => useFunctions(namespace, 0));
+
+      await waitFor(() => expect(result.current.functions).toHaveLength(1));
+
+      stream.enqueue({
+        type: 'build-status',
+        runs: { 'twoGiants/my-func': { status: 'Building' } },
+      });
+      await waitFor(() =>
+        expect(result.current.functions[0].status.workflow.status).toBe('Building'),
+      );
+
+      stream.enqueue({
+        type: 'build-status',
+        runs: { 'twoGiants/my-func': { status: 'Succeeded' } },
+      });
+      await waitFor(() =>
+        expect(result.current.functions[0].status.workflow.status).toBe('Succeeded'),
+      );
+    });
+
+    it('surfaces workflow stream error in errors array', async () => {
+      listFunctionsStub({ responses: [repoListItem()] });
+      receiveWorkflowRunEventsStub({
+        errorResponse: { message: 'Service Unavailable', status: 503 },
+      });
+
+      const { result } = renderHook(() => useFunctions(namespace, 0));
+
+      await waitFor(() => expect(result.current.errors).toHaveLength(1));
+      expect(result.current.errors![0]).toBe('Server error (503)');
+    });
+
+    it('clears workflow error on next successful snapshot', async () => {
+      using stream = new AsyncQueue<WorkflowRunStreamEvent>();
+      listFunctionsStub({ responses: [repoListItem()] });
+      receiveWorkflowRunEventsStub({ stream });
+
+      const { result } = renderHook(() => useFunctions(namespace, 0));
+
+      stream.enqueue({ type: 'app-error', message: 'rate limited', code: 429 });
+      await waitFor(() => expect(result.current.errors).toHaveLength(1));
+
+      stream.enqueue({
+        type: 'build-status',
+        runs: { 'twoGiants/my-func': { status: 'Building' } },
+      });
+      await waitFor(() => {
+        expect(result.current.errors).toHaveLength(0);
+        expect(result.current.functions[0].status.workflow.status).toBe('Building');
+      });
+    });
+
+    it('preserves functions while workflow error is present', async () => {
+      listFunctionsStub({ responses: [repoListItem()] });
+      sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture('my-func'));
+      receiveWorkflowRunEventsStub({
+        errorResponse: { message: 'Service Unavailable', status: 503 },
+      });
+
+      const { result } = renderHook(() => useFunctions(namespace, 0));
+
+      await waitFor(() => expect(result.current.errors).toHaveLength(1));
+      expect(result.current.errors![0]).toBe('Server error (503)');
+      expect(result.current.functions).toHaveLength(1);
+      expect(result.current.functions[0].status.cluster.status).toBe('Running');
+      expect(result.current.functions[0].name).toBe('my-func');
+    });
+
+    it('preserves workflow status across stream reconnect (no flicker)', async () => {
+      using stream = new AsyncQueue<WorkflowRunStreamEvent>();
+      listFunctionsStub({ responses: [repoListItem()] });
+      receiveWorkflowRunEventsStub({ stream });
+
+      const { result, rerender } = renderHook(
+        ({ ns, connId, refresh }) => useFunctions(ns, connId, refresh),
+        { initialProps: { ns: namespace, connId: 0, refresh: 0 } },
+      );
+
+      stream.enqueue({
+        type: 'build-status',
+        runs: { 'twoGiants/my-func': { status: 'Building' } },
+      });
+      await waitFor(() =>
+        expect(result.current.functions[0].status.workflow.status).toBe('Building'),
+      );
+
+      // Auth error closes the stream
+      stream.enqueue({ type: 'app-error', message: 'auth expired', code: 401 });
+      await waitFor(() => expect(result.current.errors).toHaveLength(1));
+
+      // Workflow status should still be Building, not None
+      expect(result.current.functions[0].status.workflow.status).toBe('Building');
+
+      // User clicks refresh, new stream opens
+      receiveWorkflowRunEventsStub({
+        snapshot: { 'twoGiants/my-func': { status: 'Building' } },
+      });
+      rerender({ ns: namespace, connId: 0, refresh: 1 });
+
+      // Status should remain Building throughout, never flash to None
+      expect(result.current.functions[0].status.workflow.status).toBe('Building');
+    });
+
+    it('shows Undeploying when a function is being undeployed from the cluster', async () => {
+      const ksvc = sdkTestDoubles.ksvcFixture('my-func', 'True');
+      ksvc.metadata!.deletionTimestamp = '2026-10-10T12:00:00Z';
+      listFunctionsStub({ responses: [repoListItem()] });
+      sdkTestDoubles.setWatchFixtures({
+        knSvcs: [ksvc],
+        deps: [sdkTestDoubles.deploymentFixture('my-func', 1, 1)],
+      });
+
+      const { result } = renderHook(() => useFunctions(namespace, 0));
+
+      await waitFor(() => expect(result.current.functions).toHaveLength(1));
+      expect(result.current.functions[0].status.cluster.status).toBe('Undeploying');
+    });
+
+    it('transitions NotDeployed -> Building -> Succeeded', async () => {
+      using stream = new AsyncQueue<WorkflowRunStreamEvent>();
+      listFunctionsStub({ responses: [repoListItem()] });
+      receiveWorkflowRunEventsStub({ stream });
+
+      const { result } = renderHook(() => useFunctions(namespace, 0));
+
+      await waitFor(() => expect(result.current.functions).toHaveLength(1));
+      expect(result.current.functions[0].status.cluster.status).toBe('NotDeployed');
+      expect(result.current.functions[0].status.workflow.status).toBe('None');
+
+      stream.enqueue({
+        type: 'build-status',
+        runs: { 'twoGiants/my-func': { status: 'Building' } },
+      });
+      await waitFor(() =>
+        expect(result.current.functions[0].status.workflow.status).toBe('Building'),
+      );
+
+      stream.enqueue({
+        type: 'build-status',
+        runs: { 'twoGiants/my-func': { status: 'Succeeded' } },
+      });
+      await waitFor(() =>
+        expect(result.current.functions[0].status.workflow.status).toBe('Succeeded'),
+      );
+    });
+
+    it('updates multiple functions with different status transitions', async () => {
+      using stream = new AsyncQueue<WorkflowRunStreamEvent>();
+      listFunctionsStub({
+        responses: [
+          repoListItem({ repoName: 'func-a', name: 'func-a' }),
+          repoListItem({ repoName: 'func-b', name: 'func-b' }),
+        ],
+      });
+      receiveWorkflowRunEventsStub({ stream });
+
+      const { result } = renderHook(() => useFunctions(namespace, 0));
+
+      await waitFor(() => expect(result.current.functions).toHaveLength(2));
+
+      stream.enqueue({
+        type: 'build-status',
+        runs: { 'twoGiants/func-a': { status: 'Building' } },
+      });
+      await waitFor(() => {
+        const fnA = result.current.functions.find((f) => f.name === 'func-a');
+        const fnB = result.current.functions.find((f) => f.name === 'func-b');
+        expect(fnA?.status.workflow.status).toBe('Building');
+        expect(fnB?.status.workflow.status).toBe('None');
+      });
+
+      stream.enqueue({
+        type: 'build-status',
+        runs: {
+          'twoGiants/func-a': { status: 'Succeeded' },
+          'twoGiants/func-b': { status: 'Building' },
+        },
+      });
+      await waitFor(() => {
+        const fnA = result.current.functions.find((f) => f.name === 'func-a');
+        const fnB = result.current.functions.find((f) => f.name === 'func-b');
+        expect(fnA?.status.workflow.status).toBe('Succeeded');
+        expect(fnB?.status.workflow.status).toBe('Building');
+      });
     });
   });
 });

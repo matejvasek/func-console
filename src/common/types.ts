@@ -1,5 +1,5 @@
 import { K8sResourceCommon } from '@openshift-console/dynamic-plugin-sdk';
-import { ClusterError } from './errors';
+import { AppError, ClusterError } from './errors';
 
 export const PAT_KEY = 'func-console-pat';
 export const USER_KEY = 'func-console-user';
@@ -16,11 +16,20 @@ export interface FileEntry {
   deleted?: boolean;
 }
 
-export type EnvVarSource = 'value' | 'secret' | 'configMap';
+export interface CreateFunctionRequest {
+  name: string;
+  runtime: string;
+  registry: string;
+  namespace: string;
+  branch: string;
+  owner: string;
+  repo: string;
+  envVars?: EnvVar[];
+}
 
 export interface EnvVar {
   name: string;
-  source: EnvVarSource;
+  source: 'value' | 'secret' | 'configMap';
   value: string;
   resourceName: string;
   resourceKey: string;
@@ -42,8 +51,6 @@ export interface K8sKeyedResource {
   keys: string[];
 }
 
-export type FunctionRuntime = 'node' | 'python' | 'go' | 'quarkus';
-
 export interface AuthUser {
   name: string;
   avatarUrl: string;
@@ -61,17 +68,6 @@ export interface FunctionListItem {
   runtime: string;
   source: FunctionSource;
   err?: string;
-}
-
-export interface CreateFunctionRequest {
-  name: string;
-  runtime: string;
-  registry: string;
-  namespace: string;
-  branch: string;
-  owner: string;
-  repo: string;
-  envVars?: EnvVar[];
 }
 
 export type FunctionStatus =
@@ -115,7 +111,7 @@ export interface ClusterStatus {
 export interface WorkflowRun {
   status: 'None' | 'Building' | 'Succeeded' | 'Failed';
   url?: string;
-  error?: string;
+  error?: AppError;
 }
 
 /**
