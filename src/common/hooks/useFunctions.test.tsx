@@ -240,7 +240,7 @@ describe('useFunctions', () => {
 
       await waitFor(() => expect(result.current.functions).toHaveLength(1));
       expect(result.current.functions[0].status.cluster.status).toBe('Error');
-      expect(result.current.functions[0].status.cluster.errorMessage).toBeDefined();
+      expect(result.current.functions[0].status.cluster.error).toBeDefined();
     });
 
     it('Deploying when Ready=Unknown', async () => {

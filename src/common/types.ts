@@ -1,4 +1,5 @@
 import { K8sResourceCommon } from '@openshift-console/dynamic-plugin-sdk';
+import { ClusterError } from './errors';
 
 export const PAT_KEY = 'func-console-pat';
 export const USER_KEY = 'func-console-user';
@@ -108,7 +109,7 @@ export interface FunctionStatusV2 {
 export interface ClusterStatus {
   status:
     'None' | 'NotDeployed' | 'Deploying' | 'Running' | 'ScaledToZero' | 'Undeploying' | 'Error';
-  errorMessage?: string;
+  error?: ClusterError;
 }
 
 export interface WorkflowRun {

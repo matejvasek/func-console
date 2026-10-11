@@ -105,8 +105,8 @@ function StatusCell({ functionStatus }: { functionStatus: FunctionStatusV2 }) {
         return <InfoStatus title={t('NotDeployed')} />;
       case 'Error': {
         const badge = <ErrorStatus title={t('Error')} />;
-        return functionStatus.cluster.errorMessage ? (
-          <Tooltip content={functionStatus.cluster.errorMessage}>{badge}</Tooltip>
+        return functionStatus.cluster.error ? (
+          <Tooltip content={functionStatus.cluster.error.message}>{badge}</Tooltip>
         ) : (
           badge
         );

@@ -361,7 +361,9 @@ describe('FunctionsListPageV2', () => {
 
         expect(await screen.findByText('Error: Error')).toBeInTheDocument();
         await userEvent.setup().hover(screen.getByText('Error: Error'));
-        expect(await screen.findByRole('tooltip')).toHaveTextContent('Ready condition is False');
+        expect(await screen.findByRole('tooltip')).toHaveTextContent(
+          'Deployment error. Reason: Unknown.',
+        );
       });
     });
   });

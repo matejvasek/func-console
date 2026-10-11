@@ -14,6 +14,7 @@ import {
   K8sResourceKind,
   WatchK8sResource,
 } from '@openshift-console/dynamic-plugin-sdk';
+import { ClusterError } from '../errors';
 
 export function useFunctions(
   namespace: string,
@@ -186,7 +187,10 @@ function withClusterData(
     if (ready.status === 'False') {
       return {
         status: 'Error',
-        errorMessage: ready.message ?? 'Ready condition is False',
+        error: new ClusterError(
+          ready.reason ?? 'Unknown',
+          ready.message ?? 'Deployment error. See cluster events.',
+        ),
       };
     }
 
