@@ -10,6 +10,7 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
 
 import { http, HttpResponse } from 'msw';
 import { server } from '../testing/mswServer';
+import { timerFake } from '../testing/timerFake';
 import { consoleFetch } from '@openshift-console/dynamic-plugin-sdk';
 import { BuildStatusEventSource, createBuildStatusEventSource } from './functionsClient';
 import { WorkflowRunRecord } from '../types';
@@ -21,7 +22,6 @@ const BUILD_WATCH_URL =
 
 describe('createBuildStatusEventSource', () => {
   afterEach(() => {
-    vi.useRealTimers();
     vi.restoreAllMocks();
     server.resetHandlers();
     // Reset to default behavior (delegate to fetch) after tests that override it
@@ -155,7 +155,7 @@ describe('createBuildStatusEventSource', () => {
   });
 
   it('does not reconnect after 401 auth error', async () => {
-    vi.useFakeTimers();
+    using timer = timerFake();
     let errorCount = 0;
     server.use(
       http.get(BUILD_WATCH_URL, () => {
@@ -169,16 +169,16 @@ describe('createBuildStatusEventSource', () => {
     });
 
     // Advance past first error
-    await vi.advanceTimersByTimeAsync(100);
+    await timer.advance(100);
     expect(errorCount).toBe(1);
 
     // Advance past reconnect delay (3000ms) — should NOT make second request
-    await vi.advanceTimersByTimeAsync(3100);
+    await timer.advance(3100);
     expect(errorCount).toBe(1);
   });
 
   it('reconnects on transient (5xx) errors', async () => {
-    vi.useFakeTimers();
+    using timer = timerFake();
     let callCount = 0;
     server.use(
       http.get(BUILD_WATCH_URL, () => {
@@ -203,7 +203,7 @@ describe('createBuildStatusEventSource', () => {
     expect(error.code).toBe(500);
 
     // Advance past reconnect delay (3000ms)
-    await vi.advanceTimersByTimeAsync(3100);
+    await timer.advance(3100);
 
     // Event arrives on successful reconnect
     const event = await eventQueue.dequeue();
@@ -211,7 +211,7 @@ describe('createBuildStatusEventSource', () => {
   });
 
   it('reconnects when response has no body', async () => {
-    vi.useFakeTimers();
+    using timer = timerFake();
     let callCount = 0;
     server.use(
       http.get(BUILD_WATCH_URL, () => {
@@ -232,7 +232,7 @@ describe('createBuildStatusEventSource', () => {
     using eventQueue = captureBuildStatuses(eventSource);
 
     // Advance past reconnect delay (first request is made immediately)
-    await vi.advanceTimersByTimeAsync(3100);
+    await timer.advance(3100);
 
     // Event arrives on successful reconnect
     const event = await eventQueue.dequeue();
@@ -319,7 +319,7 @@ describe('createBuildStatusEventSource', () => {
   });
 
   it('passes timeout: 0 to prevent default ~60s timeout on long-lived stream', async () => {
-    vi.useFakeTimers();
+    using timer = timerFake();
 
     const sseFrame =
       'event: build-status\ndata: {"statuses":{"a/b":{"buildStatus":"Building"}}}\n\n';
@@ -363,7 +363,7 @@ describe('createBuildStatusEventSource', () => {
 
     // Advance time past the 60-second default timeout threshold.
     // If timeout: 0 was not passed, the stream would error and data would be cleared.
-    await vi.advanceTimersByTimeAsync(65000);
+    await timer.advance(65000);
 
     // Verify the stream succeeded (didn't timeout)
     expect(gotBuildStatus).toBe(true);

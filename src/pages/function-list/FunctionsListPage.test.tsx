@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { authenticateGithubFake, logoutGithubFake } from '../../common/testing/authFake';
 import { listFunctionsStub, watchBuildsStub } from '../../common/testing/functionsClientStub';
+import { timerFake } from '../../common/testing/timerFake';
 import { server } from '../../common/testing/mswServer';
 import { repoListItem } from '../../common/testing/testData';
 import { FunctionListItem } from '../../common/types';
@@ -78,11 +79,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('clears build watcher error alert when stream recovers', async () => {
-    // Fake timers with shouldAdvanceTime option. See RTL issue #1198:
-    // https://github.com/testing-library/react-testing-library/issues/1198
-
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    using _ = withFakeTimers();
+    using timer = timerFake();
 
     const functionItem = repoListItem({ repoName: 'my-repo' });
     listFunctionsStub({ responses: [functionItem] });
@@ -107,9 +104,7 @@ describe('FunctionsListPage', () => {
     watchBuildsStub({ 'twoGiants/my-repo': { status: 'Succeeded' } });
 
     // Advance past reconnect delay (3000ms)
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(3500);
-    });
+    await act(() => timer.advance(3500));
 
     // Error should clear after reconnection
     await waitFor(
@@ -119,17 +114,6 @@ describe('FunctionsListPage', () => {
       { timeout: 500 },
     );
   });
-
-  // idea: this could be shared utility function, there are at least two similar tests
-  function withFakeTimers(): Disposable {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    return {
-      [Symbol.dispose]() {
-        vi.runOnlyPendingTimers();
-        vi.useRealTimers();
-      },
-    };
-  }
 
   it('transitions build status from NotDeployed -> Building -> Succeeded', async () => {
     using buildStatusesSeq = new AsyncQueue<WorkflowRunRecord>();

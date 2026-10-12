@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { server } from '../testing/mswServer';
+import { timerFake } from '../testing/timerFake';
 import { AsyncQueue } from '../utils/AsyncQueue';
 import { HttpError } from '../errors';
 import { createSSEEventSource, SSEEventSource, SSEEvent } from './sseEventSource';
@@ -9,7 +10,6 @@ describe('createSSEEventSource', () => {
     'http://localhost/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch';
 
   afterEach(() => {
-    vi.useRealTimers();
     server.resetHandlers();
   });
 
@@ -169,7 +169,7 @@ describe('createSSEEventSource', () => {
     });
 
     it('reconnects on transient 5xx errors', async () => {
-      vi.useFakeTimers();
+      using timer = timerFake();
       let callCount = 0;
       server.use(
         http.get(TEST_URL, () => {
@@ -191,13 +191,13 @@ describe('createSSEEventSource', () => {
       expect(error).toBeInstanceOf(HttpError);
       expect((error as HttpError).status).toBe(500);
 
-      await vi.advanceTimersByTimeAsync(3100);
+      await timer.advance(3100);
 
       expect(await events.dequeue()).toBe('{"a/b":{"status":"Building"}}');
     });
 
     it('reconnects after 401 (transport always reconnects, consumer decides)', async () => {
-      vi.useFakeTimers();
+      using timer = timerFake();
       let callCount = 0;
       server.use(
         http.get(TEST_URL, () => {
@@ -219,13 +219,13 @@ describe('createSSEEventSource', () => {
       expect(error).toBeInstanceOf(HttpError);
       expect((error as HttpError).status).toBe(401);
 
-      await vi.advanceTimersByTimeAsync(3100);
+      await timer.advance(3100);
 
       expect(await events.dequeue()).toBe('{"a/b":{"status":"Building"}}');
     });
 
     it('reconnects when response has no body', async () => {
-      vi.useFakeTimers();
+      using timer = timerFake();
       let callCount = 0;
       server.use(
         http.get(TEST_URL, () => {
@@ -245,7 +245,7 @@ describe('createSSEEventSource', () => {
       using es = createEventSource();
       using events = captureEvents(es, 'build-status');
 
-      await vi.advanceTimersByTimeAsync(3100);
+      await timer.advance(3100);
 
       expect(await events.dequeue()).toBe('{"c/d":{"status":"Succeeded"}}');
     });
@@ -275,7 +275,7 @@ describe('createSSEEventSource', () => {
 
   describe('close', () => {
     it('stops receiving events after close() is called', async () => {
-      vi.useFakeTimers();
+      using timer = timerFake();
 
       using frameQueue = new AsyncQueue<string>();
 
@@ -303,14 +303,14 @@ describe('createSSEEventSource', () => {
 
       frameQueue.enqueue('event: build-status\ndata: {"a/b":{"status":"Building"}}\n\n');
 
-      await vi.advanceTimersByTimeAsync(100);
+      await timer.advance(100);
       expect(received).toBe(false);
     });
   });
 
   describe('timeout', () => {
     it('passes timeout 0 to fetchFn to prevent default timeout on long-lived stream', async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
+      using timer = timerFake();
 
       const sseFrame = 'event: build-status\ndata: {"a/b":{"status":"Building"}}\n\n';
       const mockFetchFn = vi.fn(
@@ -352,7 +352,7 @@ describe('createSSEEventSource', () => {
 
       // Advance past the 60s default timeout. If timeout 0 wasn't passed,
       // the stream would error here.
-      await vi.advanceTimersByTimeAsync(65_000);
+      await timer.advance(65_000);
 
       expect(errorReceived).toBe(false);
     });
