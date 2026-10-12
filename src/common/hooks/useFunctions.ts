@@ -1,8 +1,15 @@
+import {
+  isAllNamespacesKey,
+  K8sResourceKind,
+  useK8sWatchResource,
+  WatchK8sResource,
+} from '@openshift-console/dynamic-plugin-sdk';
 import { useEffect, useMemo, useState } from 'react';
 import {
   listFunctions as getFunctionMetadataList,
   receiveWorkflowRunEvents,
 } from '../clients/functionsClient';
+import { ClusterError } from '../errors';
 import {
   ClusterStatus,
   Function,
@@ -12,13 +19,6 @@ import {
   WorkflowRunRecord,
 } from '../types';
 import { errorMessage } from '../utils/utils';
-import {
-  isAllNamespacesKey,
-  useK8sWatchResource,
-  K8sResourceKind,
-  WatchK8sResource,
-} from '@openshift-console/dynamic-plugin-sdk';
-import { ClusterError } from '../errors';
 
 export function useFunctions(
   namespace: string,
@@ -27,6 +27,7 @@ export function useFunctions(
 ): {
   functions: Function[];
   loaded: boolean;
+  refreshing: boolean;
   errors?: string[];
 } {
   // Source 1: fetch function metadata list from backend
@@ -35,6 +36,8 @@ export function useFunctions(
   const [listError, setListError] = useState<string>();
   const [prevNamespace, setPrevNamespace] = useState(namespace);
   const [prevConnectionId, setPrevConnectionId] = useState(connectionId);
+  const [prevRefreshKey, setPrevRefreshKey] = useState(refreshKey);
+  const [refreshing, setRefreshing] = useState(false);
 
   if (namespace !== prevNamespace || connectionId !== prevConnectionId) {
     setPrevNamespace(namespace);
@@ -42,6 +45,13 @@ export function useFunctions(
     setFunctionMetadataList([]);
     setListLoaded(false);
     setListError(undefined);
+    setRefreshing(false);
+  }
+
+  if (refreshKey !== prevRefreshKey) {
+    setPrevRefreshKey(refreshKey);
+    setListLoaded(false);
+    setRefreshing(true);
   }
 
   useEffect(() => {
@@ -59,11 +69,13 @@ export function useFunctions(
           setFunctionMetadataList(list);
           setListLoaded(true);
           setListError(undefined);
+          setRefreshing(false);
         }
       } catch (err) {
         if (!ignore) {
           setListLoaded(true);
           setListError(errorMessage(err));
+          setRefreshing(false);
         }
       }
     })();
@@ -150,7 +162,7 @@ export function useFunctions(
     [listError, knError, depError, receiveError],
   );
 
-  return { functions: Array.from(functions.values()), loaded: listLoaded, errors };
+  return { functions: Array.from(functions.values()), loaded: listLoaded, refreshing, errors };
 }
 
 function newKsvcWatchConfig(functionNames: string[], namespace?: string): WatchK8sResource | null {

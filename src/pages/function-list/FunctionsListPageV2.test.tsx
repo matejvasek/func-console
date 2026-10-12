@@ -781,6 +781,114 @@ describe('FunctionsListPageV2', () => {
       const refreshBtn = screen.getByRole('button', { name: 'Refresh' });
       expect(refreshBtn.querySelector('[role="progressbar"]')).not.toBeInTheDocument();
     });
+
+    it('shows spinner on refresh button only while a button-triggered refresh is in flight', async () => {
+      listFunctionsStub({
+        responses: [repoListItem({ repoName: 'fn-a' })],
+      });
+
+      render(
+        <MemoryRouter>
+          <FunctionsListPageV2 />
+        </MemoryRouter>,
+      );
+
+      expect(await screen.findByText('fn-a')).toBeInTheDocument();
+
+      // add an infinite delay in form of a promise which we resolve later to
+      // verify that the spinner is gone
+      let continueWithRequest = () => {};
+      listFunctionsStub({
+        responses: [repoListItem({ repoName: 'fn-a' })],
+        wait: new Promise<void>((r) => {
+          continueWithRequest = r;
+        }),
+      });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+      await waitFor(() => {
+        const btn = screen.getByRole('button', { name: 'Refresh' });
+        expect(btn.querySelector('[role="progressbar"]')).toBeInTheDocument();
+      });
+
+      continueWithRequest();
+      await waitFor(() => {
+        const btn = screen.getByRole('button', { name: 'Refresh' });
+        expect(btn.querySelector('[role="progressbar"]')).not.toBeInTheDocument();
+      });
+    });
+
+    it('keeps the table visible during refresh instead of showing the page spinner', async () => {
+      listFunctionsStub({ responses: [repoListItem({ repoName: 'fn-a' })] });
+
+      render(
+        <MemoryRouter>
+          <FunctionsListPageV2 />
+        </MemoryRouter>,
+      );
+
+      expect(await screen.findByText('fn-a')).toBeInTheDocument();
+
+      let continueWithRequest = () => {};
+      listFunctionsStub({
+        responses: [repoListItem({ repoName: 'fn-a' })],
+        wait: new Promise<void>((r) => {
+          continueWithRequest = r;
+        }),
+      });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+
+      await waitFor(() => {
+        // Table row stays visible during refresh
+        expect(screen.getByText('fn-a')).toBeInTheDocument();
+        // Page spinner does not appear
+        expect(screen.queryByRole('progressbar', { name: 'Loading' })).not.toBeInTheDocument();
+      });
+
+      continueWithRequest();
+    });
+
+    it('shows the button spinner on a second refresh after the first one completed', async () => {
+      listFunctionsStub({ responses: [repoListItem({ repoName: 'fn-a' })] });
+
+      render(
+        <MemoryRouter>
+          <FunctionsListPageV2 />
+        </MemoryRouter>,
+      );
+
+      expect(await screen.findByText('fn-a')).toBeInTheDocument();
+
+      // First refresh: completes immediately
+      listFunctionsStub({ responses: [repoListItem({ repoName: 'fn-a' })] });
+      await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+      await waitFor(() => {
+        const btn = screen.getByRole('button', { name: 'Refresh' });
+        expect(btn.querySelector('[role="progressbar"]')).not.toBeInTheDocument();
+      });
+
+      // Second refresh: blocked
+      let continueWithRequest = () => {};
+      listFunctionsStub({
+        responses: [repoListItem({ repoName: 'fn-a' })],
+        wait: new Promise<void>((r) => {
+          continueWithRequest = r;
+        }),
+      });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+      await waitFor(() => {
+        const btn = screen.getByRole('button', { name: 'Refresh' });
+        expect(btn.querySelector('[role="progressbar"]')).toBeInTheDocument();
+      });
+
+      continueWithRequest();
+      await waitFor(() => {
+        const btn = screen.getByRole('button', { name: 'Refresh' });
+        expect(btn.querySelector('[role="progressbar"]')).not.toBeInTheDocument();
+      });
+    });
   });
 
   describe('Namespace scoping', () => {

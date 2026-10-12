@@ -63,13 +63,13 @@ function FunctionsListPageContent() {
               {err}
             </Alert>
           ))}
-        {!loaded && (
+        {!loaded && !refreshing && (
           <Spinner aria-label={t('Loading')} style={{ display: 'block', margin: '4rem auto' }} />
         )}
         {loaded && functions.length === 0 && (
           <FunctionsEmptyState isCreateDisabled={!isAuthenticated} />
         )}
-        {loaded && functions.length > 0 && (
+        {(loaded || refreshing) && functions.length > 0 && (
           <>
             <Content component={ContentVariants.p}>
               {t(
@@ -128,20 +128,17 @@ function useFunctionListPage(): {
   const { isAuthenticated, connectionId } = useContext(AuthContext);
   const navigate = useNavigate();
   const [namespace] = useActiveNamespace();
-  const [refreshing, setRefreshing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const { functions, loaded, errors } = useFunctions(
+  const { functions, loaded, refreshing, errors } = useFunctions(
     namespace,
     isAuthenticated ? connectionId : undefined,
     refreshKey,
   );
 
-  async function onRefresh() {
+  function onRefresh() {
     if (!isAuthenticated) return;
-    setRefreshing(true);
     setRefreshKey((k) => k + 1);
-    setRefreshing(false);
   }
 
   const onEdit = (name: string) => navigate(`/faas/edit/${name}`);
