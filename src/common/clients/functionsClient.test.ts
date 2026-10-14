@@ -1,5 +1,3 @@
-import { describe, it, expect, afterEach, vi } from 'vitest';
-
 // Prevent loading SDK components (which have .scss imports that fail in test env)
 // but keep the exported functions by providing mocked implementations.
 vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
@@ -8,14 +6,19 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
   isAllNamespacesKey: vi.fn(),
 }));
 
+import { consoleFetch } from '@openshift-console/dynamic-plugin-sdk';
+import { waitFor } from '@testing-library/dom';
 import { http, HttpResponse } from 'msw';
+import { AppError } from '../errors';
 import { server } from '../testing/mswServer';
 import { timerFake } from '../testing/timerFake';
-import { consoleFetch } from '@openshift-console/dynamic-plugin-sdk';
-import { BuildStatusEventSource, createBuildStatusEventSource } from './functionsClient';
 import { WorkflowRunRecord } from '../types';
 import { AsyncQueue } from '../utils/AsyncQueue';
-import { AppError } from '../errors';
+import {
+  BuildStatusEventSource,
+  createBuildStatusEventSource,
+  receiveWorkflowRunEvents,
+} from './functionsClient';
 
 const BUILD_WATCH_URL =
   '/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch';
@@ -481,5 +484,111 @@ describe('createBuildStatusEventSource', () => {
       }
     });
     return queue;
+  }
+});
+
+describe('receiveWorkflowRunEvents', () => {
+  let close: () => void = () => {};
+
+  afterEach(() => {
+    close();
+    server.resetHandlers();
+  });
+
+  it('delivers parsed build-status events to the data callback', async () => {
+    workflowWatchStub({ buildStatus: { 'alice/fn': { status: 'Building' } } });
+
+    const data: WorkflowRunRecord[] = [];
+    close = receiveWorkflowRunEvents(
+      (msg) => data.push(msg),
+      () => {},
+    );
+
+    await waitFor(() => expect(data).toHaveLength(1));
+    expect(data[0]['alice/fn'].status).toBe('Building');
+  });
+
+  it('reports auth error and stops on 401 app-error', async () => {
+    using timer = timerFake();
+    workflowWatchStub({ appError: { message: 'token expired', code: 401 } });
+
+    const errors: string[] = [];
+    const data: WorkflowRunRecord[] = [];
+
+    close = receiveWorkflowRunEvents(
+      (msg) => data.push(msg),
+      (errMsg) => errors.push(errMsg),
+    );
+
+    await waitFor(() => expect(errors).toHaveLength(1));
+    expect(errors[0]).toBe('Authentication expired. Reconnect to GitHub and refresh.');
+
+    // If close() wasn't called, the transport would reconnect and deliver more errors.
+    workflowWatchStub({ buildStatus: { 'a/b': { status: 'Building' } } });
+
+    await timer.advance(5000);
+    expect(data).toHaveLength(0);
+    expect(errors).toHaveLength(1);
+  });
+
+  it('passes app-error message through to errorCbk for non-auth errors', async () => {
+    workflowWatchStub({ appError: { message: 'rate limited', code: 429 } });
+
+    const errors: string[] = [];
+    close = receiveWorkflowRunEvents(
+      () => {},
+      (msg) => errors.push(msg),
+    );
+
+    await waitFor(() => expect(errors).toHaveLength(1));
+    expect(errors[0]).toBe('rate limited');
+  });
+
+  it('reports server error with status code on HTTP failure', async () => {
+    workflowWatchStub({ httpError: 503 });
+
+    const errors: string[] = [];
+    close = receiveWorkflowRunEvents(
+      () => {},
+      (msg) => errors.push(msg),
+    );
+
+    await waitFor(() => expect(errors).toHaveLength(1));
+    expect(errors[0]).toBe('Server error (503)');
+  });
+
+  it('reports connection error message on network failure', async () => {
+    workflowWatchStub({ networkError: true });
+
+    const errors: string[] = [];
+    close = receiveWorkflowRunEvents(
+      () => {},
+      (msg) => errors.push(msg),
+    );
+
+    await waitFor(() => expect(errors).toHaveLength(1));
+    expect(errors[0]).toBe('Failed to fetch');
+  });
+
+  function workflowWatchStub(
+    response:
+      | { appError: { message: string; code?: number } }
+      | { buildStatus: WorkflowRunRecord }
+      | { httpError: number }
+      | { networkError: true },
+  ): void {
+    server.use(
+      http.get(BUILD_WATCH_URL, () => {
+        if ('networkError' in response) return HttpResponse.error();
+        if ('httpError' in response) return new HttpResponse(null, { status: response.httpError });
+        const [type, payload] =
+          'appError' in response
+            ? ['app-error', response.appError]
+            : ['build-status', response.buildStatus];
+        return HttpResponse.text(`event: ${type}\ndata: ${JSON.stringify(payload)}\n\n`, {
+          headers: { 'Content-Type': 'text/event-stream' },
+        });
+      }),
+    );
   }
 });
