@@ -496,7 +496,7 @@ describe('receiveWorkflowRunEvents', () => {
   });
 
   it('delivers parsed build-status events to the data callback', async () => {
-    workflowWatchStub({ buildStatus: { 'alice/fn': { status: 'Building' } } });
+    workflowWatchStub({ snapshot: { 'alice/fn': { status: 'Building' } } });
 
     const data: WorkflowRunRecord[] = [];
     close = receiveWorkflowRunEvents(
@@ -524,7 +524,7 @@ describe('receiveWorkflowRunEvents', () => {
     expect(errors[0]).toBe('Authentication expired. Reconnect to GitHub and refresh.');
 
     // If close() wasn't called, the transport would reconnect and deliver more errors.
-    workflowWatchStub({ buildStatus: { 'a/b': { status: 'Building' } } });
+    workflowWatchStub({ snapshot: { 'a/b': { status: 'Building' } } });
 
     await timer.advance(5000);
     expect(data).toHaveLength(0);
@@ -545,7 +545,7 @@ describe('receiveWorkflowRunEvents', () => {
   });
 
   it('reports server error with status code on HTTP failure', async () => {
-    workflowWatchStub({ httpError: 503 });
+    workflowWatchStub({ errorResponse: { status: 503 } });
 
     const errors: string[] = [];
     close = receiveWorkflowRunEvents(
@@ -570,21 +570,23 @@ describe('receiveWorkflowRunEvents', () => {
     expect(errors[0]).toBe('Failed to fetch');
   });
 
-  function workflowWatchStub(
-    response:
-      | { appError: { message: string; code?: number } }
-      | { buildStatus: WorkflowRunRecord }
-      | { httpError: number }
-      | { networkError: true },
-  ): void {
+  function workflowWatchStub({
+    snapshot,
+    appError,
+    errorResponse,
+    networkError,
+  }: {
+    snapshot?: WorkflowRunRecord;
+    appError?: { message: string; code?: number };
+    errorResponse?: { status: number };
+    networkError?: true;
+  }): void {
     server.use(
       http.get(BUILD_WATCH_URL, () => {
-        if ('networkError' in response) return HttpResponse.error();
-        if ('httpError' in response) return new HttpResponse(null, { status: response.httpError });
-        const [type, payload] =
-          'appError' in response
-            ? ['app-error', response.appError]
-            : ['build-status', response.buildStatus];
+        if (networkError) return HttpResponse.error();
+        if (errorResponse) return new HttpResponse(null, { status: errorResponse.status });
+
+        const [type, payload] = appError ? ['app-error', appError] : ['build-status', snapshot];
         return HttpResponse.text(`event: ${type}\ndata: ${JSON.stringify(payload)}\n\n`, {
           headers: { 'Content-Type': 'text/event-stream' },
         });
