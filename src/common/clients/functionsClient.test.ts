@@ -567,7 +567,7 @@ describe('receiveWorkflowRunEvents', () => {
     );
 
     await waitFor(() => expect(errors).toHaveLength(1));
-    expect(errors[0]).toBe('Failed to fetch');
+    expect(errors[0]).toMatch(/^Connection to the server was lost: .+\. Reconnecting\.\.\.$/);
   });
 
   function workflowWatchStub({

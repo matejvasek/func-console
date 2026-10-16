@@ -89,9 +89,9 @@ function TextOrDash({ value }: { value?: string }) {
 function StatusCell({ functionStatus }: { functionStatus: FunctionStatusV2 }) {
   const { t } = useTranslation('plugin__console-functions-plugin');
 
-  const building = (
-    <Tooltip content={t('Build in progress')}>
-      <Icon role="img" aria-label={t('Build in progress')}>
+  const inProgress = (
+    <Tooltip content={t('Workflow run in progress')}>
+      <Icon role="img" aria-label={t('Workflow run in progress')}>
         <RhUiSyncIcon className="co-spin" />
       </Icon>
     </Tooltip>
@@ -101,7 +101,12 @@ function StatusCell({ functionStatus }: { functionStatus: FunctionStatusV2 }) {
   if (functionStatus.cluster.status === 'NotDeployed') {
     switch (functionStatus.workflow.status) {
       case 'Building':
-        return building;
+        return (
+          <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapSm' }}>
+            <InfoStatus title={t('Building')} />
+            {inProgress}
+          </Flex>
+        );
       case 'Succeeded':
         return <InfoStatus title={t('Deploying')} />;
       case 'Failed': {
@@ -146,7 +151,7 @@ function StatusCell({ functionStatus }: { functionStatus: FunctionStatusV2 }) {
       case 'Succeeded':
         return null;
       case 'Building':
-        return building;
+        return inProgress;
       case 'Failed': {
         const icon = (
           <Icon status="danger">

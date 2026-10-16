@@ -383,7 +383,8 @@ describe('FunctionsListPageV2', () => {
           </MemoryRouter>,
         );
 
-        expect(await screen.findByLabelText('Build in progress')).toBeInTheDocument();
+        expect(await screen.findByText('Info: Building')).toBeInTheDocument();
+        expect(screen.getByLabelText('Workflow run in progress')).toBeInTheDocument();
         expect(screen.queryByText('Info: NotDeployed')).not.toBeInTheDocument();
       });
 
@@ -403,7 +404,7 @@ describe('FunctionsListPageV2', () => {
         );
 
         expect(await screen.findByText('Success: Running')).toBeInTheDocument();
-        expect(screen.getByLabelText('Build in progress')).toBeInTheDocument();
+        expect(screen.getByLabelText('Workflow run in progress')).toBeInTheDocument();
       });
 
       it('keeps Running with a build-failed indicator when the cluster is Running', async () => {
@@ -481,7 +482,7 @@ describe('FunctionsListPageV2', () => {
         );
 
         expect(await screen.findByText('Info: Deploying')).toBeInTheDocument();
-        expect(screen.getByLabelText('Build in progress')).toBeInTheDocument();
+        expect(screen.getByLabelText('Workflow run in progress')).toBeInTheDocument();
       });
 
       it('keeps a cluster Error with a build-failed indicator when the latest build failed', async () => {
@@ -633,7 +634,7 @@ describe('FunctionsListPageV2', () => {
 
         // Initial state: NotDeployed with no build activity
         expect(await screen.findByText('Info: NotDeployed')).toBeInTheDocument();
-        expect(screen.queryByLabelText('Build in progress')).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('Workflow run in progress')).not.toBeInTheDocument();
 
         // Emit Building status
         stream.enqueue({
@@ -643,7 +644,8 @@ describe('FunctionsListPageV2', () => {
 
         // Should show building indicator as primary, replaces NotDeployed
         await waitFor(() => {
-          expect(screen.getByLabelText('Build in progress')).toBeInTheDocument();
+          expect(screen.getByText('Info: Building')).toBeInTheDocument();
+          expect(screen.getByLabelText('Workflow run in progress')).toBeInTheDocument();
           expect(screen.queryByText('Info: NotDeployed')).not.toBeInTheDocument();
         });
 
@@ -655,7 +657,7 @@ describe('FunctionsListPageV2', () => {
 
         // Succeeded on NotDeployed shows Deploying (build done, waiting for cluster)
         await waitFor(() => {
-          expect(screen.queryByLabelText('Build in progress')).not.toBeInTheDocument();
+          expect(screen.queryByLabelText('Workflow run in progress')).not.toBeInTheDocument();
           expect(screen.getByText('Info: Deploying')).toBeInTheDocument();
         });
       });
@@ -690,8 +692,12 @@ describe('FunctionsListPageV2', () => {
         await waitFor(() => {
           const row1 = screen.getByText(func1).closest('tr');
           const row2 = screen.getByText(func2).closest('tr');
-          expect(row1?.querySelector('[aria-label="Build in progress"]')).toBeInTheDocument();
-          expect(row2?.querySelector('[aria-label="Build in progress"]')).not.toBeInTheDocument();
+          expect(
+            row1?.querySelector('[aria-label="Workflow run in progress"]'),
+          ).toBeInTheDocument();
+          expect(
+            row2?.querySelector('[aria-label="Workflow run in progress"]'),
+          ).not.toBeInTheDocument();
         });
 
         // Snapshot: func-alpha Succeeded, func-beta Building
@@ -705,8 +711,12 @@ describe('FunctionsListPageV2', () => {
         await waitFor(() => {
           const row1 = screen.getByText(func1).closest('tr');
           const row2 = screen.getByText(func2).closest('tr');
-          expect(row1?.querySelector('[aria-label="Build in progress"]')).not.toBeInTheDocument();
-          expect(row2?.querySelector('[aria-label="Build in progress"]')).toBeInTheDocument();
+          expect(
+            row1?.querySelector('[aria-label="Workflow run in progress"]'),
+          ).not.toBeInTheDocument();
+          expect(
+            row2?.querySelector('[aria-label="Workflow run in progress"]'),
+          ).toBeInTheDocument();
         });
 
         // Snapshot: both Succeeded
@@ -720,8 +730,12 @@ describe('FunctionsListPageV2', () => {
         await waitFor(() => {
           const row1 = screen.getByText(func1).closest('tr');
           const row2 = screen.getByText(func2).closest('tr');
-          expect(row1?.querySelector('[aria-label="Build in progress"]')).not.toBeInTheDocument();
-          expect(row2?.querySelector('[aria-label="Build in progress"]')).not.toBeInTheDocument();
+          expect(
+            row1?.querySelector('[aria-label="Workflow run in progress"]'),
+          ).not.toBeInTheDocument();
+          expect(
+            row2?.querySelector('[aria-label="Workflow run in progress"]'),
+          ).not.toBeInTheDocument();
         });
       });
     });
