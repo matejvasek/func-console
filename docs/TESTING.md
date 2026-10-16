@@ -279,6 +279,37 @@ UID and restart count stay the same. The fixed 30-second poll fallback and the
 
 ---
 
+## Manual Testing
+
+### Seeding Test Data
+
+`hack/seed-testdata.sh` seeds fakegithub and/or the cluster with function test
+data for manual testing against the local dev environment.
+
+Prerequisites: dev environment running with fakegithub
+(`hack/dev.sh --randomize-ports --fake-gh`) and `oc login` to the target cluster.
+
+```bash
+make seed                          # repo only (NotDeployed)
+make seed-cluster                  # repo + cluster ksvc (Running)
+make seed-build-in_progress        # repo + Building status
+make seed-build-failure            # repo + BuildFailed status
+make seed-build-success            # repo + Succeeded status
+```
+
+With custom options:
+
+```bash
+hack/seed-testdata.sh --name hello --ns prod --runtime go
+hack/seed-testdata.sh --cluster --build in_progress    # Running + Building (rebuild)
+hack/seed-testdata.sh --cluster --build failure        # Running + BuildFailed
+hack/seed-testdata.sh --cluster-only                   # cluster ksvc only (no fakegithub)
+```
+
+Run `hack/seed-testdata.sh --help` for all options.
+
+---
+
 ## E2E Tests
 
 E2E tests run against a real OpenShift cluster. GitHub API calls are intercepted with `page.route()` mocks, while K8s API calls go to the real cluster. Each test file covers a single use case, exercising a flow from start to finish with `test.step` for structure.

@@ -143,6 +143,17 @@ deploy-dev: ## Build and deploy to cluster (dev)
 setup-serverless: ## Install Serverless operator and Knative Serving
 	hack/setup-serverless.sh
 
+##@ Test Data
+
+seed: ## Seed fakegithub with a function repo (also: seed-cluster, seed-build-*)
+	hack/seed-testdata.sh
+
+seed-cluster: ## Seed fakegithub + cluster ksvc
+	hack/seed-testdata.sh --cluster
+
+seed-build-%: ## Seed with build status (in_progress, success, failure)
+	hack/seed-testdata.sh --build $*
+
 ##@ Git
 
 lint-commits: install-frontend ## Lint commit messages (against master or PR base)
