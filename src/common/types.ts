@@ -70,18 +70,6 @@ export interface FunctionListItem {
   err?: string;
 }
 
-export type FunctionStatus =
-  'Deploying' | 'Running' | 'ScaledToZero' | 'Error' | 'BuildFailed' | 'Unknown' | 'NotDeployed';
-
-export interface ClusterFunction {
-  readonly name: string;
-  readonly namespace: string;
-  readonly status: FunctionStatus;
-  readonly url: string;
-  readonly replicas: number;
-  readonly mainResource: K8sResourceCommon;
-}
-
 export interface Function {
   readonly owner: string;
   readonly repoName: string;
@@ -89,7 +77,7 @@ export interface Function {
   readonly source: FunctionSource;
   readonly name: string;
   readonly namespace: string;
-  readonly status: FunctionStatusV2;
+  readonly status: FunctionStatus;
   readonly repoURL: string;
   readonly routeURL: string;
   readonly replicas?: number;
@@ -97,7 +85,7 @@ export interface Function {
   readonly error?: Error;
 }
 
-export interface FunctionStatusV2 {
+export interface FunctionStatus {
   cluster: ClusterStatus;
   workflow: WorkflowRun;
 }

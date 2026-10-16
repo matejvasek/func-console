@@ -14,7 +14,7 @@ import {
 } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useTranslation } from 'react-i18next';
-import { Function, FunctionSource, FunctionStatusV2 } from '../../../common/types';
+import { Function, FunctionSource, FunctionStatus } from '../../../common/types';
 
 export function FunctionTable({
   functions,
@@ -86,7 +86,7 @@ function TextOrDash({ value }: { value?: string }) {
   return <>{value || '—'}</>;
 }
 
-function StatusCell({ functionStatus }: { functionStatus: FunctionStatusV2 }) {
+function StatusCell({ functionStatus }: { functionStatus: FunctionStatus }) {
   const { t } = useTranslation('plugin__console-functions-plugin');
 
   const inProgress = (
