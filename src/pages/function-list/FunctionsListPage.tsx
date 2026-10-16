@@ -17,18 +17,15 @@ import {
   ToolbarItem,
 } from '@patternfly/react-core';
 import { SyncAltIcon } from '@patternfly/react-icons';
-import { useContext, useEffect, useMemo, useState } from 'react';
+import { useContext, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
-import { listFunctions } from '../../common/clients/functionsClient';
-import { useBuildStatus } from '../../common/clients/useBuildStatus';
-import { useCluster } from '../../common/clients/useCluster';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
-import { ClusterFunction, WorkflowRun } from '../../common/types';
-import { errorMessage } from '../../common/utils/utils';
+import { useFunctions } from '../../common/hooks/useFunctions';
+import { Function } from '../../common/types';
 import { FunctionsEmptyState } from './components/EmptyState';
-import { FunctionTable, FunctionTableItem } from './components/FunctionTable';
+import { FunctionTable } from './components/FunctionTable';
 import { SetupGuide } from './components/SetupGuide';
 
 export default function FunctionsListPage() {
@@ -48,8 +45,7 @@ function FunctionsListPageContent() {
     onEdit,
     onRefresh,
     isAuthenticated,
-    error,
-    buildWatchError,
+    errors,
     showNamespace,
   } = useFunctionListPage();
 
@@ -61,23 +57,19 @@ function FunctionsListPageContent() {
         <UserAvatar enableReconnect />
       </ListPageHeader>
       <PageSection>
-        {error && (
-          <Alert variant="danger" title={t('Error listing functions')} isInline>
-            {error}
-          </Alert>
-        )}
-        {buildWatchError && (
-          <Alert variant="danger" title={t('Error watching build statuses')} isInline>
-            {buildWatchError}
-          </Alert>
-        )}
-        {!loaded && (
+        {errors.length > 0 &&
+          errors.map((err, i) => (
+            <Alert key={i} variant="danger" title={t('Error')} isInline>
+              {err}
+            </Alert>
+          ))}
+        {!loaded && !refreshing && (
           <Spinner aria-label={t('Loading')} style={{ display: 'block', margin: '4rem auto' }} />
         )}
         {loaded && functions.length === 0 && (
           <FunctionsEmptyState isCreateDisabled={!isAuthenticated} />
         )}
-        {loaded && functions.length > 0 && (
+        {(loaded || refreshing) && functions.length > 0 && (
           <>
             <Content component={ContentVariants.p}>
               {t(
@@ -124,118 +116,30 @@ function FunctionsListPageContent() {
 }
 
 function useFunctionListPage(): {
-  functions: FunctionTableItem[];
+  functions: Function[];
   loaded: boolean;
   refreshing: boolean;
   onEdit: (name: string) => void;
   onRefresh: () => void;
   isAuthenticated: boolean;
-  error: string;
-  buildWatchError?: string;
+  errors: string[];
   showNamespace: boolean;
 } {
   const { isAuthenticated, connectionId } = useContext(AuthContext);
   const navigate = useNavigate();
-
   const [namespace] = useActiveNamespace();
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  const [functionItems, setFunctionItems] = useState<FunctionTableItem[]>([]);
-  const [namespaceLoaded, setNamespaceLoaded] = useState(isAuthenticated ? false : true);
-  const [prevNamespace, setPrevNamespace] = useState(namespace);
-
-  const [prevConnectionId, setPrevConnectionId] = useState(connectionId);
-
-  const [error, setError] = useState<string>('');
-  const [refreshing, setRefreshing] = useState(false);
-
-  // Reset state when connection changes (initial connect or user switch)
-  if (connectionId !== prevConnectionId) {
-    setPrevConnectionId(connectionId);
-    setFunctionItems([]);
-    setError('');
-    setNamespaceLoaded(false);
-  }
-
-  // Reset state when namespace changes
-  if (namespace !== prevNamespace) {
-    setPrevNamespace(namespace);
-    setFunctionItems([]);
-    setError('');
-    setNamespaceLoaded(false);
-  }
-
-  async function onRefresh() {
-    if (!isAuthenticated) return;
-    setRefreshing(true);
-
-    try {
-      const items = await loadFunctionTableItems(namespace);
-      setFunctionItems(items);
-      setNamespaceLoaded(true);
-      setError('');
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setRefreshing(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    let ignore = false;
-
-    async function doLoad() {
-      let items: FunctionTableItem[];
-
-      try {
-        items = await loadFunctionTableItems(namespace);
-      } catch (err) {
-        if (!ignore) {
-          setNamespaceLoaded(true);
-          setError(errorMessage(err));
-        }
-        return;
-      }
-      if (ignore) return;
-
-      setFunctionItems(items);
-      setNamespaceLoaded(true);
-      setError('');
-    }
-
-    doLoad();
-    return () => {
-      ignore = true;
-    };
-  }, [isAuthenticated, connectionId, namespace]);
-
-  const functionNames = useMemo(() => functionItems.map((item) => item.name), [functionItems]);
-
-  const { functions: clusterFunctions, loaded: clusterLoaded } = useCluster(
-    functionNames,
-    // if namespace === #ALL_NS# then we pass 'undefined' to watcher which equals
-    // to 'get resources from all namespaces'
-    isAllNamespacesKey(namespace) ? undefined : namespace,
-  );
-  const { statuses: buildStatuses, error: buildWatchError } = useBuildStatus(
+  const { functions, loaded, refreshing, errors } = useFunctions(
+    namespace,
     isAuthenticated ? connectionId : undefined,
+    refreshKey,
   );
 
-  const functions = useMemo(
-    () =>
-      functionItems.map((item) => {
-        // keyed by namespace/name - the same function name can exist in multiple namespaces
-        const cf = clusterFunctions.get(`${item.namespace}/${item.name}`);
-        const enriched = cf ? enrichItem(item, cf) : item;
-        const build = buildStatuses[`${item.owner}/${item.repoName}`];
-        return build ? mergeBuildStatusWith(enriched, build, Boolean(cf)) : enriched;
-      }),
-    [functionItems, clusterFunctions, buildStatuses],
-  );
-
-  const reposLoaded = !isAuthenticated || (namespaceLoaded && prevNamespace === namespace);
-  const loaded = reposLoaded && clusterLoaded;
+  function onRefresh() {
+    if (!isAuthenticated) return;
+    setRefreshKey((k) => k + 1);
+  }
 
   const onEdit = (name: string) => navigate(`/faas/edit/${name}`);
 
@@ -246,57 +150,7 @@ function useFunctionListPage(): {
     onEdit,
     onRefresh,
     isAuthenticated,
-    error,
-    buildWatchError,
+    errors: errors ?? [],
     showNamespace: isAllNamespacesKey(namespace),
   };
-}
-
-async function loadFunctionTableItems(namespace: string): Promise<FunctionTableItem[]> {
-  const list = await listFunctions(namespace);
-  return list.map((item) => ({
-    name: item.name || item.repoName,
-    repoName: item.repoName,
-    owner: item.owner,
-    namespace: item.namespace,
-    runtime: item.runtime,
-    status: item.err ? 'Error' : 'NotDeployed',
-    url: '',
-    replicas: 0,
-    source: item.source,
-  }));
-}
-
-function enrichItem(item: FunctionTableItem, cf: ClusterFunction): FunctionTableItem {
-  return {
-    ...item,
-    status: cf.status,
-    url: cf.url,
-    replicas: cf.replicas,
-    mainResource: cf.mainResource,
-  };
-}
-
-function mergeBuildStatusWith(
-  item: FunctionTableItem,
-  build: WorkflowRun,
-  inCluster: boolean,
-): FunctionTableItem {
-  if (inCluster) {
-    if (build.status === 'Building') {
-      return { ...item, buildActivity: 'Building' };
-    }
-    if (build.status === 'Failed') {
-      return { ...item, buildActivity: 'Failed', buildRunURL: build.url };
-    }
-    return item;
-  }
-  // Not in the cluster at all: surface building as a secondary indicator alongside NotDeployed.
-  if (build.status === 'Building') {
-    return { ...item, buildActivity: 'Building' };
-  }
-  if (build.status === 'Failed') {
-    return { ...item, status: 'BuildFailed', buildRunURL: build.url };
-  }
-  return item;
 }

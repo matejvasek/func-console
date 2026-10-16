@@ -1,6 +1,6 @@
 import { K8sResourceKind, WatchK8sResource } from '@openshift-console/dynamic-plugin-sdk';
+import { ReactNode, useSyncExternalStore } from 'react';
 import { FUNCTION_NAME_LABEL, REVISION_LABEL } from '../types';
-import { useSyncExternalStore } from 'react';
 
 // START: global helpers -------------------------------------------------------
 export function reset() {
@@ -234,6 +234,22 @@ export function setActiveNamespace(ns: string) {
 // START: isAllNamespaceKeyFake ------------------------------------------------
 export const isAllNamespaceKeyFake = (ns: string) => ns === '#ALL_NS#';
 // END: isAllNamespaceKeyFake --------------------------------------------------
+
+// START: useDeleteModalStub ---------------------------------------------------
+export const useDeleteModalStub = (
+  _resource: K8sResourceKind,
+  _redirectTo?: string,
+  _message?: JSX.Element,
+  btnText?: ReactNode,
+) => {
+  return () => {
+    const modal = document.createElement('div');
+    modal.setAttribute('role', 'dialog');
+    modal.textContent = String(btnText ?? 'Delete');
+    document.body.appendChild(modal);
+  };
+};
+// END: useDeleteModalStub -----------------------------------------------------
 
 // START: consoleFetchJSONFake ------------------------------------------------
 export const consoleFetchJSONFake = async (
