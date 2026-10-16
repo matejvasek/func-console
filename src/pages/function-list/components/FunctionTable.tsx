@@ -125,8 +125,6 @@ function StatusCell({ functionStatus }: { functionStatus: FunctionStatus }) {
 
   const cluster = (() => {
     switch (functionStatus.cluster.status) {
-      case 'None':
-        return null;
       case 'Running':
         return <SuccessStatus title={t('Running')} />;
       case 'ScaledToZero':
