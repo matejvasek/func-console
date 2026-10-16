@@ -24,7 +24,7 @@ import { MinusCircleIcon, PlusCircleIcon } from '@patternfly/react-icons';
 import { useContext, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../../../common/context/AuthProvider';
-import { K8sKeyedResource, PlainEnvVar, ResourceEnvVar } from '../../../common/types';
+import { K8sKeyedResource, PlainEnvVar, ResourceEnvVar } from '../types';
 
 const OCP_INTERNAL_REGISTRY = 'image-registry.openshift-image-registry.svc:5000/';
 const runtimeOptions = [

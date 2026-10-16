@@ -14,7 +14,8 @@ import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
 import { CreateFunctionForm, CreateFunctionFormData } from './components/CreateFunctionForm';
 
 import { createFunction } from '../../common/clients/functionsClient';
-import { EnvVar, K8sKeyedResource, PlainEnvVar, ResourceEnvVar } from '../../common/types';
+import { EnvVar } from '../../common/types';
+import { K8sKeyedResource, PlainEnvVar, ResourceEnvVar } from './types';
 import { errorMessage } from '../../common/utils/utils';
 
 export default function FunctionCreatePage() {

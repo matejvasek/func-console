@@ -6,7 +6,7 @@ import {
 import {
   CreateFunctionRequest,
   FileEntry,
-  FunctionListItem,
+  FunctionMetadata,
   PAT_KEY,
   PROXY_BASE,
   WorkflowRunRecord,
@@ -20,7 +20,7 @@ import { AppError, HttpError } from '../errors';
  * Test doubles for this function are in src/common/testing/functionsClientStub.ts
  *
  */
-export async function listFunctions(namespace: string): Promise<FunctionListItem[]> {
+export async function listFunctions(namespace: string): Promise<FunctionMetadata[]> {
   const query = isAllNamespacesKey(namespace)
     ? '?all=true'
     : `?namespace=${encodeURIComponent(namespace)}`;

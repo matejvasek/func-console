@@ -8,10 +8,10 @@ import {
   WorkflowRunStreamEvent,
 } from '../../common/testing/functionsClientStub';
 import { server } from '../../common/testing/mswServer';
-import { repoListItem } from '../../common/testing/testData';
+import { functionMetadata } from '../../common/testing/testData';
 import { timerFake } from '../../common/testing/timerFake';
-import { FunctionListItem } from '../../common/types';
-import { AsyncQueue } from '../../common/utils/AsyncQueue';
+import { FUNCTION_NAME_LABEL, FunctionMetadata } from '../../common/types';
+import { AsyncQueue } from '../../common/testing/AsyncQueue';
 import FunctionsListPage from './FunctionsListPage';
 
 // vi.mock is hoisted above imports, so regular imports aren't available in the factory.
@@ -90,7 +90,7 @@ describe('FunctionsListPage', () => {
     });
 
     it('renders table when functions are loaded', async () => {
-      listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
+      listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
       sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
 
       render(
@@ -115,7 +115,7 @@ describe('FunctionsListPage', () => {
     });
 
     it('renders the setup guide button in the list description', async () => {
-      listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
+      listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
 
       render(
         <MemoryRouter>
@@ -180,13 +180,42 @@ describe('FunctionsListPage', () => {
 
       expect(await screen.findByText(/Bad credentials/)).toBeInTheDocument();
     });
+
+    it('resets functions when user reconnects', async () => {
+      listFunctionsStub({ responses: [functionMetadata({ repoName: 'fn-a' })] });
+
+      render(
+        <MemoryRouter>
+          <FunctionsListPage />
+        </MemoryRouter>,
+      );
+
+      expect(await screen.findByText('fn-a')).toBeInTheDocument();
+
+      listFunctionsStub({ responses: [functionMetadata({ repoName: 'fn-b', name: 'fn-b' })] });
+
+      // Click avatar to open PAT modal
+      await userEvent.setup().click(screen.getByRole('button', { name: 'twoGiants' }));
+
+      // Enter PAT and submit
+      await userEvent.setup().type(screen.getByLabelText('Personal Access Token'), 'ghp_new');
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Connect' }));
+
+      await waitFor(() => {
+        expect(screen.getByText('fn-b')).toBeInTheDocument();
+        expect(screen.queryByText('fn-a')).not.toBeInTheDocument();
+      });
+    });
   });
 
   describe('Functions table', () => {
     describe('Listing', () => {
       it('shows repo and cluster-only functions together in a union list', async () => {
         listFunctionsStub({
-          responses: [repoListItem({ repoName: 'repo-func' }), clusterListItem('cluster-func')],
+          responses: [
+            functionMetadata({ repoName: 'repo-func' }),
+            clusterFunctionMetadata('cluster-func'),
+          ],
         });
         sdkTestDoubles.setWatchFixtures({
           knSvcs: [
@@ -211,7 +240,7 @@ describe('FunctionsListPage', () => {
 
       it('shows cluster-only functions that have no discoverable repo', async () => {
         const funcName = 'cluster-only';
-        listFunctionsStub({ responses: [clusterListItem(funcName)] });
+        listFunctionsStub({ responses: [clusterFunctionMetadata(funcName)] });
         sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
 
         render(
@@ -224,7 +253,7 @@ describe('FunctionsListPage', () => {
       });
 
       it('disables edit button for cluster-only functions', async () => {
-        listFunctionsStub({ responses: [clusterListItem('cluster-func')] });
+        listFunctionsStub({ responses: [clusterFunctionMetadata('cluster-func')] });
         sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture('cluster-func'));
 
         render(
@@ -241,7 +270,7 @@ describe('FunctionsListPage', () => {
       });
 
       it('shows dash for URL and Replicas for repo functions which are not deployed yet', async () => {
-        listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
 
         render(
           <MemoryRouter>
@@ -256,7 +285,7 @@ describe('FunctionsListPage', () => {
       });
 
       it('enriches function with status, replicas, and routeURL from cluster data', async () => {
-        listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
         sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
 
         render(
@@ -279,7 +308,7 @@ describe('FunctionsListPage', () => {
       it('uses func.yaml name instead of repo name for cluster matching', async () => {
         listFunctionsStub({
           responses: [
-            repoListItem({
+            functionMetadata({
               repoName: 'my-repo',
               name: funcName,
               namespace: 'demo',
@@ -299,7 +328,7 @@ describe('FunctionsListPage', () => {
       });
 
       it('shows dash for runtime when runtime is empty', async () => {
-        listFunctionsStub({ responses: [clusterListItem('cluster-func', 'demo', '')] });
+        listFunctionsStub({ responses: [clusterFunctionMetadata('cluster-func', 'demo', '')] });
         sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture('cluster-func'));
 
         render(
@@ -314,7 +343,7 @@ describe('FunctionsListPage', () => {
       });
 
       it('hides namespace column in single-namespace view', async () => {
-        listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
         sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
 
         render(
@@ -328,7 +357,7 @@ describe('FunctionsListPage', () => {
       });
 
       it('shows tooltip on secondary workflow-run-failure indicator', async () => {
-        listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
         sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
         receiveWorkflowRunEventsStub({
           snapshot: {
@@ -355,7 +384,7 @@ describe('FunctionsListPage', () => {
     describe('Actions', () => {
       it('navigates to edit page using repoName, not display name', async () => {
         listFunctionsStub({
-          responses: [repoListItem({ repoName: 'my-repo', name: 'my-display-name' })],
+          responses: [functionMetadata({ repoName: 'my-repo', name: 'my-display-name' })],
         });
         sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture('my-display-name'));
 
@@ -379,7 +408,7 @@ describe('FunctionsListPage', () => {
       });
 
       it('edit button is disabled for cluster-only functions', async () => {
-        listFunctionsStub({ responses: [clusterListItem('cluster-func')] });
+        listFunctionsStub({ responses: [clusterFunctionMetadata('cluster-func')] });
         sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture('cluster-func'));
 
         render(
@@ -396,7 +425,7 @@ describe('FunctionsListPage', () => {
       });
 
       it('explains why edit is disabled on hover for cluster-only functions', async () => {
-        listFunctionsStub({ responses: [clusterListItem('cluster-func')] });
+        listFunctionsStub({ responses: [clusterFunctionMetadata('cluster-func')] });
         sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture('cluster-func'));
 
         render(
@@ -411,7 +440,7 @@ describe('FunctionsListPage', () => {
       });
 
       it('disables delete button for functions without a cluster resource', async () => {
-        listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
 
         render(
           <MemoryRouter>
@@ -424,7 +453,7 @@ describe('FunctionsListPage', () => {
       });
 
       it('launches undeploy modal when delete button is clicked', async () => {
-        listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
         sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
 
         render(
@@ -443,7 +472,7 @@ describe('FunctionsListPage', () => {
       it('shows NotDeployed status for repos without cluster deployment', async () => {
         listFunctionsStub({
           responses: [
-            repoListItem({
+            functionMetadata({
               repoName: 'orphan-func',
               name: 'orphan-func',
               namespace: 'demo',
@@ -462,7 +491,7 @@ describe('FunctionsListPage', () => {
       });
 
       it('shows ScaledToZero status and 0 replicas for a deployment with 0 desired and ready replicas', async () => {
-        listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
         sdkTestDoubles.setWatchFixtures({
           knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')],
           deps: [sdkTestDoubles.deploymentFixture(funcName, 0, 0)],
@@ -479,7 +508,7 @@ describe('FunctionsListPage', () => {
       });
 
       it('shows Deploying status when there is a ksvc but no deployment yet', async () => {
-        listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
         sdkTestDoubles.setWatchFixtures({ knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')] });
 
         render(
@@ -492,7 +521,7 @@ describe('FunctionsListPage', () => {
       });
 
       it('shows Error status with error message tooltip when the ready condition is false', async () => {
-        listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
         sdkTestDoubles.setWatchFixtures({
           knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'False')],
           deps: [sdkTestDoubles.deploymentFixture(funcName, 0, 0)],
@@ -511,8 +540,162 @@ describe('FunctionsListPage', () => {
         );
       });
 
+      it('shows Deploying when Ready condition is Unknown', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        sdkTestDoubles.setWatchFixtures({
+          knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'Unknown')],
+          deps: [sdkTestDoubles.deploymentFixture(funcName, 1, 0)],
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Info: Deploying')).toBeInTheDocument();
+      });
+
+      it('shows Deploying when no Ready condition exists', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        const ksvc = sdkTestDoubles.ksvcFixture(funcName, 'True');
+        ksvc.status!.conditions[0].type = 'ConfigurationsReady';
+        sdkTestDoubles.setWatchFixtures({
+          knSvcs: [ksvc],
+          deps: [sdkTestDoubles.deploymentFixture(funcName, 1, 1)],
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Info: Deploying')).toBeInTheDocument();
+      });
+
+      it('falls back to function name label when no latestReadyRevisionName', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        const fixture = sdkTestDoubles.funcFixture(funcName);
+        fixture.knSvcs![0].status!.latestReadyRevisionName = undefined;
+        fixture.deps![0].metadata!.labels = { [FUNCTION_NAME_LABEL]: funcName };
+        sdkTestDoubles.setWatchFixtures(fixture);
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Success: Running')).toBeInTheDocument();
+      });
+
+      it('picks latest revision deployment when multiple revisions exist', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        const ksvc = sdkTestDoubles.ksvcFixture(funcName, 'True');
+        ksvc.status!.latestReadyRevisionName = 'my-func-00002';
+        sdkTestDoubles.setWatchFixtures({
+          knSvcs: [ksvc],
+          deps: [
+            sdkTestDoubles.deploymentFixture(funcName, 0, 0, 'demo', 'my-func-00001'),
+            sdkTestDoubles.deploymentFixture(funcName, 2, 2, 'demo', 'my-func-00002'),
+          ],
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Success: Running')).toBeInTheDocument();
+        expect(screen.getByText('2')).toBeInTheDocument();
+      });
+
+      it('does not match deployments from a different namespace', async () => {
+        sdkTestDoubles.setActiveNamespace('#ALL_NS#');
+        listFunctionsStub({
+          responses: [
+            functionMetadata({ repoName: 'shared-func', name: 'shared-func', namespace: 'ns-a' }),
+            functionMetadata({ repoName: 'shared-func', name: 'shared-func', namespace: 'ns-b' }),
+          ],
+        });
+        const sharedRevision = 'shared-func-00001';
+        const ksvcA = sdkTestDoubles.ksvcFixture('shared-func', 'True', 'ns-a');
+        ksvcA.status!.latestReadyRevisionName = sharedRevision;
+        const ksvcB = sdkTestDoubles.ksvcFixture('shared-func', 'True', 'ns-b');
+        ksvcB.status!.latestReadyRevisionName = sharedRevision;
+        const depB = sdkTestDoubles.deploymentFixture('shared-func', 1, 1, 'ns-b', sharedRevision);
+        sdkTestDoubles.setWatchFixtures({ knSvcs: [ksvcA, ksvcB], deps: [depB] });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findAllByText('shared-func')).toHaveLength(2);
+        const rows = screen.getAllByText('shared-func').map((el) => el.closest('tr')!);
+        const rowA = rows.find((r) => r.textContent?.includes('ns-a'))!;
+        const rowB = rows.find((r) => r.textContent?.includes('ns-b'))!;
+        expect(rowA).toHaveTextContent('Info: Deploying');
+        expect(rowB).toHaveTextContent('Success: Running');
+      });
+
+      it('shows empty route URL when ksvc has no status url', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        const ksvc = sdkTestDoubles.ksvcFixture(funcName, 'True');
+        ksvc.status = {};
+        sdkTestDoubles.setWatchFixtures({ knSvcs: [ksvc] });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText(funcName)).toBeInTheDocument();
+        const row = screen.getByText(funcName).closest('tr')!;
+        expect(row.querySelector('[data-label="URL"]')).toHaveTextContent('—');
+      });
+
+      it('shows Undeploying when ksvc has a deletionTimestamp', async () => {
+        const ksvc = sdkTestDoubles.ksvcFixture(funcName, 'True');
+        ksvc.metadata!.deletionTimestamp = '2026-10-10T12:00:00Z';
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        sdkTestDoubles.setWatchFixtures({
+          knSvcs: [ksvc],
+          deps: [sdkTestDoubles.deploymentFixture(funcName, 1, 1)],
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Info: Undeploying')).toBeInTheDocument();
+      });
+
+      it('surfaces K8s watch errors', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        sdkTestDoubles.setWatchFixtures({
+          knError: new Error('ksvc watch failed'),
+          depError: new Error('dep watch failed'),
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText(/ksvc watch failed/)).toBeInTheDocument();
+        expect(screen.getByText(/dep watch failed/)).toBeInTheDocument();
+      });
+
       it('shows build-in-progress indicator as primary status when the function is not yet deployed', async () => {
-        listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
         receiveWorkflowRunEventsStub({
           snapshot: { [`twoGiants/${funcName}`]: { status: 'Building' } },
         });
@@ -531,7 +714,7 @@ describe('FunctionsListPage', () => {
       it('keeps Running with a build-in-progress indicator when the cluster is Running', async () => {
         // Non-destructive: a serving function keeps its green Running status while a
         // new revision builds; the build is surfaced only as a secondary spinner.
-        listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
         sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
         receiveWorkflowRunEventsStub({
           snapshot: { [`twoGiants/${funcName}`]: { status: 'Building' } },
@@ -548,7 +731,7 @@ describe('FunctionsListPage', () => {
       });
 
       it('keeps Running with a build-failed indicator when the cluster is Running', async () => {
-        listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
         sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
         receiveWorkflowRunEventsStub({
           snapshot: {
@@ -574,7 +757,7 @@ describe('FunctionsListPage', () => {
       });
 
       it('keeps ScaledToZero with a workflow-run-in-progress indicator when the cluster is scaled to zero', async () => {
-        listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
         sdkTestDoubles.setWatchFixtures({
           knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')],
           deps: [sdkTestDoubles.deploymentFixture(funcName, 0, 0)],
@@ -596,7 +779,7 @@ describe('FunctionsListPage', () => {
       it('keeps ScaledToZero with a build-failed indicator when the cluster is scaled to zero', async () => {
         // A scaled-to-zero function is deployed and available (idle, cold-starts on
         // demand), so a failed rebuild must not overwrite it with BuildFailed.
-        listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
         sdkTestDoubles.setWatchFixtures({
           knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')],
           deps: [sdkTestDoubles.deploymentFixture(funcName, 0, 0)],
@@ -627,7 +810,7 @@ describe('FunctionsListPage', () => {
         // A live function reports Deploying for a moment when the build applies a new
         // revision. Overwriting that with Building flickered the row through a status
         // it had already passed on every redeploy.
-        listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
         sdkTestDoubles.setWatchFixtures({ knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')] });
         receiveWorkflowRunEventsStub({
           snapshot: { [`twoGiants/${funcName}`]: { status: 'Building' } },
@@ -646,7 +829,7 @@ describe('FunctionsListPage', () => {
       it('keeps a cluster Error with a build-failed indicator when the Latest workflow run failed', async () => {
         // Ready=False means a deployed revision is broken, which matters more than
         // the failed rebuild, so the build drops to a secondary indicator.
-        listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
         sdkTestDoubles.setWatchFixtures({
           knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'False')],
           deps: [sdkTestDoubles.deploymentFixture(funcName, 1, 0)],
@@ -675,7 +858,9 @@ describe('FunctionsListPage', () => {
 
       it('shows BuildFailed for a repo-level error with no cluster resource', async () => {
         listFunctionsStub({
-          responses: [{ ...repoListItem({ repoName: funcName }), err: 'cannot read func.yaml' }],
+          responses: [
+            { ...functionMetadata({ repoName: funcName }), err: 'cannot read func.yaml' },
+          ],
         });
         receiveWorkflowRunEventsStub({
           snapshot: {
@@ -700,7 +885,7 @@ describe('FunctionsListPage', () => {
       });
 
       it('shows BuildFailed with a run link from the build stream', async () => {
-        listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
         receiveWorkflowRunEventsStub({
           snapshot: {
             [`twoGiants/${funcName}`]: {
@@ -724,7 +909,7 @@ describe('FunctionsListPage', () => {
       });
 
       it('displays build watcher error alert with message when stream fails', async () => {
-        listFunctionsStub({ responses: [repoListItem({ repoName: 'my-repo' })] });
+        listFunctionsStub({ responses: [functionMetadata({ repoName: 'my-repo' })] });
         receiveWorkflowRunEventsStub({
           errorResponse: { message: 'Service Unavailable', status: 503 },
         });
@@ -743,7 +928,7 @@ describe('FunctionsListPage', () => {
 
       it('clears build watcher error alert when stream recovers', async () => {
         using timer = timerFake();
-        listFunctionsStub({ responses: [repoListItem({ repoName: 'my-repo' })] });
+        listFunctionsStub({ responses: [functionMetadata({ repoName: 'my-repo' })] });
         // Initial endpoint response is an error
         receiveWorkflowRunEventsStub({
           errorResponse: { message: 'Service Unavailable', status: 503 },
@@ -780,7 +965,7 @@ describe('FunctionsListPage', () => {
 
       it('transitions build status from NotDeployed -> Building -> Succeeded', async () => {
         using stream = new AsyncQueue<WorkflowRunStreamEvent>();
-        listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
         receiveWorkflowRunEventsStub({ stream });
 
         render(
@@ -825,8 +1010,8 @@ describe('FunctionsListPage', () => {
         const func2 = 'func-beta';
         listFunctionsStub({
           responses: [
-            repoListItem({ repoName: 'repo-alpha', name: func1 }),
-            repoListItem({ repoName: 'repo-beta', name: func2 }),
+            functionMetadata({ repoName: 'repo-alpha', name: func1 }),
+            functionMetadata({ repoName: 'repo-beta', name: func2 }),
           ],
         });
         receiveWorkflowRunEventsStub({ stream });
@@ -895,18 +1080,78 @@ describe('FunctionsListPage', () => {
           ).not.toBeInTheDocument();
         });
       });
+
+      it('preserves functions while workflow error is present', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
+        receiveWorkflowRunEventsStub({
+          errorResponse: { message: 'Service Unavailable', status: 503 },
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Success: Running')).toBeInTheDocument();
+        expect(screen.getByText(/Server error/)).toBeInTheDocument();
+      });
+
+      it('preserves workflow status across stream reconnect (no flicker)', async () => {
+        using stream = new AsyncQueue<WorkflowRunStreamEvent>();
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        receiveWorkflowRunEventsStub({ stream });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText(funcName)).toBeInTheDocument();
+
+        stream.enqueue({
+          type: 'build-status',
+          runs: { [`twoGiants/${funcName}`]: { status: 'Building' } },
+        });
+        await waitFor(() => {
+          expect(screen.getByLabelText('Workflow run in progress')).toBeInTheDocument();
+        });
+
+        // Auth error closes the stream
+        stream.enqueue({ type: 'app-error', message: 'auth expired', code: 401 });
+        await waitFor(() => expect(screen.getByText(/Authentication expired/)).toBeInTheDocument());
+
+        // Building indicator should still be visible (not cleared on error)
+        expect(screen.getByLabelText('Workflow run in progress')).toBeInTheDocument();
+      });
+
+      it('shows the delete button as enabled when ksvc exists', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText(funcName)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled();
+      });
     });
   });
 
   describe('Refresh button behaviour', () => {
     it('re-fetch updates list after refresh if a repo was deleted', async () => {
-      const salesFuncRepoItem = repoListItem({
+      const salesFuncRepoItem = functionMetadata({
         repoName: 'sales-aggregator',
         name: 'sales-aggregator',
         namespace: 'demo',
         runtime: 'go',
       });
-      const transcribeFuncRepoItem = repoListItem({
+      const transcribeFuncRepoItem = functionMetadata({
         repoName: 'transcriber',
         name: 'transcriber',
         namespace: 'demo',
@@ -940,7 +1185,7 @@ describe('FunctionsListPage', () => {
     });
 
     it('does not show spinner on refresh button during initial page load', async () => {
-      listFunctionsStub({ responses: [repoListItem({ repoName: funcName })] });
+      listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
 
       render(
         <MemoryRouter>
@@ -955,7 +1200,7 @@ describe('FunctionsListPage', () => {
 
     it('shows spinner on refresh button only while a button-triggered refresh is in flight', async () => {
       listFunctionsStub({
-        responses: [repoListItem({ repoName: 'fn-a' })],
+        responses: [functionMetadata({ repoName: 'fn-a' })],
       });
 
       render(
@@ -970,7 +1215,7 @@ describe('FunctionsListPage', () => {
       // verify that the spinner is gone
       let continueWithRequest = () => {};
       listFunctionsStub({
-        responses: [repoListItem({ repoName: 'fn-a' })],
+        responses: [functionMetadata({ repoName: 'fn-a' })],
         wait: new Promise<void>((r) => {
           continueWithRequest = r;
         }),
@@ -990,7 +1235,7 @@ describe('FunctionsListPage', () => {
     });
 
     it('keeps the table visible during refresh instead of showing the page spinner', async () => {
-      listFunctionsStub({ responses: [repoListItem({ repoName: 'fn-a' })] });
+      listFunctionsStub({ responses: [functionMetadata({ repoName: 'fn-a' })] });
 
       render(
         <MemoryRouter>
@@ -1002,7 +1247,7 @@ describe('FunctionsListPage', () => {
 
       let continueWithRequest = () => {};
       listFunctionsStub({
-        responses: [repoListItem({ repoName: 'fn-a' })],
+        responses: [functionMetadata({ repoName: 'fn-a' })],
         wait: new Promise<void>((r) => {
           continueWithRequest = r;
         }),
@@ -1021,7 +1266,7 @@ describe('FunctionsListPage', () => {
     });
 
     it('shows the button spinner on a second refresh after the first one completed', async () => {
-      listFunctionsStub({ responses: [repoListItem({ repoName: 'fn-a' })] });
+      listFunctionsStub({ responses: [functionMetadata({ repoName: 'fn-a' })] });
 
       render(
         <MemoryRouter>
@@ -1032,7 +1277,7 @@ describe('FunctionsListPage', () => {
       expect(await screen.findByText('fn-a')).toBeInTheDocument();
 
       // First refresh: completes immediately
-      listFunctionsStub({ responses: [repoListItem({ repoName: 'fn-a' })] });
+      listFunctionsStub({ responses: [functionMetadata({ repoName: 'fn-a' })] });
       await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
       await waitFor(() => {
         const btn = screen.getByRole('button', { name: 'Refresh' });
@@ -1042,7 +1287,7 @@ describe('FunctionsListPage', () => {
       // Second refresh: blocked
       let continueWithRequest = () => {};
       listFunctionsStub({
-        responses: [repoListItem({ repoName: 'fn-a' })],
+        responses: [functionMetadata({ repoName: 'fn-a' })],
         wait: new Promise<void>((r) => {
           continueWithRequest = r;
         }),
@@ -1082,8 +1327,8 @@ describe('FunctionsListPage', () => {
 
       listFunctionsStub({
         responses: [
-          clusterListItem(salesFuncName, devNamespace),
-          clusterListItem(transcriberFuncName, prodNamespace),
+          clusterFunctionMetadata(salesFuncName, devNamespace),
+          clusterFunctionMetadata(transcriberFuncName, prodNamespace),
         ],
       });
     });
@@ -1154,7 +1399,7 @@ describe('FunctionsListPage', () => {
 
       let continueWithRequest = () => {};
       listFunctionsStub({
-        responses: [clusterListItem(transcriberFuncName, prodNamespace)],
+        responses: [clusterFunctionMetadata(transcriberFuncName, prodNamespace)],
         wait: new Promise<void>((r) => {
           continueWithRequest = r;
         }),
@@ -1203,7 +1448,11 @@ describe('FunctionsListPage', () => {
 // -----------------------------------------------------------------------------
 
 // Test data factories ---------------------------------------------------------
-function clusterListItem(name: string, namespace = 'demo', runtime = 'node'): FunctionListItem {
+function clusterFunctionMetadata(
+  name: string,
+  namespace = 'demo',
+  runtime = 'node',
+): FunctionMetadata {
   return {
     owner: '',
     repoName: '',

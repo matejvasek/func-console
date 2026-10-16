@@ -14,7 +14,8 @@ import {
 } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useTranslation } from 'react-i18next';
-import { Function, FunctionSource, FunctionStatus } from '../../../common/types';
+import { FunctionSource } from '../../../common/types';
+import { Function, FunctionStatus } from '../types';
 
 export function FunctionTable({
   functions,

@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw';
 import { server } from '../testing/mswServer';
 import { timerFake } from '../testing/timerFake';
-import { AsyncQueue } from '../utils/AsyncQueue';
+import { AsyncQueue } from '../testing/AsyncQueue';
 import { HttpError } from '../errors';
 import { createSSEEventSource, SSEEventSource, SSEEvent } from './sseEventSource';
 

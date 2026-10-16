@@ -1,5 +1,4 @@
-import { K8sResourceCommon } from '@openshift-console/dynamic-plugin-sdk';
-import { AppError, ClusterError } from './errors';
+import { AppError } from './errors';
 
 export const PAT_KEY = 'func-console-pat';
 export const USER_KEY = 'func-console-user';
@@ -35,30 +34,12 @@ export interface EnvVar {
   resourceKey: string;
 }
 
-export interface PlainEnvVar {
-  name: string;
-  value: string;
-}
-
-export interface ResourceEnvVar {
-  name: string;
-  resourceName: string;
-  resourceKey: string;
-}
-
-export interface K8sKeyedResource {
-  name: string;
-  keys: string[];
-}
-
 export interface AuthUser {
   name: string;
   avatarUrl: string;
 }
 
-export type FunctionSource = 'repo' | 'cluster';
-
-export interface FunctionListItem {
+export interface FunctionMetadata {
   owner: string;
   repoName: string;
   repoURL: string;
@@ -70,39 +51,15 @@ export interface FunctionListItem {
   err?: string;
 }
 
-export interface Function {
-  readonly owner: string;
-  readonly repoName: string;
-  readonly runtime: string;
-  readonly source: FunctionSource;
-  readonly name: string;
-  readonly namespace: string;
-  readonly status: FunctionStatus;
-  readonly repoURL: string;
-  readonly routeURL: string;
-  readonly replicas?: number;
-  readonly mainResource?: K8sResourceCommon;
-  readonly error?: Error;
-}
+export type FunctionSource = 'repo' | 'cluster';
 
-export interface FunctionStatus {
-  cluster: ClusterStatus;
-  workflow: WorkflowRun;
-}
-
-export interface ClusterStatus {
-  status:
-    'None' | 'NotDeployed' | 'Deploying' | 'Running' | 'ScaledToZero' | 'Undeploying' | 'Error';
-  error?: ClusterError;
-}
+/**
+ * Record of workflow runs, keyed by repository full name (e.g., "owner/repo")
+ */
+export type WorkflowRunRecord = Record<string, WorkflowRun>;
 
 export interface WorkflowRun {
   status: 'None' | 'Building' | 'Succeeded' | 'Failed';
   url?: string;
   error?: AppError;
 }
-
-/**
- * Record of workflow runs, keyed by repository full name (e.g., "owner/repo")
- */
-export type WorkflowRunRecord = Record<string, WorkflowRun>;
