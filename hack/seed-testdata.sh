@@ -10,6 +10,9 @@
 #   hack/seed-testdata.sh --cluster --build in_progress    # Running + Building (rebuild)
 #   hack/seed-testdata.sh --cluster --build failure        # Running + BuildFailed
 #   hack/seed-testdata.sh --name hello --ns prod --runtime go
+#   hack/seed-testdata.sh --cleanup                        # delete repo + cluster ksvc
+#   hack/seed-testdata.sh --cleanup --cluster-only         # delete cluster ksvc only
+#   hack/seed-testdata.sh --cleanup-all                    # reset all fakegithub repos + delete all func ksvc's
 
 set -euo pipefail
 
@@ -25,6 +28,8 @@ IMAGE="ghcr.io/knative/helloworld-go:latest"
 BUILD=""
 SEED_REPO=true
 SEED_CLUSTER=false
+CLEANUP=false
+CLEANUP_ALL=false
 OWNER="e2e-user"
 
 # --- Main ---
@@ -40,8 +45,10 @@ main() {
       --build)         BUILD="$2"; shift 2 ;;
       --cluster)       SEED_CLUSTER=true; shift ;;
       --cluster-only)  SEED_CLUSTER=true; SEED_REPO=false; shift ;;
+      --cleanup)       CLEANUP=true; shift ;;
+      --cleanup-all)   CLEANUP_ALL=true; shift ;;
       -h|--help)
-        sed -n '2,14s/^# //p' "$0"
+        sed -n '2,16s/^# //p' "$0"
         exit 0
         ;;
       *) log::error "Unknown option: $1"; exit 1 ;;
@@ -50,9 +57,16 @@ main() {
 
   read_dev_env
 
-  [[ "$SEED_REPO" == true ]] && seed_repo
-  [[ -n "$BUILD" ]] && seed_build
-  [[ "$SEED_CLUSTER" == true ]] && seed_cluster
+  if [[ "$CLEANUP_ALL" == true ]]; then
+    cleanup_all
+  elif [[ "$CLEANUP" == true ]]; then
+    [[ "$SEED_REPO" == true ]] && cleanup_repo
+    [[ "$SEED_CLUSTER" == true ]] && cleanup_cluster
+  else
+    [[ "$SEED_REPO" == true ]] && seed_repo
+    [[ -n "$BUILD" ]] && seed_build
+    [[ "$SEED_CLUSTER" == true ]] && seed_cluster
+  fi
 
   log::step "Done"
   log::info "Refresh the functions list in the console."
@@ -178,12 +192,44 @@ metadata:
     function.knative.dev/runtime: ${RUNTIME}
 spec:
   template:
+    metadata:
+      labels:
+        function.knative.dev/name: ${FUNC_NAME}
     spec:
       containers:
         - image: ${IMAGE}
 EOF
 
   log::info "ksvc ready"
+}
+
+# --- Cleanup functions ---
+
+cleanup_repo() {
+  log::step "Deleting repo ${OWNER}/${FUNC_NAME} from fakegithub"
+
+  curl -sf -X DELETE "${FAKE_GH_URL}/repos/${OWNER}/${FUNC_NAME}" \
+    -H "Authorization: token placeholder-pat" | jq . 2>/dev/null || true
+
+  log::info "Repo deleted"
+}
+
+cleanup_cluster() {
+  log::step "Deleting ksvc ${FUNC_NAME} from ${NAMESPACE}"
+
+  oc delete ksvc "$FUNC_NAME" -n "$NAMESPACE" --ignore-not-found
+
+  log::info "ksvc deleted"
+}
+
+cleanup_all() {
+  log::step "Resetting all fakegithub data"
+  curl -sf -X POST "${FAKE_GH_URL}/_admin/reset" | jq .
+  log::info "Fakegithub reset"
+
+  log::step "Deleting all func ksvc's from ${NAMESPACE}"
+  oc delete ksvc -n "$NAMESPACE" -l boson.dev/function=true --ignore-not-found
+  log::info "All func ksvc's deleted"
 }
 
 main "$@"

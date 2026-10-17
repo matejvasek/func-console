@@ -297,6 +297,8 @@ make seed-cluster                  # repo + cluster ksvc (Running)
 make seed-build-in_progress        # repo + Building status
 make seed-build-failure            # repo + BuildFailed status
 make seed-build-success            # repo + Succeeded status
+make seed-cleanup                  # delete seeded repo + cluster ksvc
+make seed-cleanup-all              # reset all fakegithub repos + delete all func ksvc's
 ```
 
 With custom options:
@@ -306,6 +308,10 @@ hack/seed-testdata.sh --name hello --ns prod --runtime go
 hack/seed-testdata.sh --cluster --build in_progress    # Running + Building (rebuild)
 hack/seed-testdata.sh --cluster --build failure        # Running + BuildFailed
 hack/seed-testdata.sh --cluster-only                   # cluster ksvc only (no fakegithub)
+hack/seed-testdata.sh --cleanup                        # delete repo from fakegithub
+hack/seed-testdata.sh --cleanup --cluster              # delete repo + cluster ksvc
+hack/seed-testdata.sh --cleanup --cluster-only         # delete cluster ksvc only
+hack/seed-testdata.sh --cleanup-all                    # reset all + delete all func ksvc's
 ```
 
 Run `hack/seed-testdata.sh --help` for all options.

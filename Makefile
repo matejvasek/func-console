@@ -145,7 +145,7 @@ setup-serverless: ## Install Serverless operator and Knative Serving
 
 ##@ Test Data
 
-seed: ## Seed fakegithub with a function repo (also: seed-cluster, seed-build-*)
+seed: ## Seed fakegithub with a function repo (also: seed-cluster, seed-build-*, seed-cleanup, seed-cleanup-all)
 	hack/seed-testdata.sh
 
 seed-cluster: ## Seed fakegithub + cluster ksvc
@@ -153,6 +153,12 @@ seed-cluster: ## Seed fakegithub + cluster ksvc
 
 seed-build-%: ## Seed with build status (in_progress, success, failure)
 	hack/seed-testdata.sh --build $*
+
+seed-cleanup: ## Delete seeded repo and cluster ksvc
+	hack/seed-testdata.sh --cleanup --cluster
+
+seed-cleanup-all: ## Reset all fakegithub repos and delete all func ksvc's
+	hack/seed-testdata.sh --cleanup-all
 
 ##@ Git
 
