@@ -21,7 +21,6 @@ export interface FunctionStatus {
 }
 
 export interface ClusterStatus {
-  status:
-    'NotDeployed' | 'Deploying' | 'Running' | 'ScaledToZero' | 'Undeploying' | 'Error';
+  status: 'NotDeployed' | 'Deploying' | 'Running' | 'ScaledToZero' | 'Undeploying' | 'Error';
   error?: ClusterError;
 }
