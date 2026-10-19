@@ -11,8 +11,6 @@ import (
 	ghlib "github.com/google/go-github/v90/github"
 	"golang.org/x/sync/errgroup"
 
-	cigithub "knative.dev/func/pkg/ci/github"
-
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
@@ -36,7 +34,7 @@ const (
 // Initial repo discovery runs synchronously on the caller's ctx, so auth failures
 // are returned immediately rather than lost in the goroutine. The polling loop runs
 // independently; call Stop() to terminate.
-func (c *ghClient) WatchWorkflowRuns(ctx context.Context) (scm.WorkflowWatch, error) {
+func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
 	repos, err := c.ListRepos(ctx)
 	if err != nil {
 		return nil, err
@@ -68,7 +66,7 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context) (scm.WorkflowWatch, er
 			}
 		}
 
-		runs := c.pollRuns(pollCtx, repos, prevRuns)
+		runs := c.pollRuns(pollCtx, repos, workflowFile, prevRuns)
 		emit(runs, nil)
 
 		poll := c.pollTickerFactory()
@@ -89,7 +87,7 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context) (scm.WorkflowWatch, er
 				}
 				repos = latest
 			case <-poll.Chan():
-				runs = c.pollRuns(pollCtx, repos, prevRuns)
+				runs = c.pollRuns(pollCtx, repos, workflowFile, prevRuns)
 				emit(runs, nil)
 			}
 		}
@@ -113,7 +111,7 @@ func (w *workflowWatch) Stop() {
 // pollRuns fetches the latest workflow run for each repo concurrently. On
 // per-repo errors, carries forward the last-known run from prevRuns with Error
 // set. Always succeeds, returning partial data when some repos fail.
-func (c *ghClient) pollRuns(ctx context.Context, repos []scm.Repo, prevRuns map[string]scm.WorkflowRun) map[string]scm.WorkflowRun {
+func (c *ghClient) pollRuns(ctx context.Context, repos []scm.Repo, workflowFile string, prevRuns map[string]scm.WorkflowRun) map[string]scm.WorkflowRun {
 	var snapshot = make(map[string]scm.WorkflowRun, len(repos))
 	var mu sync.Mutex
 	var put = func(k string, v scm.WorkflowRun) {
@@ -127,7 +125,7 @@ func (c *ghClient) pollRuns(ctx context.Context, repos []scm.Repo, prevRuns map[
 
 	for _, repo := range repos {
 		g.Go(func() error {
-			run := c.latestWorkflowRun(ctx, repo.Owner, repo.Name, repo.DefaultBranch, cigithub.DefaultGitHubWorkflowFilename)
+			run := c.latestWorkflowRun(ctx, repo.Owner, repo.Name, repo.DefaultBranch, workflowFile)
 			if run.Error != nil {
 				// Carry forward the last-known run (anti-flicker) but mark it as
 				// stale by setting Error. This signals degradation to the client.

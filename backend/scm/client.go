@@ -52,7 +52,7 @@ type Client interface {
 	GetVariable(ctx context.Context, owner, repo, name string) (string, error)
 	StoreVariable(ctx context.Context, owner, repo, name, value string) error
 	DeleteRepo(ctx context.Context, owner, repo string) error
-	WatchWorkflowRuns(ctx context.Context) (WorkflowWatch, error)
+	WatchWorkflowRuns(ctx context.Context, workflowFile string) (WorkflowWatch, error)
 }
 
 type Repo struct {
@@ -144,7 +144,7 @@ type ClientStub struct {
 	OnGetVariable       func(ctx context.Context, owner, repo, name string) (string, error)
 	OnStoreVariable     func(ctx context.Context, owner, repo, name, value string) error
 	OnDeleteRepo        func(ctx context.Context, owner, repo string) error
-	OnWatchWorkflowRuns func(ctx context.Context) (WorkflowWatch, error)
+	OnWatchWorkflowRuns func(ctx context.Context, workflowFile string) (WorkflowWatch, error)
 }
 
 func (s *ClientStub) GetUser(ctx context.Context) (*User, error) {
@@ -217,9 +217,9 @@ func (s *ClientStub) DeleteRepo(ctx context.Context, owner, repo string) error {
 	return nil
 }
 
-func (s *ClientStub) WatchWorkflowRuns(ctx context.Context) (WorkflowWatch, error) {
+func (s *ClientStub) WatchWorkflowRuns(ctx context.Context, workflowFile string) (WorkflowWatch, error) {
 	if s.OnWatchWorkflowRuns != nil {
-		return s.OnWatchWorkflowRuns(ctx)
+		return s.OnWatchWorkflowRuns(ctx, workflowFile)
 	}
 	// A closed channel ends the stream immediately. A nil one would block the
 	// caller's receive forever, so an unconfigured stub would hang rather than

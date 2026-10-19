@@ -117,7 +117,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 			ctx, cancel := context.WithCancel(context.Background())
 			DeferCleanup(cancel)
-			w, err := cl.WatchWorkflowRuns(ctx)
+			w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
 			Expect(err).NotTo(HaveOccurred())
 			DeferCleanup(w.Stop)
 
@@ -146,7 +146,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 			json.NewEncoder(w).Encode(map[string]string{"message": "Bad credentials"})
 		})
 
-		_, err := cl.WatchWorkflowRuns(context.Background())
+		_, err := cl.WatchWorkflowRuns(context.Background(), "func-deploy.yaml")
 		Expect(err).To(MatchError(scm.ErrUnauthorized))
 	})
 
@@ -169,7 +169,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		DeferCleanup(cancel)
-		w, err := cl.WatchWorkflowRuns(ctx)
+		w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(w.Stop)
 
@@ -195,7 +195,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		DeferCleanup(cancel)
-		w, err := cl.WatchWorkflowRuns(ctx)
+		w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(w.Stop)
 
@@ -227,7 +227,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		DeferCleanup(cancel)
-		w, err := cl.WatchWorkflowRuns(ctx)
+		w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(w.Stop)
 
@@ -267,7 +267,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		DeferCleanup(cancel)
-		w, err := cl.WatchWorkflowRuns(ctx)
+		w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(w.Stop)
 
@@ -326,7 +326,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		DeferCleanup(cancel)
-		w, err := cl.WatchWorkflowRuns(ctx)
+		w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(w.Stop)
 
@@ -368,7 +368,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		DeferCleanup(cancel)
-		w, err := cl.WatchWorkflowRuns(ctx)
+		w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(w.Stop)
 
@@ -403,7 +403,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		DeferCleanup(cancel)
-		w, err := cl.WatchWorkflowRuns(ctx)
+		w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(w.Stop)
 
@@ -422,7 +422,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		DeferCleanup(cancel)
-		w, err := cl.WatchWorkflowRuns(ctx)
+		w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(w.Stop)
 
@@ -477,7 +477,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		DeferCleanup(cancel)
-		w, err := cl.WatchWorkflowRuns(ctx)
+		w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(w.Stop)
 
@@ -540,7 +540,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		DeferCleanup(cancel)
-		w, err := cl.WatchWorkflowRuns(ctx)
+		w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(w.Stop)
 
@@ -580,7 +580,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 			ctx, cancel := context.WithCancel(context.Background())
 			DeferCleanup(cancel)
-			w, err := cl.WatchWorkflowRuns(ctx)
+			w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
 			Expect(err).NotTo(HaveOccurred())
 			DeferCleanup(w.Stop)
 
