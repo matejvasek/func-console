@@ -49,8 +49,10 @@ import (
 
 var _ = Describe("WatchWorkflowRuns", func() {
 	// This test verifies that the ETag cache works correctly through the polling
-	// loop, regardless of response payload size (the drain bug in httpcache
-	// makes caching non-deterministic at certain body sizes).
+	// loop, regardless of response payload size. Payload size is varied because
+	// a cache that stores a body only once the caller reads it to EOF ends up
+	// caching some sizes and not others, depending on how the response is
+	// framed. See etagcache.go.
 	//
 	// Three requests are scripted via the states array:
 	//
@@ -64,8 +66,8 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	//   Server sees matching ETag, responds 304.
 	//   Cache replays the stored "in_progress" body.
 	//   Snapshot unchanged, watch suppresses the emit.
-	//   If the cache failed (drain bug), there would be no cached body,
-	//   no If-None-Match header, and the request would hit the forceCache
+	//   If the cache failed to store the body, there would be no
+	//   If-None-Match header, and the request would hit the forceCache
 	//   branch, returning a 429 rate limit error. The test would fail.
 	//
 	// Request 3 (second tickPoll):

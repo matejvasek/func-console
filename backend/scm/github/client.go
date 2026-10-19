@@ -4,15 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
 	ghlib "github.com/google/go-github/v90/github"
-	"github.com/gregjones/httpcache"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/openshift/faas-console-plugin/backend/scm"
+	"github.com/openshift/faas-console-plugin/backend/scm/github/httpcache"
 	"github.com/openshift/faas-console-plugin/backend/ticker"
 )
 
@@ -42,19 +41,11 @@ func New(pat string) scm.Client {
 }
 
 func NewWithBaseURL(pat, baseURL string, opts ...Option) scm.Client {
-	// A per-client in-memory HTTP cache issues conditional requests
-	// (If-None-Match) using the ETags GitHub returns. When build status is
-	// unchanged the server replies 304 Not Modified, which does NOT count
-	// against the primary rate limit, so the 3s poll loop stays nearly free.
-	// The cache is scoped per client (one per PAT), so one user's cached
-	// responses are never served to another.
-	//
-	// forceRevalidate wraps the cache so every request revalidates instead of
-	// being served from GitHub's max-age freshness window. Without it a newly
-	// triggered build would stay hidden for up to ~60s; with it an unchanged
-	// status is still just a (free) 304, but a real change is seen immediately.
-	cacheTransport := httpcache.NewMemoryCacheTransport()
-	httpClient := &http.Client{Transport: &forceRevalidate{next: cacheTransport}, Timeout: 30 * time.Second}
+	// Its own ETag cache, so responses are never served across PATs. Unchanged
+	// build status comes back as a 304, which does NOT count against the
+	// primary rate limit, so the 3s poll loop stays nearly free. See
+	// httpcache.NewETagCache.
+	httpClient := &http.Client{Transport: httpcache.NewETagCache(http.DefaultTransport), Timeout: 30 * time.Second}
 	clientOpts := []ghlib.ClientOptionsFunc{
 		ghlib.WithHTTPClient(httpClient),
 		ghlib.WithAuthToken(pat),
@@ -79,59 +70,6 @@ func NewWithBaseURL(pat, baseURL string, opts ...Option) scm.Client {
 		opt(c)
 	}
 	return c
-}
-
-// forceRevalidate sets Cache-Control: max-age=0 on every request so the
-// underlying cache always revalidates with a conditional request rather than
-// serving a still-"fresh" response from GitHub's max-age window. It also drains
-// each response body so the cache actually stores it; see drainOnClose.
-type forceRevalidate struct {
-	next http.RoundTripper
-}
-
-func (t *forceRevalidate) RoundTrip(req *http.Request) (*http.Response, error) {
-	req = req.Clone(req.Context())
-	req.Header.Set("Cache-Control", "max-age=0")
-	resp, err := t.next.RoundTrip(req)
-	if err != nil {
-		return nil, fmt.Errorf("forced-revalidation round trip: %w", err)
-	}
-	if resp.Body != nil {
-		resp.Body = drainOnClose{resp.Body}
-	}
-	return resp, nil
-}
-
-// drainOnClose reads whatever the caller left unread before closing.
-//
-// httpcache only stores a GET response once its body reaches EOF, but go-github
-// decodes with json.Decoder, which stops as soon as the top-level value is
-// complete. Whether that last read also observes EOF depends on how the body is
-// framed: with Content-Length it does, and gzip (which api.github.com uses)
-// drains to EOF as well, but a chunked uncompressed response only reaches EOF if
-// the decoder's buffer boundaries happen to line up with the final chunk. So an
-// uncached response is a size lottery rather than a clean threshold: measured
-// against this client, 14 KB and 100 KB bodies were not cached while 8 KB and
-// 16 KB were.
-//
-// Losing that lottery means the poll costs a full 200 against the primary rate
-// limit instead of a free 304, and the payload only has to grow by a few bytes
-// to flip. Draining makes it deterministic for every framing.
-//
-// Upstream bug, unfixable there: https://github.com/gregjones/httpcache/issues/104
-// is an open fix for this from 2020 and the repository was archived in 2023.
-type drainOnClose struct {
-	io.ReadCloser
-}
-
-func (d drainOnClose) Close() error {
-	// The read error is dropped: it is only to prime the cache, and the caller
-	// already has whatever it needed out of the body.
-	_, _ = io.Copy(io.Discard, d.ReadCloser)
-	if err := d.ReadCloser.Close(); err != nil {
-		return fmt.Errorf("close drained response body: %w", err)
-	}
-	return nil
 }
 
 type ghClient struct {
