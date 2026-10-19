@@ -104,7 +104,7 @@ export function receiveWorkflowRunEvents(
   es.addEventListener('error', (e) => {
     if (e instanceof HttpError) errorCbk(`Server error (${e.status})`);
     else {
-      const detail = e instanceof Error ? e.message : String(e);
+      const detail = e instanceof Error ? e.message : 'unknown error';
       errorCbk(`Connection to the server was lost: ${detail}. Reconnecting...`);
     }
   });
