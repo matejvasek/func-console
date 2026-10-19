@@ -375,13 +375,13 @@ describe('createSSEEventSource', () => {
     });
   }
 
-  function captureEvents(es: SSEEventSource, type: string): AsyncQueue<string> & Disposable {
+  function captureEvents(es: SSEEventSource, type: string): AsyncQueue<string> {
     const queue = new AsyncQueue<string>();
     es.addEventListener(type, (e: SSEEvent) => queue.enqueue(e.data));
     return queue;
   }
 
-  function captureErrors(es: SSEEventSource): AsyncQueue<Error> & Disposable {
+  function captureErrors(es: SSEEventSource): AsyncQueue<Error> {
     const queue = new AsyncQueue<Error>();
     es.addEventListener('error', (e: Error) => queue.enqueue(e));
     return queue;
