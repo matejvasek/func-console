@@ -13,8 +13,6 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
-const WorkflowFilename = cigithub.DefaultGitHubWorkflowFilename
-
 var ciGenerators = map[scm.Platform]func(string, ScaffoldConfig) error{
 	scm.GitHub: generateGithubCIFiles,
 }

@@ -15,8 +15,7 @@ import (
 	"sync"
 
 	"golang.org/x/crypto/nacl/box"
-
-	"github.com/openshift/faas-console-plugin/backend/functions"
+	cigithub "knative.dev/func/pkg/ci/github"
 )
 
 // User configures the authenticated identity returned by the fake server.
@@ -849,7 +848,7 @@ func (s *Server) handleAdminSetRun(w http.ResponseWriter, r *http.Request) {
 	}
 	workflowFile := req.Workflow
 	if workflowFile == "" {
-		workflowFile = functions.WorkflowFilename
+		workflowFile = cigithub.DefaultGitHubWorkflowFilename
 	}
 
 	key := req.Owner + "/" + req.Repo

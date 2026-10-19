@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/openshift/faas-console-plugin/backend/config"
-	"github.com/openshift/faas-console-plugin/backend/functions"
 	"github.com/openshift/faas-console-plugin/backend/scm"
 	"github.com/openshift/faas-console-plugin/backend/ticker"
 )
@@ -105,7 +104,7 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 	client := newSCMClient(pat)
 	ctx := r.Context()
 
-	watch, err := client.WatchWorkflowRuns(ctx, functions.WorkflowFilename)
+	watch, err := client.WatchWorkflowRuns(ctx)
 	if err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
 			writeErrorEventHTTPLike(w, http.StatusUnauthorized, "invalid SCM token")
