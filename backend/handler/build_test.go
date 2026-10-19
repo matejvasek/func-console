@@ -44,7 +44,7 @@ var _ = Describe("BuildWatch", func() {
 
 		It("sends 401 app-error event when the SCM token is rejected during discovery", func() {
 			stub := &scm.ClientStub{
-				OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
+				OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 					return nil, scm.ErrUnauthorized
 				},
 			}
@@ -68,7 +68,7 @@ var _ = Describe("BuildWatch", func() {
 
 		It("sends 502 app-error event when discovery fails with a non-auth error", func() {
 			stub := &scm.ClientStub{
-				OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
+				OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 					return nil, errors.New("github unreachable")
 				},
 			}
@@ -94,7 +94,7 @@ var _ = Describe("BuildWatch", func() {
 	It("emits a heartbeat comment on demand", func() {
 		w := scm.StubWatch{C: make(chan scm.WorkflowRunsOrErr)}
 		stub := &scm.ClientStub{
-			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
+			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 				return &w, nil
 			},
 		}
@@ -114,7 +114,7 @@ var _ = Describe("BuildWatch", func() {
 	It("emits an SSE frame per snapshot, keyed by owner/repo in build vocabulary", func() {
 		ch := make(chan scm.WorkflowRunsOrErr, 4)
 		stub := &scm.ClientStub{
-			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
+			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 				return &scm.StubWatch{C: ch}, nil
 			},
 		}
@@ -158,7 +158,7 @@ var _ = Describe("BuildWatch", func() {
 	It("omits the optional fields for a repo with no run", func() {
 		ch := make(chan scm.WorkflowRunsOrErr, 1)
 		stub := &scm.ClientStub{
-			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
+			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 				return &scm.StubWatch{C: ch}, nil
 			},
 		}
@@ -182,7 +182,7 @@ var _ = Describe("BuildWatch", func() {
 		ch := make(chan scm.WorkflowRunsOrErr)
 		tw := &scm.StubWatch{C: ch}
 		stub := &scm.ClientStub{
-			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
+			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 				return tw, nil
 			},
 		}
@@ -210,7 +210,7 @@ var _ = Describe("BuildWatch", func() {
 	It("sends an SSE error event and continues the stream when the watch fails", func() {
 		ch := make(chan scm.WorkflowRunsOrErr, 2)
 		stub := &scm.ClientStub{
-			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
+			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 				return &scm.StubWatch{C: ch}, nil
 			},
 		}
@@ -252,7 +252,7 @@ var _ = Describe("BuildWatch", func() {
 	It("calls watch.Stop() when the request context is cancelled to halt polling", func() {
 		ch := make(chan scm.WorkflowRunsOrErr)
 		stub := &scm.ClientStub{
-			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
+			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 				return &scm.StubWatch{C: ch}, nil
 			},
 		}
