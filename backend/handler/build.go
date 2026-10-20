@@ -18,6 +18,11 @@ import (
 
 const defaultHeartbeat = 15 * time.Second
 
+const (
+	appErrorEvent    = "app-error"
+	buildStatusEvent = "build-status"
+)
+
 type WorkflowRunDTO struct {
 	Status string    `json:"status"`
 	URL    string    `json:"url,omitempty"`
@@ -184,7 +189,7 @@ func (e *eventWriter) writeBuildStatus(runs map[string]scm.WorkflowRun) error {
 			Error:  errorToErrorDTO(v.Error),
 		}
 	}
-	return e.writeEvent("build-status", runsDTO)
+	return e.writeEvent(buildStatusEvent, runsDTO)
 }
 
 // writeHTTPError reports a failure the handler would have answered with an
@@ -192,7 +197,7 @@ func (e *eventWriter) writeBuildStatus(runs map[string]scm.WorkflowRun) error {
 // flush. The code travels in the frame instead, and the client branches on it
 // the way it would on a status.
 func (e *eventWriter) writeHTTPError(code int, msg string) {
-	err := e.writeEvent("app-error", &ErrorDTO{
+	err := e.writeEvent(appErrorEvent, &ErrorDTO{
 		Message: msg,
 		Code:    new(code),
 	})
@@ -202,7 +207,7 @@ func (e *eventWriter) writeHTTPError(code int, msg string) {
 }
 
 func (e *eventWriter) writeError(err error) error {
-	return e.writeEvent("app-error", errorToErrorDTO(err))
+	return e.writeEvent(appErrorEvent, errorToErrorDTO(err))
 }
 
 func (e *eventWriter) writeEvent(name string, data any) error {
