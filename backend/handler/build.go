@@ -101,7 +101,7 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 
 	pat, ok := extractSCMToken(r)
 	if !ok {
-		ew.writeErrorEventHTTPLike(http.StatusUnauthorized, "X-SCM-Token header is required")
+		ew.writeHTTPError(http.StatusUnauthorized, "X-SCM-Token header is required")
 		return
 	}
 	client := newSCMClient(pat)
@@ -110,11 +110,11 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 	watch, err := client.WatchWorkflowRuns(ctx, functions.WorkflowFilename)
 	if err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
-			ew.writeErrorEventHTTPLike(http.StatusUnauthorized, "invalid SCM token")
+			ew.writeHTTPError(http.StatusUnauthorized, "invalid SCM token")
 			return
 		}
 		slog.Error("build watch: watch workflow runs failed", "err", err)
-		ew.writeErrorEventHTTPLike(http.StatusBadGateway, "failed to list repositories")
+		ew.writeHTTPError(http.StatusBadGateway, "failed to list repositories")
 		return
 	}
 	defer watch.Stop()
@@ -137,7 +137,7 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 			}
 			if event.Err != nil {
 				slog.Error("build watch: stream error", "err", event.Err)
-				if err := ew.writeErrorEvent(event.Err); err != nil {
+				if err := ew.writeError(event.Err); err != nil {
 					slog.Error("build watch: failed to write error event", "err", err)
 					return
 				}
@@ -187,7 +187,11 @@ func (e *eventWriter) writeBuildStatus(runs map[string]scm.WorkflowRun) error {
 	return e.writeEvent("build-status", runsDTO)
 }
 
-func (e *eventWriter) writeErrorEventHTTPLike(code int, msg string) {
+// writeHTTPError reports a failure the handler would have answered with an
+// HTTP status, had the stream not already committed 200 OK on the first
+// flush. The code travels in the frame instead, and the client branches on it
+// the way it would on a status.
+func (e *eventWriter) writeHTTPError(code int, msg string) {
 	err := e.writeEvent("app-error", &ErrorDTO{
 		Message: msg,
 		Code:    new(code),
@@ -197,7 +201,7 @@ func (e *eventWriter) writeErrorEventHTTPLike(code int, msg string) {
 	}
 }
 
-func (e *eventWriter) writeErrorEvent(err error) error {
+func (e *eventWriter) writeError(err error) error {
 	return e.writeEvent("app-error", errorToErrorDTO(err))
 }
 
