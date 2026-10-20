@@ -97,9 +97,11 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
+	ew := eventWriter{out: w}
+
 	pat, ok := extractSCMToken(r)
 	if !ok {
-		writeErrorEventHTTPLike(w, http.StatusUnauthorized, "X-SCM-Token header is required")
+		ew.writeErrorEventHTTPLike(http.StatusUnauthorized, "X-SCM-Token header is required")
 		return
 	}
 	client := newSCMClient(pat)
@@ -108,11 +110,11 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 	watch, err := client.WatchWorkflowRuns(ctx, functions.WorkflowFilename)
 	if err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
-			writeErrorEventHTTPLike(w, http.StatusUnauthorized, "invalid SCM token")
+			ew.writeErrorEventHTTPLike(http.StatusUnauthorized, "invalid SCM token")
 			return
 		}
 		slog.Error("build watch: watch workflow runs failed", "err", err)
-		writeErrorEventHTTPLike(w, http.StatusBadGateway, "failed to list repositories")
+		ew.writeErrorEventHTTPLike(http.StatusBadGateway, "failed to list repositories")
 		return
 	}
 	defer watch.Stop()
@@ -135,14 +137,14 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 			}
 			if event.Err != nil {
 				slog.Error("build watch: stream error", "err", event.Err)
-				if err := writeErrorEvent(w, event.Err); err != nil {
+				if err := ew.writeErrorEvent(event.Err); err != nil {
 					slog.Error("build watch: failed to write error event", "err", err)
 					return
 				}
 				flusher.Flush()
 				continue
 			}
-			if err := writeBuildStatus(w, event.Runs); err != nil {
+			if err := ew.writeBuildStatus(event.Runs); err != nil {
 				return
 			}
 			flusher.Flush()
@@ -168,7 +170,12 @@ func WithHeartbeatTickerFactory(f ticker.Factory) WatchOption {
 	return func(c *watchConfig) { c.heartbeatFactory = f }
 }
 
-func writeBuildStatus(w http.ResponseWriter, runs map[string]scm.WorkflowRun) error {
+type eventWriter struct {
+	buff bytes.Buffer
+	out  io.Writer
+}
+
+func (e *eventWriter) writeBuildStatus(runs map[string]scm.WorkflowRun) error {
 	var runsDTO = make(map[string]WorkflowRunDTO, len(runs))
 	for k, v := range runs {
 		runsDTO[k] = WorkflowRunDTO{
@@ -177,11 +184,11 @@ func writeBuildStatus(w http.ResponseWriter, runs map[string]scm.WorkflowRun) er
 			Error:  errorToErrorDTO(v.Error),
 		}
 	}
-	return writeEvent(w, "build-status", runsDTO)
+	return e.writeEvent("build-status", runsDTO)
 }
 
-func writeErrorEventHTTPLike(w io.Writer, code int, msg string) {
-	err := writeEvent(w, "app-error", &ErrorDTO{
+func (e *eventWriter) writeErrorEventHTTPLike(code int, msg string) {
+	err := e.writeEvent("app-error", &ErrorDTO{
 		Message: msg,
 		Code:    new(code),
 	})
@@ -190,8 +197,23 @@ func writeErrorEventHTTPLike(w io.Writer, code int, msg string) {
 	}
 }
 
-func writeErrorEvent(w io.Writer, err error) error {
-	return writeEvent(w, "app-error", errorToErrorDTO(err))
+func (e *eventWriter) writeErrorEvent(err error) error {
+	return e.writeEvent("app-error", errorToErrorDTO(err))
+}
+
+func (e *eventWriter) writeEvent(name string, data any) error {
+	e.buff.Reset()
+	// Write to buffer never returns error
+	_, _ = fmt.Fprintf(&e.buff, "event: %s\ndata: ", name)
+	_ = json.NewEncoder(&e.buff).Encode(data)
+	_, _ = fmt.Fprintf(&e.buff, "\n\n")
+
+	_, writeErr := e.out.Write(e.buff.Bytes())
+	if writeErr != nil {
+		return fmt.Errorf("write error event: %w", writeErr)
+	}
+
+	return nil
 }
 
 func errorToErrorDTO(err error) *ErrorDTO {
@@ -221,21 +243,5 @@ func errorToCode(err error) *int {
 	if errors.Is(err, scm.ErrUnauthorized) {
 		return new(401)
 	}
-	return nil
-}
-
-func writeEvent(w io.Writer, name string, data any) error {
-	var buff bytes.Buffer
-
-	// Write to buffer never returns error
-	_, _ = fmt.Fprintf(&buff, "event: %s\ndata: ", name)
-	_ = json.NewEncoder(&buff).Encode(data)
-	_, _ = fmt.Fprintf(&buff, "\n\n")
-
-	_, writeErr := w.Write(buff.Bytes())
-	if writeErr != nil {
-		return fmt.Errorf("write error event: %w", writeErr)
-	}
-
 	return nil
 }
