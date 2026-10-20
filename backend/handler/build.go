@@ -210,7 +210,7 @@ func (e *eventWriter) writeEvent(name string, data any) error {
 		// This really should not happen unless some weird data (e.g. channel) is passed
 		return fmt.Errorf("could not serialize the data: %w", serErr)
 	}
-	_, _ = fmt.Fprintf(&e.buff, "\n\n")
+	_, _ = e.buff.WriteString("\n") // JSON encoder already adds single newline
 
 	_, writeErr := e.out.Write(e.buff.Bytes())
 	if writeErr != nil {
