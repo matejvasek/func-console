@@ -15,7 +15,6 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/ticker"
 )
 
-// Option customizes a client returned by New or NewWithBaseURL.
 type Option func(*ghClient)
 
 // WithWatchTickerFactories sets the factories for poll and rediscover tickers

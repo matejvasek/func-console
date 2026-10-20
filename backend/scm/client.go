@@ -62,8 +62,6 @@ type Repo struct {
 	DefaultBranch string `json:"defaultBranch"`
 }
 
-// FullName is the "owner/name" identifier, matching GitHub's full_name field.
-// Used to correlate a repo across cluster and build state.
 func (r Repo) FullName() string { return r.Owner + "/" + r.Name }
 
 type User struct {
