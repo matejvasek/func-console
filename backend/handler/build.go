@@ -34,39 +34,38 @@ type ErrorDTO struct {
 	Code    *int   `json:"code,omitempty"`
 }
 
-// BuildWatch returns an HTTP handler that streams build status updates via SSE.
+// BuildWatch returns an HTTP handler that streams build status over SSE.
 //
-// Request:
-//   - Method: GET
-//   - Header X-SCM-Token: GitHub Personal Access Token
+// Request: GET with an X-SCM-Token header carrying a GitHub personal access
+// token. The options are wiring seams for tests, see WithSCMFactory and
+// WithHeartbeatTickerFactory.
 //
-// Response:
-//   - Content-Type: text/event-stream
-//   - Status: 200 (stream started)
+// Every request that can be flushed gets 200 and text/event-stream. A
+// ResponseWriter that is not an http.Flusher gets 500 and a JSON error,
+// because buffering would stall both updates and heartbeats. Once the stream
+// is open no further HTTP status is available, so failures travel as frames.
 //
-// Events:
+// Two event types are sent:
 //
-//	build-status: {[owner/repo]: {status, url?, error?}}
+//	build-status: {"owner/repo": {status, url?, error?}}
 //	  status: "Building" | "Succeeded" | "Failed" | "None"
-//	  url?: string (workflow run URL, omitted when None)
-//	  error?: {message, code?} (omitted when no error)
+//	  url?:   workflow run URL, absent when there is no run
+//	  error?: {message, code?}, absent when that repo polled cleanly
 //	app-error: {message, code?}
-//	  message: user-facing error description
-//	  code?: HTTP status code (401 for auth errors)
-//	heartbeat: SSE comment line (keepalive, no data)
+//	  message: user-facing text
+//	  code?:   the HTTP status the response would have carried, 401 or 502
 //
-// Per-repo errors (rate limits, individual repo failures) appear in the error
-// field of the build-status event. Catastrophic errors (token revocation, repo
-// discovery failure) emit app-error events. The stream continues until the
-// client disconnects or the context is cancelled.
+// Between frames the handler sends an SSE comment as a keepalive, every 15
+// seconds by default. It is a comment, not an event, and no listener fires
+// for it.
 //
-// HTTP status codes:
-//   - 200: stream started (all requests that pass Flusher check)
-//   - 500: streaming unsupported (no http.Flusher)
-//
-// Error event codes (in app-error JSON payload):
-//   - 401: missing or invalid X-SCM-Token
-//   - 502: failed to discover repositories
+// A failure confined to one repo, such as a rate limit, rides in that repo's
+// error field and the stream goes on. A failure affecting the whole watch
+// emits app-error, and whether the stream survives depends on when it
+// happens: a missing or invalid token (401) or a failed repo discovery (502)
+// ends the stream, while anything raised once the loop is running leaves it
+// open and lets the client decide whether to reconnect. Otherwise the stream
+// runs until the client disconnects or the request context is cancelled.
 func BuildWatch(opts ...WatchOption) http.HandlerFunc {
 	cfg := watchConfig{
 		newSCMClient: func(pat string) scm.Client {
