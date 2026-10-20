@@ -2,8 +2,10 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"reflect"
 	"sync"
 	"time"
@@ -203,4 +205,9 @@ func deriveBuildStatus(run *ghlib.WorkflowRun) scm.BuildStatus {
 	default:
 		return scm.None
 	}
+}
+
+func isNotFound(err error) bool {
+	var ghErr *ghlib.ErrorResponse
+	return errors.As(err, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusNotFound
 }

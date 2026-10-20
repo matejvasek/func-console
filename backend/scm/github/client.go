@@ -90,11 +90,6 @@ func mapErr(err error) error {
 	return err
 }
 
-func isNotFound(err error) bool {
-	var ghErr *ghlib.ErrorResponse
-	return errors.As(err, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusNotFound
-}
-
 func isRepoExists(err error) bool {
 	var ghErr *ghlib.ErrorResponse
 	if !errors.As(err, &ghErr) || ghErr.Response == nil || ghErr.Response.StatusCode != http.StatusUnprocessableEntity {
