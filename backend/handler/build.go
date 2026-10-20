@@ -205,7 +205,11 @@ func (e *eventWriter) writeEvent(name string, data any) error {
 	e.buff.Reset()
 	// Write to buffer never returns error
 	_, _ = fmt.Fprintf(&e.buff, "event: %s\ndata: ", name)
-	_ = json.NewEncoder(&e.buff).Encode(data)
+
+	if serErr := json.NewEncoder(&e.buff).Encode(data); serErr != nil {
+		// This really should not happen unless some weird data (e.g. channel) is passed
+		return fmt.Errorf("could not serialize the data: %w", serErr)
+	}
 	_, _ = fmt.Fprintf(&e.buff, "\n\n")
 
 	_, writeErr := e.out.Write(e.buff.Bytes())
