@@ -45,7 +45,8 @@ FunctionTable.tsx <── useFunctions <── functionsClient.ts <── sseEve
 |------|------|
 | `backend/scm/client.go` | SCM interface definition: `Client.WatchWorkflowRuns` and the `WorkflowWatch` / `WorkflowRun` / `BuildStatus` types it is declared in terms of |
 | `backend/scm/github/watch.go` | The poll loop: discovery, per-repo fetch, status derivation, change-only emission |
-| `backend/scm/github/client.go` | ETag-caching HTTP client with forced revalidation |
+| `backend/scm/github/client.go` | go-github client; wires the ETag cache in as its HTTP transport |
+| `backend/scm/github/httpcache/etagcache.go` | The ETag cache: stores bodies, sends `If-None-Match`, replays on 304 |
 | `backend/functions/ci.go` | `WorkflowFilename`, the single workflow the watch is scoped to |
 | `backend/handler/build.go` | The SSE endpoint, `WorkflowRunDTO` / `ErrorDTO`, error mapping |
 | `backend/ticker/ticker.go` | Ticker abstraction behind an injectable factory, so tests step time instead of sleeping |
@@ -341,11 +342,11 @@ key everything is correlated on, matching what `listFunctions` returns.
   itself for the one case it knows is terminal (see the `401` handling below).
 - Errors mapped through the existing `mapErr` (401/403 -> `scm.ErrUnauthorized`).
 - The GitHub HTTP client issues conditional requests using the ETags GitHub
-  returns, and forces revalidation on every poll rather than honouring GitHub's
-  freshness window (which would hide a new build for up to ~60s). An unchanged
-  run answers 304, which does not count against the primary rate limit. The cache
-  is per-PAT, like the client, so one user's cached responses are never served to
-  another.
+  returns. It revalidates on every poll because it does no freshness caching at
+  all: honouring GitHub's `max-age=60` would hide a newly triggered build for up
+  to a minute. An unchanged run answers 304, which does not count against the
+  primary rate limit. The cache is per-client, so per-PAT, and one user's
+  responses are never served to another.
 
 ### Endpoint (`backend/handler/build.go`)
 
@@ -624,6 +625,10 @@ Backend (Ginkgo/Gomega):
   revalidation. The intervals themselves are hardcoded, but the tickers that
   drive them come from an injectable factory, so tests step time explicitly
   rather than sleeping; the same applies to the heartbeat in the handler.
+- `scm/github/httpcache`: the ETag cache through its exported surface. 304
+  replay, revalidation instead of honouring `max-age`, the header merge and
+  hop-by-hop stripping, bodies of any size, the uncacheable cases (non-GET,
+  non-200, no ETag), transport and body failures, and concurrent use.
 - `handler`: build-status frames carry the mapped status; an initial snapshot
   then a new snapshot on change; heartbeats; `X-SCM-Token` required; `app-error`
   frames for pre-stream and mid-stream failures; the stream continues after a
