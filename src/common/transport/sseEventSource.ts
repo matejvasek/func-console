@@ -160,10 +160,16 @@ async function* readEventStream(
   body: ReadableStream<Uint8Array>,
 ): AsyncGenerator<{ type: string; data: string }> {
   const decoder = new TextDecoder();
+  // Not `for await (const value of body)`: async iteration over a
+  // ReadableStream only reached Safari in 27.
+  const reader = body.getReader();
   let buffer = '';
 
   try {
-    for await (const value of body) {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
       buffer += decoder.decode(value, { stream: true });
       let idx: number;
       while ((idx = buffer.indexOf('\n\n')) !== -1) {
@@ -174,7 +180,7 @@ async function* readEventStream(
       }
     }
   } finally {
-    body.cancel().catch(() => {});
+    reader.cancel().catch(() => {});
   }
 
   function deserializeFrame(frame: string): { type: string; data: string } | null {
