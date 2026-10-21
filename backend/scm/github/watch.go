@@ -55,15 +55,17 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFilename strin
 		// Carried forward when a per-repo poll fails transiently: a flaky GitHub
 		// error would otherwise reset the run to nil and flicker the status.
 		var prevRuns map[string]scm.WorkflowRun
+		var prevErr error
 
 		emit := func(runs map[string]scm.WorkflowRun, err error) {
 			// Skip emitting if the snapshot hasn't changed and there's no error.
-			if reflect.DeepEqual(runs, prevRuns) && err == nil {
+			if reflect.DeepEqual(runs, prevRuns) && errEqual(err, prevErr) {
 				return
 			}
 			select {
 			case ch <- scm.WorkflowRunsOrErr{Runs: runs, Err: err}:
 				prevRuns = runs
+				prevErr = err
 			case <-pollCtx.Done():
 			}
 		}
@@ -82,12 +84,12 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFilename strin
 				return
 			case <-rediscover.Chan():
 				latest, err := c.ListRepos(pollCtx)
+				emit(prevRuns, err)
 				if err != nil {
 					slog.Warn("watch workflow runs: rediscover failed", "err", err)
-					emit(prevRuns, err)
-					continue
+				} else {
+					repos = latest
 				}
-				repos = latest
 			case <-poll.Chan():
 				runs = c.pollRuns(pollCtx, repos, workflowFilename, prevRuns)
 				emit(runs, nil)
@@ -138,7 +140,7 @@ func (c *ghClient) pollRuns(ctx context.Context, repos []scm.Repo, workflowFilen
 				// reflect.DeepEqual(err1, err2) fails even when semantically the same.
 				// Reusing the instance lets dedup suppress redundant SSE events when
 				// a repo fails repeatedly with the same error (e.g., rate limit).
-				if stale.Error == nil || stale.Error.Error() != run.Error.Error() {
+				if !errEqual(stale.Error, run.Error) {
 					stale.Error = run.Error
 				}
 
@@ -210,4 +212,20 @@ func deriveBuildStatus(run *ghlib.WorkflowRun) scm.BuildStatus {
 func isNotFound(err error) bool {
 	var ghErr *ghlib.ErrorResponse
 	return errors.As(err, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusNotFound
+}
+
+// errEqual reports whether two errors describe the same failure, which is what
+// decides whether a repeat of it is worth another event. Every poll builds a
+// fresh instance, so neither == nor reflect.DeepEqual can answer that.
+//
+// errors.Is suffices because the go-github error types compare themselves
+// field by field and resolve the target with errors.As, so the comparison sees
+// past the fmt.Errorf wrapping this package adds on both sides. Majors before
+// v90 type-asserted the target instead, and would see only the wrapper.
+//
+// An error that never passed through the library, a dial failure say, carries
+// no Is of its own and will not match itself. That costs a duplicate event,
+// not a wrong one.
+func errEqual(x, y error) bool {
+	return errors.Is(x, y)
 }

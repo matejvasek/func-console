@@ -567,6 +567,59 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		}
 	})
 
+	It("rediscovery error is cleared", func() {
+		var listCallCount atomic.Int32
+		tickRediscovery, rediscoverFactory := ticker.CreateFakeTickerFactory()
+		cl := newWatchClientWithFactories(ticker.SilentTickerFactory(), rediscoverFactory, func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.URL.Path == "/user":
+				_ = json.NewEncoder(w).Encode(map[string]string{"login": "alice"})
+			case r.URL.Path == "/search/repositories":
+				if listCallCount.Add(1) == 3 {
+					w.WriteHeader(http.StatusServiceUnavailable)
+					_, _ = w.Write([]byte(`{"message": "temporary unavailable"}`))
+					return
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"total_count": 1,
+					"items":       []map[string]any{repoItem("alice", "fn", "main")},
+				})
+			case strings.Contains(r.URL.Path, "/actions/workflows/"):
+				writeRuns(w, map[string]any{"id": 1, "status": "in_progress"})
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		DeferCleanup(cancel)
+		w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(w.Stop)
+
+		go func() {
+			tickRediscovery()
+			tickRediscovery()
+			tickRediscovery()
+		}()
+
+		for range 2 {
+			select {
+			case runs := <-w.ResultChan():
+				_, _ = fmt.Fprintf(GinkgoWriter, "runs: %+v\n", runs)
+			case <-time.After(time.Second * 1):
+				Fail("timeout")
+			}
+		}
+
+		select {
+		case runs := <-w.ResultChan():
+			Expect(runs.Err).To(BeNil(), "the rediscovery error should have been cleared")
+		case <-time.After(time.Second * 1):
+			Fail("timeout")
+		}
+	})
+
 	DescribeTable("maps run status and conclusion to a build status",
 		func(status, conclusion string, expected scm.BuildStatus) {
 			cl := newWatchClientWithFactories(ticker.SilentTickerFactory(), ticker.SilentTickerFactory(),
