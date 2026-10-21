@@ -694,7 +694,7 @@ describe('FunctionsListPage', () => {
         expect(screen.getByText(/dep watch failed/)).toBeInTheDocument();
       });
 
-      it('shows build-in-progress indicator as primary status when the function is not yet deployed', async () => {
+      it('shows NotDeployed with build-in-progress indicator when the function is building', async () => {
         listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
         receiveWorkflowRunEventsStub({
           snapshot: { [`twoGiants/${funcName}`]: { status: 'Building' } },
@@ -706,9 +706,8 @@ describe('FunctionsListPage', () => {
           </MemoryRouter>,
         );
 
-        expect(await screen.findByText('Info: Building')).toBeInTheDocument();
+        expect(await screen.findByText('Info: NotDeployed')).toBeInTheDocument();
         expect(screen.getByLabelText('Workflow run in progress')).toBeInTheDocument();
-        expect(screen.queryByText('Info: NotDeployed')).not.toBeInTheDocument();
       });
 
       it('keeps Running with a build-in-progress indicator when the cluster is Running', async () => {
@@ -1008,7 +1007,7 @@ describe('FunctionsListPage', () => {
         expect(screen.getByLabelText('Workflow run in progress')).toBeInTheDocument();
       });
 
-      it('shows BuildFailed with a run link from the build stream', async () => {
+      it('shows NotDeployed with a build-failed indicator linking to the run', async () => {
         listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
         receiveWorkflowRunEventsStub({
           snapshot: {
@@ -1025,8 +1024,8 @@ describe('FunctionsListPage', () => {
           </MemoryRouter>,
         );
 
-        expect(await screen.findByText('Error: BuildFailed')).toBeInTheDocument();
-        expect(screen.getByRole('link', { name: 'Error: BuildFailed' })).toHaveAttribute(
+        expect(await screen.findByText('Info: NotDeployed')).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Latest workflow run failed' })).toHaveAttribute(
           'href',
           'https://github.com/twoGiants/my-func/actions/runs/1',
         );
@@ -1087,7 +1086,7 @@ describe('FunctionsListPage', () => {
         );
       });
 
-      it('transitions build status from NotDeployed -> Building -> Succeeded', async () => {
+      it('transitions NotDeployed -> Building -> Succeeded back to NotDeployed', async () => {
         using stream = new AsyncQueue<WorkflowRunStreamEvent>();
         listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
         receiveWorkflowRunEventsStub({ stream });
@@ -1108,11 +1107,10 @@ describe('FunctionsListPage', () => {
           runs: { [`twoGiants/${funcName}`]: { status: 'Building' } },
         });
 
-        // Should show building indicator as primary, replaces NotDeployed
+        // NotDeployed stays primary, spinner appears as secondary
         await waitFor(() => {
-          expect(screen.getByText('Info: Building')).toBeInTheDocument();
+          expect(screen.getByText('Info: NotDeployed')).toBeInTheDocument();
           expect(screen.getByLabelText('Workflow run in progress')).toBeInTheDocument();
-          expect(screen.queryByText('Info: NotDeployed')).not.toBeInTheDocument();
         });
 
         // Emit Succeeded status
@@ -1121,10 +1119,11 @@ describe('FunctionsListPage', () => {
           runs: { [`twoGiants/${funcName}`]: { status: 'Succeeded' } },
         });
 
-        // Succeeded on NotDeployed shows Deploying (build done, waiting for cluster)
+        // Succeeded: spinner gone, still NotDeployed. Deploying comes from
+        // the K8s watch when the ksvc appears.
         await waitFor(() => {
           expect(screen.queryByLabelText('Workflow run in progress')).not.toBeInTheDocument();
-          expect(screen.getByText('Info: Deploying')).toBeInTheDocument();
+          expect(screen.getByText('Info: NotDeployed')).toBeInTheDocument();
         });
       });
 

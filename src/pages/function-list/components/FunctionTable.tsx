@@ -118,30 +118,6 @@ function StatusCell({
     );
   }
 
-  // When not deployed, workflow status is the primary display
-  if (functionStatus.cluster.status === 'NotDeployed')
-    switch (functionStatus.workflow.status) {
-      case 'Building':
-        return (
-          <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapSm' }}>
-            <InfoStatus title={t('Building')} />
-            {inProgressSpinner()}
-          </Flex>
-        );
-      case 'Succeeded':
-        return <InfoStatus title={t('Deploying')} />;
-      case 'Failed': {
-        const workflowStatus = <ErrorStatus title={t('BuildFailed')} />;
-        return functionStatus.workflow.url ? (
-          <RunLink url={functionStatus.workflow.url}>{workflowStatus}</RunLink>
-        ) : (
-          workflowStatus
-        );
-      }
-      default:
-        return <InfoStatus title={t('NotDeployed')} />;
-    }
-
   const cluster = clusterStatus();
   const workflow = workflowStatus();
   return (
@@ -196,6 +172,8 @@ function StatusCell({
 
   function clusterStatus(): React.ReactNode {
     switch (functionStatus.cluster.status) {
+      case 'NotDeployed':
+        return <InfoStatus title={t('NotDeployed')} />;
       case 'Running':
         return <SuccessStatus title={t('Running')} />;
       case 'ScaledToZero':
