@@ -157,6 +157,30 @@ describe('FunctionEditPage', () => {
     });
   });
 
+  it('opens func.yaml when runtime is missing (broken func.yaml)', async () => {
+    sdkTestDoubles.setActiveNamespace('#ALL_NS#');
+    listFunctionsStub({
+      responses: [
+        {
+          owner: 'twoGiants',
+          repoName: 'my-func',
+          repoURL: '',
+          defaultBranch: 'main',
+          source: 'repo' as const,
+          error: 'invalid func.yaml',
+        },
+      ],
+    });
+    getFilesStub({ responses: fileEntries() });
+
+    renderEditPage('my-func');
+
+    await waitFor(() => {
+      const funcYamlItem = screen.getByText('func.yaml').closest('[role="treeitem"]');
+      expect(funcYamlItem).toHaveAttribute('aria-selected', 'true');
+    });
+  });
+
   it('navigates back without modal when no changes made', async () => {
     listFunctionsStub({ responses: [functionMetadata({ runtime: 'node' })] });
     getFilesStub({ responses: fileEntries() });

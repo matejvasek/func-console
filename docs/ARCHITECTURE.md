@@ -44,8 +44,9 @@ Arrows mean "imports / depends on."
 - `src/pages/<name>/` contains the page component, its test, and a `components/` subdir
 - `src/pages/<name>/components/` contains components used only by that page
 - `src/common/` contains everything shared across pages (components, clients, utils, context)
-- `src/pages/<name>/types.ts` contains types used only within that page's directory
-- **Ownership rule:** pages are divided into sections which are extracted into components in `pages/<name>/components/`. Components that have sub-components keep them in the same file unless they can be reused, in which case they are extracted to their own file. Components shared across multiple pages live in `common/components/`. The same rule applies to types: page-specific domain types live in `pages/<name>/types.ts`, shared wire/DTO types live in `common/types.ts`.
+- `src/common/types.ts` contains shared wire/DTO types (backend response shapes) and pure functions that derive from those types. Used across pages. No React, no side effects, no imports from components or hooks.
+- `src/pages/<name>/types.ts` contains types and pure functions that derive from those types. Used only within that page's directory. No React, no side effects, no imports from components or hooks.
+- **Ownership rule:** pages are divided into sections which are extracted into components in `pages/<name>/components/`. Components that have sub-components keep them in the same file unless they can be reused, in which case they are extracted to their own file. Components shared across multiple pages live in `common/components/`.
 
 ## React
 

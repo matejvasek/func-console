@@ -36,7 +36,7 @@ import {
   REVISION_LABEL,
   WorkflowRunRecord,
 } from '../../common/types';
-import { ClusterStatus, Function } from './types';
+import { ClusterStatus, Function, functionKey } from './types';
 import { errorMessage } from '../../common/utils/utils';
 import { FunctionsEmptyState } from './components/EmptyState';
 import { FunctionTable } from './components/FunctionTable';
@@ -179,6 +179,10 @@ function useFunctions(
   refreshing: boolean;
   errors?: string[];
 } {
+  // Source 1: function metadata list from the backend. Provides repo identity
+  // (owner, repoName), func.yaml fields (name, namespace, runtime), and
+  // repo-level errors (broken func.yaml). This is the foundation that cluster
+  // and workflow data enrich.
   const [functionMetadataList, setFunctionMetadataList] = useState<FunctionMetadata[]>([]);
   const [listLoaded, setListLoaded] = useState(false);
   const [listError, setListError] = useState<string>();
@@ -236,22 +240,27 @@ function useFunctions(
   const initialFunctions: Map<string, Function> = useMemo(() => {
     const result = new Map<string, Function>();
     functionMetadataList.forEach((item) => {
-      result.set(`${item.namespace}/${item.name}`, {
+      result.set(functionKey(item), {
         owner: item.owner,
         repoName: item.repoName,
-        runtime: item.runtime,
-        source: item.source,
         name: item.name,
         namespace: item.namespace,
+        runtime: item.runtime,
+        source: item.source,
         routeURL: '',
         status: { cluster: { status: 'NotDeployed' }, workflow: { status: 'None' } },
+        error: item.error,
       });
     });
     return result;
   }, [functionMetadataList]);
 
+  // Source 2: K8s watch for cluster resources (ksvc + deployments). Enriches
+  // functions with cluster status (Running, ScaledToZero, Error, etc.), route
+  // URL, replica count, and the ksvc as mainResource. Only healthy functions
+  // (with a name) participate in cluster matching.
   const functionNames = useMemo(
-    () => functionMetadataList.map((item) => item.name).filter(Boolean),
+    () => functionMetadataList.map((item) => item.name).filter((n): n is string => !!n),
     [functionMetadataList],
   );
 
@@ -269,6 +278,9 @@ function useFunctions(
     return withClusterData(initialFunctions, safeKnSvcs, safeDeps);
   }, [initialFunctions, knSvcs, knLoaded, deps, depLoaded]);
 
+  // Source 3: workflow status via SSE. Enriches functions with GitHub Actions
+  // build status (Building, Succeeded, Failed) streamed from the backend.
+  // Keyed by owner/repoName, so it works for both healthy and broken entries.
   const [workflowRuns, setWorkflowRuns] = useState<WorkflowRunRecord>({});
   const [receiveError, setReceiveError] = useState<string>();
 
@@ -288,6 +300,7 @@ function useFunctions(
     return () => close();
   }, [connectionId, refreshKey]);
 
+  // Compose the final function list from all three sources.
   const functions = useMemo(
     () => withWorkflowRunData(functionsWithClusterData, workflowRuns),
     [functionsWithClusterData, workflowRuns],

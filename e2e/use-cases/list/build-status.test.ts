@@ -35,17 +35,17 @@ test.describe('Build status', () => {
       });
     });
 
-    await test.step('navigate to functions list and verify Not deployed with build indicator', async () => {
+    await test.step('navigate to functions list and verify Building with build indicator', async () => {
       await navigateToFunctionsList(page);
       const grid = page.getByRole('grid', { name: 'Functions' });
       await expect(grid).toBeVisible({ timeout: 30_000 });
 
       const row = grid.locator(`tbody tr:has(td:text-is("${FUNC_NAME}"))`);
       await expect(row).toBeVisible();
-      // First-time creation shows Not deployed (primary) + build indicator (secondary)
-      await expect(row.getByText('Not deployed')).toBeVisible({ timeout: 20_000 });
+      // First-time creation shows Building (primary) + build indicator (secondary)
+      await expect(row.getByText('Building')).toBeVisible({ timeout: 20_000 });
       // Build activity indicator is a spinning icon with aria-label
-      await expect(row.getByRole('img', { name: /build in progress/i })).toBeVisible({
+      await expect(row.getByRole('img', { name: /workflow run in progress/i })).toBeVisible({
         timeout: 20_000,
       });
     });

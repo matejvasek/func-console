@@ -44,11 +44,11 @@ export interface FunctionMetadata {
   repoName: string;
   repoURL: string;
   defaultBranch: string;
-  name: string;
-  namespace: string;
-  runtime: string;
   source: FunctionSource;
-  err?: string;
+  name?: string;
+  namespace?: string;
+  runtime?: string;
+  error?: string;
 }
 
 export type FunctionSource = 'repo' | 'cluster';

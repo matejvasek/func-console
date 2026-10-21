@@ -856,10 +856,18 @@ describe('FunctionsListPage', () => {
         ).toHaveAttribute('href', 'https://github.com/twoGiants/my-func/actions/runs/1');
       });
 
-      it('shows BuildFailed for a repo-level error with no cluster resource', async () => {
+      it('shows Error primary with build-failed secondary for a repo-level error with a failed build', async () => {
+        sdkTestDoubles.setActiveNamespace('#ALL_NS#');
         listFunctionsStub({
           responses: [
-            { ...functionMetadata({ repoName: funcName }), err: 'cannot read func.yaml' },
+            {
+              owner: 'twoGiants',
+              repoName: funcName,
+              repoURL: '',
+              defaultBranch: 'main',
+              source: 'repo' as const,
+              error: 'cannot read func.yaml',
+            },
           ],
         });
         receiveWorkflowRunEventsStub({
@@ -877,11 +885,127 @@ describe('FunctionsListPage', () => {
           </MemoryRouter>,
         );
 
-        expect(await screen.findByText('Error: BuildFailed')).toBeInTheDocument();
-        expect(screen.getByRole('link', { name: 'Error: BuildFailed' })).toHaveAttribute(
+        // Repo error is primary
+        expect(await screen.findByText('Error: Error')).toBeInTheDocument();
+        // Build failure is secondary indicator
+        expect(screen.getByRole('link', { name: 'Latest workflow run failed' })).toHaveAttribute(
           'href',
           'https://github.com/twoGiants/my-func/actions/runs/1',
         );
+        // Name falls back to repoName
+        expect(screen.getByText(funcName)).toBeInTheDocument();
+      });
+
+      it('shows Error and falls back to repo name for broken func.yaml', async () => {
+        sdkTestDoubles.setActiveNamespace('#ALL_NS#');
+        listFunctionsStub({
+          responses: [
+            {
+              owner: 'twoGiants',
+              repoName: 'broken-repo',
+              repoURL: '',
+              defaultBranch: 'main',
+              source: 'repo' as const,
+              error: 'invalid func.yaml',
+            },
+          ],
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('broken-repo')).toBeInTheDocument();
+        expect(screen.getByText('Error: Error')).toBeInTheDocument();
+      });
+
+      it('renders both rows when a broken repo owner matches a healthy function namespace', async () => {
+        sdkTestDoubles.setActiveNamespace('#ALL_NS#');
+        listFunctionsStub({
+          responses: [
+            functionMetadata({ repoName: 'my-func', name: 'my-func', namespace: 'alice' }),
+            {
+              owner: 'alice',
+              repoName: 'my-func',
+              repoURL: '',
+              defaultBranch: 'main',
+              source: 'repo' as const,
+              error: 'invalid func.yaml',
+            },
+          ],
+        });
+        sdkTestDoubles.setWatchFixtures({
+          knSvcs: [sdkTestDoubles.ksvcFixture('my-func', 'True', 'alice')],
+          deps: [sdkTestDoubles.deploymentFixture('my-func', 1, 1, 'alice')],
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        // Both rows render: the healthy function shows Running, the broken one shows Error.
+        // Without the ~ key prefix, the broken entry would overwrite the healthy one.
+        expect(await screen.findByText('Success: Running')).toBeInTheDocument();
+        expect(screen.getByText('Error: Error')).toBeInTheDocument();
+        expect(screen.getAllByText('my-func')).toHaveLength(2);
+      });
+
+      it('shows Error with tooltip containing the error message', async () => {
+        sdkTestDoubles.setActiveNamespace('#ALL_NS#');
+        listFunctionsStub({
+          responses: [
+            {
+              owner: 'twoGiants',
+              repoName: 'broken-repo',
+              repoURL: '',
+              defaultBranch: 'main',
+              source: 'repo' as const,
+              error: 'invalid func.yaml',
+            },
+          ],
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Error: Error')).toBeInTheDocument();
+        await userEvent.setup().hover(screen.getByText('Error: Error'));
+        expect(await screen.findByRole('tooltip')).toHaveTextContent('invalid func.yaml');
+      });
+
+      it('shows Error primary with build-in-progress secondary for broken func.yaml with active build', async () => {
+        sdkTestDoubles.setActiveNamespace('#ALL_NS#');
+        listFunctionsStub({
+          responses: [
+            {
+              owner: 'twoGiants',
+              repoName: 'broken-repo',
+              repoURL: '',
+              defaultBranch: 'main',
+              source: 'repo' as const,
+              error: 'invalid func.yaml',
+            },
+          ],
+        });
+        receiveWorkflowRunEventsStub({
+          snapshot: { 'twoGiants/broken-repo': { status: 'Building' } },
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Error: Error')).toBeInTheDocument();
+        expect(screen.getByLabelText('Workflow run in progress')).toBeInTheDocument();
       });
 
       it('shows BuildFailed with a run link from the build stream', async () => {
@@ -1168,8 +1292,8 @@ describe('FunctionsListPage', () => {
         </MemoryRouter>,
       );
 
-      expect(await screen.findByText(salesFuncRepoItem.name)).toBeInTheDocument();
-      expect(screen.getByText(transcribeFuncRepoItem.name)).toBeInTheDocument();
+      expect(await screen.findByText(salesFuncRepoItem.name!)).toBeInTheDocument();
+      expect(screen.getByText(transcribeFuncRepoItem.name!)).toBeInTheDocument();
 
       // simulate transcribe func repo deletion
       listFunctionsStub({
@@ -1179,8 +1303,8 @@ describe('FunctionsListPage', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
 
       await waitFor(() => {
-        expect(screen.getByText(salesFuncRepoItem.name)).toBeInTheDocument();
-        expect(screen.queryByText(transcribeFuncRepoItem.name)).not.toBeInTheDocument();
+        expect(screen.getByText(salesFuncRepoItem.name!)).toBeInTheDocument();
+        expect(screen.queryByText(transcribeFuncRepoItem.name!)).not.toBeInTheDocument();
       });
     });
 

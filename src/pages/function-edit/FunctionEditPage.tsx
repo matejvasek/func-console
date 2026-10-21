@@ -25,7 +25,6 @@ import { getFiles, listFunctions, putFiles } from '../../common/clients/function
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthProvider } from '../../common/context/AuthProvider';
 import { FileEntry, FunctionMetadata } from '../../common/types';
-import { handlerMap } from '../../common/utils/utils';
 import { EditToolbar } from './components/EditToolbar';
 import { FileTreeView } from './components/FileTreeView';
 
@@ -180,7 +179,12 @@ function useFunctionEditPage(): FunctionEditPageState {
       setFiles(repo.content);
       setOriginalFiles(repo.content.map((f) => ({ ...f })));
       setRepoInfo(repo.info);
-      setSelectedPath(determineHandler(repo.content, repo.info.runtime));
+      setSelectedPath(
+        // If the runtime is missing there is likely a func.yaml parsing issue
+        // so we open the func.yaml that the user can fix it. Error handling
+        // with an alert will be added in a separate story.
+        repo.info.runtime ? determineHandler(repo.content, repo.info.runtime) : 'func.yaml',
+      );
       setIsLoading(false);
     }
 
@@ -288,6 +292,12 @@ async function resolveRepoContent(
 }
 
 function determineHandler(loadedFiles: FileEntry[], runtime: string): string {
+  const handlerMap: Record<string, string> = {
+    node: 'index.js',
+    python: 'function/func.py',
+    go: 'handle.go',
+    quarkus: 'src/main/java/functions/Function.java',
+  };
   const handlerPath = handlerMap[runtime];
   if (handlerPath && loadedFiles.find((f) => f.path === handlerPath)) return handlerPath;
   return '';

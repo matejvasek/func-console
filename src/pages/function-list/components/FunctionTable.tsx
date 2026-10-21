@@ -15,7 +15,7 @@ import {
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useTranslation } from 'react-i18next';
 import { FunctionSource } from '../../../common/types';
-import { Function, FunctionStatus } from '../types';
+import { Function, FunctionStatus, functionKey } from '../types';
 
 export function FunctionTable({
   functions,
@@ -49,8 +49,8 @@ export function FunctionTable({
       </Thead>
       <Tbody>
         {functions.map((fn) => (
-          <Tr key={`${fn.namespace}/${fn.name}`}>
-            <Td dataLabel={t('Name')}>{fn.name}</Td>
+          <Tr key={functionKey(fn)}>
+            <Td dataLabel={t('Name')}>{fn.name || fn.repoName}</Td>
             {showNamespace && (
               <Td dataLabel={t('Namespace')}>
                 <TextOrDash value={fn.namespace} />
@@ -60,7 +60,7 @@ export function FunctionTable({
               <TextOrDash value={fn.runtime} />
             </Td>
             <Td dataLabel={t('Status')}>
-              <StatusCell functionStatus={fn.status} />
+              <StatusCell functionStatus={fn.status} repoError={fn.error} />
             </Td>
             <Td dataLabel={t('URL')}>
               <UrlCell url={fn.routeURL} />
@@ -87,70 +87,84 @@ function TextOrDash({ value }: { value?: string }) {
   return <>{value || '—'}</>;
 }
 
-function StatusCell({ functionStatus }: { functionStatus: FunctionStatus }) {
+function StatusCell({
+  functionStatus,
+  repoError,
+}: {
+  functionStatus: FunctionStatus;
+  repoError?: string;
+}) {
   const { t } = useTranslation('plugin__console-functions-plugin');
 
-  const inProgress = (
-    <Tooltip content={t('Workflow run in progress')}>
-      <Icon role="img" aria-label={t('Workflow run in progress')}>
-        <RhUiSyncIcon className="co-spin" />
-      </Icon>
-    </Tooltip>
-  );
+  // Repo-level error (e.g. broken func.yaml): error is primary, workflow is secondary.
+  // Entries with error never have cluster data (no name to match against ksvc labels).
+  if (repoError) {
+    const repoErrorStatus = (
+      <Tooltip content={repoError}>
+        <span className="pf-v6-u-display-inline-flex">
+          <ErrorStatus title={t('Error')} />
+        </span>
+      </Tooltip>
+    );
+
+    const workflow = workflowStatus();
+    return workflow ? (
+      <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapSm' }}>
+        {repoErrorStatus}
+        {workflow}
+      </Flex>
+    ) : (
+      repoErrorStatus
+    );
+  }
 
   // When not deployed, workflow status is the primary display
-  if (functionStatus.cluster.status === 'NotDeployed') {
+  if (functionStatus.cluster.status === 'NotDeployed')
     switch (functionStatus.workflow.status) {
       case 'Building':
         return (
           <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapSm' }}>
             <InfoStatus title={t('Building')} />
-            {inProgress}
+            {inProgressSpinner()}
           </Flex>
         );
       case 'Succeeded':
         return <InfoStatus title={t('Deploying')} />;
       case 'Failed': {
-        const badge = <ErrorStatus title={t('BuildFailed')} />;
+        const workflowStatus = <ErrorStatus title={t('BuildFailed')} />;
         return functionStatus.workflow.url ? (
-          <RunLink url={functionStatus.workflow.url}>{badge}</RunLink>
+          <RunLink url={functionStatus.workflow.url}>{workflowStatus}</RunLink>
         ) : (
-          badge
+          workflowStatus
         );
       }
       default:
         return <InfoStatus title={t('NotDeployed')} />;
     }
-  }
 
-  const cluster = (() => {
-    switch (functionStatus.cluster.status) {
-      case 'Running':
-        return <SuccessStatus title={t('Running')} />;
-      case 'ScaledToZero':
-        return <InfoStatus title={t('ScaledToZero')} />;
-      case 'Deploying':
-        return <InfoStatus title={t('Deploying')} />;
-      case 'Undeploying':
-        return <InfoStatus title={t('Undeploying')} />;
-      case 'Error': {
-        const badge = <ErrorStatus title={t('Error')} />;
-        return functionStatus.cluster.error ? (
-          <Tooltip content={functionStatus.cluster.error.message}>{badge}</Tooltip>
-        ) : (
-          badge
-        );
-      }
-    }
-  })();
+  const cluster = clusterStatus();
+  const workflow = workflowStatus();
+  return (
+    <>
+      {!cluster && !workflow && <TextOrDash />}
+      {!cluster && workflow}
+      {cluster && !workflow && cluster}
+      {cluster && workflow && (
+        <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapSm' }}>
+          {cluster}
+          {workflow}
+        </Flex>
+      )}
+    </>
+  );
 
-  const workflow = (() => {
+  function workflowStatus(): React.ReactNode {
     switch (functionStatus.workflow.status) {
       case 'None':
       case 'Succeeded':
         return null;
       case 'Building':
-        return inProgress;
+        return inProgressSpinner();
       case 'Failed': {
         const icon = (
           <Icon status="danger">
@@ -168,21 +182,40 @@ function StatusCell({ functionStatus }: { functionStatus: FunctionStatus }) {
         );
       }
     }
-  })();
+  }
 
-  return (
-    <>
-      {!cluster && !workflow && <TextOrDash />}
-      {!cluster && workflow}
-      {cluster && !workflow && cluster}
-      {cluster && workflow && (
-        <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapSm' }}>
-          {cluster}
-          {workflow}
-        </Flex>
-      )}
-    </>
-  );
+  function inProgressSpinner() {
+    return (
+      <Tooltip content={t('Workflow run in progress')}>
+        <Icon role="img" aria-label={t('Workflow run in progress')}>
+          <RhUiSyncIcon className="co-spin" />
+        </Icon>
+      </Tooltip>
+    );
+  }
+
+  function clusterStatus(): React.ReactNode {
+    switch (functionStatus.cluster.status) {
+      case 'Running':
+        return <SuccessStatus title={t('Running')} />;
+      case 'ScaledToZero':
+        return <InfoStatus title={t('ScaledToZero')} />;
+      case 'Deploying':
+        return <InfoStatus title={t('Deploying')} />;
+      case 'Undeploying':
+        return <InfoStatus title={t('Undeploying')} />;
+      case 'Error': {
+        const status = <ErrorStatus title={t('Error')} />;
+        return functionStatus.cluster.error ? (
+          <Tooltip content={functionStatus.cluster.error.message}>
+            <span className="pf-v6-u-display-inline-flex">{status}</span>
+          </Tooltip>
+        ) : (
+          status
+        );
+      }
+    }
+  }
 }
 
 function RunLink({
