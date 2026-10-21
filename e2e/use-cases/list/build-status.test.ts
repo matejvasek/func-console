@@ -1,6 +1,7 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToFunctionsList } from '../../helpers/navigation';
 import { deleteRepoOnFakeGithub, seedRepo, setWorkflowRun } from '../../helpers/fakegithub';
+import { simulateGitHubActionsDeploy, deleteFunction } from '../../helpers/cluster';
 import { E2E_USER, PRESEEDED_FUNC_NAMESPACE } from '../../helpers/constants';
 
 const FUNC_NAME = 'build-status-func';
@@ -64,6 +65,72 @@ test.describe('Build status', () => {
       await expect(row.getByText('Not deployed')).toBeVisible({ timeout: 20_000 });
       const runLink = row.locator('a[href*="/actions/runs/"]');
       await expect(runLink).toBeVisible();
+    });
+  });
+
+  test('clears build indicator after a successful run', async ({ page }) => {
+    await test.step('script an in-progress run', async () => {
+      await setWorkflowRun(E2E_USER, FUNC_NAME, BRANCH, {
+        headSha: 'sha-building',
+        status: 'in_progress',
+      });
+    });
+
+    await test.step('navigate and verify spinner is visible', async () => {
+      await navigateToFunctionsList(page);
+      const grid = page.getByRole('grid', { name: 'Functions' });
+      await expect(grid).toBeVisible({ timeout: 30_000 });
+
+      const row = grid.locator(`tbody tr:has(td:text-is("${FUNC_NAME}"))`);
+      await expect(row.getByRole('img', { name: /workflow run in progress/i })).toBeVisible({
+        timeout: 20_000,
+      });
+    });
+
+    await test.step('script a successful run and verify spinner disappears', async () => {
+      await setWorkflowRun(E2E_USER, FUNC_NAME, BRANCH, {
+        headSha: 'sha-success',
+        status: 'completed',
+        conclusion: 'success',
+      });
+
+      const grid = page.getByRole('grid', { name: 'Functions' });
+      const row = grid.locator(`tbody tr:has(td:text-is("${FUNC_NAME}"))`);
+      // Spinner disappears, NotDeployed remains (no stale Deploying)
+      await expect(row.getByRole('img', { name: /workflow run in progress/i })).not.toBeVisible({
+        timeout: 20_000,
+      });
+      await expect(row.getByText('Not deployed')).toBeVisible();
+    });
+  });
+
+  test('shows Running with failure indicator when a rebuild fails', async ({ page }) => {
+    await test.step('deploy the function to the cluster', async () => {
+      await simulateGitHubActionsDeploy(page, FUNC_NAME, PRESEEDED_FUNC_NAMESPACE, 'node');
+    });
+
+    await test.step('script a failed rebuild', async () => {
+      await setWorkflowRun(E2E_USER, FUNC_NAME, BRANCH, {
+        headSha: 'sha-rebuild-failed',
+        status: 'completed',
+        conclusion: 'failure',
+      });
+    });
+
+    await test.step('verify Running stays primary with failure indicator', async () => {
+      await navigateToFunctionsList(page);
+      const grid = page.getByRole('grid', { name: 'Functions' });
+      await expect(grid).toBeVisible({ timeout: 30_000 });
+
+      const row = grid.locator(`tbody tr:has(td:text-is("${FUNC_NAME}"))`);
+      // Running is preserved (non-destructive); failure is a secondary indicator
+      await expect(row.getByText('Running')).toBeVisible({ timeout: 20_000 });
+      const runLink = row.locator('a[href*="/actions/runs/"]');
+      await expect(runLink).toBeVisible({ timeout: 20_000 });
+    });
+
+    await test.step('cleanup cluster resource', async () => {
+      await deleteFunction(page, FUNC_NAME, PRESEEDED_FUNC_NAMESPACE);
     });
   });
 });
