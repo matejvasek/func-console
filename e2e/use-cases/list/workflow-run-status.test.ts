@@ -4,10 +4,10 @@ import { deleteRepoOnFakeGithub, seedRepo, setWorkflowRun } from '../../helpers/
 import { simulateGitHubActionsDeploy, deleteFunction } from '../../helpers/cluster';
 import { E2E_USER, PRESEEDED_FUNC_NAMESPACE } from '../../helpers/constants';
 
-const FUNC_NAME = 'build-status-func';
+const FUNC_NAME = 'workflow-status-func';
 const BRANCH = 'main';
 
-test.describe('Build status', () => {
+test.describe('Workflow run status', () => {
   test.beforeEach(async () => {
     await seedRepo(
       E2E_USER,
@@ -28,29 +28,29 @@ test.describe('Build status', () => {
     await deleteRepoOnFakeGithub(E2E_USER, FUNC_NAME);
   });
 
-  test('reflects an in-progress run then a failure over SSE', async ({ page }) => {
-    await test.step('script an in-progress run', async () => {
+  test('shows a workflow failure indicator when the deploy workflow fails', async ({ page }) => {
+    await test.step('trigger a workflow run', async () => {
       await setWorkflowRun(E2E_USER, FUNC_NAME, BRANCH, {
-        headSha: 'sha-building',
+        headSha: 'sha-in-progress',
         status: 'in_progress',
       });
     });
 
-    await test.step('navigate to functions list and verify Not deployed with build indicator', async () => {
+    await test.step('verify the function shows a progress indicator', async () => {
       await navigateToFunctionsList(page);
       const grid = page.getByRole('grid', { name: 'Functions' });
       await expect(grid).toBeVisible({ timeout: 30_000 });
 
       const row = grid.locator(`tbody tr:has(td:text-is("${FUNC_NAME}"))`);
       await expect(row).toBeVisible();
-      // NotDeployed is always primary; build activity is a secondary indicator
+      // NotDeployed is always primary; workflow activity is a secondary indicator
       await expect(row.getByText('Not deployed')).toBeVisible({ timeout: 20_000 });
       await expect(row.getByRole('img', { name: /workflow run in progress/i })).toBeVisible({
         timeout: 20_000,
       });
     });
 
-    await test.step('script a failing run and verify failure indicator over SSE', async () => {
+    await test.step('verify the failure indicator appears after the workflow fails', async () => {
       // The list streams over SSE (~3s poll cadence), so the status should update
       // without a manual refresh.
       await setWorkflowRun(E2E_USER, FUNC_NAME, BRANCH, {
@@ -68,15 +68,15 @@ test.describe('Build status', () => {
     });
   });
 
-  test('clears build indicator after a successful run', async ({ page }) => {
-    await test.step('script an in-progress run', async () => {
+  test('clears the progress indicator after the workflow succeeds', async ({ page }) => {
+    await test.step('trigger a workflow run', async () => {
       await setWorkflowRun(E2E_USER, FUNC_NAME, BRANCH, {
-        headSha: 'sha-building',
+        headSha: 'sha-in-progress',
         status: 'in_progress',
       });
     });
 
-    await test.step('navigate and verify spinner is visible', async () => {
+    await test.step('verify the progress indicator is visible', async () => {
       await navigateToFunctionsList(page);
       const grid = page.getByRole('grid', { name: 'Functions' });
       await expect(grid).toBeVisible({ timeout: 30_000 });
@@ -87,7 +87,7 @@ test.describe('Build status', () => {
       });
     });
 
-    await test.step('script a successful run and verify spinner disappears', async () => {
+    await test.step('verify the indicator disappears after the workflow succeeds', async () => {
       await setWorkflowRun(E2E_USER, FUNC_NAME, BRANCH, {
         headSha: 'sha-success',
         status: 'completed',
@@ -104,20 +104,20 @@ test.describe('Build status', () => {
     });
   });
 
-  test('shows Running with failure indicator when a rebuild fails', async ({ page }) => {
+  test('preserves running status when a redeployment workflow fails', async ({ page }) => {
     await test.step('deploy the function to the cluster', async () => {
       await simulateGitHubActionsDeploy(page, FUNC_NAME, PRESEEDED_FUNC_NAMESPACE, 'node');
     });
 
-    await test.step('script a failed rebuild', async () => {
+    await test.step('fail a redeployment workflow', async () => {
       await setWorkflowRun(E2E_USER, FUNC_NAME, BRANCH, {
-        headSha: 'sha-rebuild-failed',
+        headSha: 'sha-redeploy-failed',
         status: 'completed',
         conclusion: 'failure',
       });
     });
 
-    await test.step('verify Running stays primary with failure indicator', async () => {
+    await test.step('verify the function is still running with a failure indicator', async () => {
       await navigateToFunctionsList(page);
       const grid = page.getByRole('grid', { name: 'Functions' });
       await expect(grid).toBeVisible({ timeout: 30_000 });
@@ -129,7 +129,7 @@ test.describe('Build status', () => {
       await expect(runLink).toBeVisible({ timeout: 20_000 });
     });
 
-    await test.step('cleanup cluster resource', async () => {
+    await test.step('cleanup', async () => {
       await deleteFunction(page, FUNC_NAME, PRESEEDED_FUNC_NAMESPACE);
     });
   });
