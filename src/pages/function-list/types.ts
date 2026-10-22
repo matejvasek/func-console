@@ -3,11 +3,11 @@ import { ClusterError } from '../../common/errors';
 import { FunctionSource, WorkflowRun } from '../../common/types';
 
 export interface Function {
-  readonly owner: string;
-  readonly repoName: string;
+  readonly owner?: string;
+  readonly repoName?: string;
   readonly source: FunctionSource;
   readonly status: FunctionStatus;
-  readonly routeURL: string;
+  readonly routeURL?: string;
   readonly name?: string;
   readonly namespace?: string;
   readonly runtime?: string;

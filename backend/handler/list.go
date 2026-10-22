@@ -26,10 +26,10 @@ const (
 )
 
 type listItem struct {
-	Owner         string         `json:"owner"`
-	RepoName      string         `json:"repoName"`
-	RepoURL       string         `json:"repoURL"`
-	DefaultBranch string         `json:"defaultBranch"`
+	Owner         string         `json:"owner,omitempty"`
+	RepoName      string         `json:"repoName,omitempty"`
+	RepoURL       string         `json:"repoURL,omitempty"`
+	DefaultBranch string         `json:"defaultBranch,omitempty"`
 	Name          string         `json:"name,omitempty"`
 	Namespace     string         `json:"namespace,omitempty"`
 	Runtime       string         `json:"runtime,omitempty"`

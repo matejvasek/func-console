@@ -247,7 +247,6 @@ function useFunctions(
         namespace: item.namespace,
         runtime: item.runtime,
         source: item.source,
-        routeURL: '',
         status: { cluster: { status: 'NotDeployed' }, workflow: { status: 'None' } },
         error: item.error,
       });
@@ -362,18 +361,36 @@ function withClusterData(
     const deployment = latestRevision
       ? nsDeployments.find((d) => d.metadata?.labels?.[REVISION_LABEL] === latestRevision)
       : nsDeployments.find((d) => d.metadata?.labels?.[FUNCTION_NAME_LABEL] === name);
-
-    const fn = result.get(key)!;
-    result.set(key, {
-      ...fn,
-      status: {
-        cluster: deriveClusterStatus(ksvc, deployment),
-        workflow: fn.status.workflow,
-      },
-      routeURL: ksvc.status?.url ?? '',
+    const common = {
+      routeURL: ksvc.status?.url || undefined,
       replicas: deployment?.status?.readyReplicas ?? 0,
       mainResource: ksvc,
-    });
+    };
+
+    const fn = result.get(key);
+    const value = fn
+      ? {
+          ...fn,
+          ...common,
+          status: {
+            cluster: deriveClusterStatus(ksvc, deployment),
+            workflow: fn.status.workflow,
+          },
+        }
+      : // A ksvc with a matching function name appeared in the watch without a
+        // metadata entry (e.g. deployed to another namespace via CLI while the
+        // page was open). Create a cluster-only entry.
+        {
+          ...common,
+          name,
+          namespace,
+          source: 'cluster' as const,
+          status: {
+            cluster: deriveClusterStatus(ksvc, deployment),
+            workflow: { status: 'None' as const },
+          },
+        };
+    result.set(key, value);
   });
 
   return result;
@@ -418,6 +435,8 @@ function withWorkflowRunData(
 ): Map<string, Function> {
   const result = new Map(functions);
   result.forEach((fn, key) => {
+    // cluster-only functions have no workflow run
+    if (!fn.owner || !fn.repoName) return;
     const workflowRun = workflowRuns[`${fn.owner}/${fn.repoName}`];
     if (workflowRun)
       result.set(key, {

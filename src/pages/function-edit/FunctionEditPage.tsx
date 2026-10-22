@@ -219,11 +219,11 @@ function useFunctionEditPage(): FunctionEditPageState {
   const saveFiles = async () => {
     if (!repoInfo) return;
     await putFiles(
-      repoInfo.owner,
-      repoInfo.repoName,
+      repoInfo.owner!,
+      repoInfo.repoName!,
       [...files, ...deletedFiles],
       'Update function files',
-      repoInfo.defaultBranch,
+      repoInfo.defaultBranch!,
     );
     setOriginalFiles(files.map((f) => ({ ...f })));
   };
@@ -286,7 +286,7 @@ async function resolveRepoContent(
   if (!item) throw new Error(`repository ${repoName} not found`);
 
   return {
-    content: await getFiles(item.owner, item.repoName),
+    content: await getFiles(item.owner!, item.repoName!),
     info: item,
   };
 }

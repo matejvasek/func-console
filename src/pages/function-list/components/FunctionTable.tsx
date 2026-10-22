@@ -147,15 +147,14 @@ function StatusCell({
             <ExclamationTriangleIcon />
           </Icon>
         );
-        return functionStatus.workflow.url ? (
-          <Tooltip content={t('Latest workflow run failed')}>
-            <RunLink url={functionStatus.workflow.url} ariaLabel={t('Latest workflow run failed')}>
-              {icon}
-            </RunLink>
-          </Tooltip>
+        const content = functionStatus.workflow.url ? (
+          <RunLink url={functionStatus.workflow.url} ariaLabel={t('Latest workflow run failed')}>
+            {icon}
+          </RunLink>
         ) : (
-          <Tooltip content={t('Latest workflow run failed')}>{icon}</Tooltip>
+          icon
         );
+        return <Tooltip content={t('Latest workflow run failed')}>{content}</Tooltip>;
       }
     }
   }
@@ -229,7 +228,7 @@ function EditActionButton({
   onEdit,
 }: {
   source: FunctionSource;
-  repoName: string;
+  repoName?: string;
   onEdit: (name: string) => void;
 }) {
   const { t } = useTranslation('plugin__console-functions-plugin');
@@ -245,14 +244,16 @@ function EditActionButton({
       // is dispatched
       isAriaDisabled={isDisabled}
       onClick={() => {
-        if (!isDisabled) onEdit(repoName);
+        if (!isDisabled && repoName) onEdit(repoName);
       }}
     />
   );
 
-  if (!isDisabled) return button;
-
-  return <Tooltip content={t('No source repository to edit')}>{button}</Tooltip>;
+  return isDisabled ? (
+    <Tooltip content={t('No source repository to edit')}>{button}</Tooltip>
+  ) : (
+    button
+  );
 }
 
 function DeleteActionButton({ mainResource }: { mainResource?: K8sResourceCommon }) {

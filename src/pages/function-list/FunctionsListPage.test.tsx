@@ -642,6 +642,57 @@ describe('FunctionsListPage', () => {
         expect(rowB).toHaveTextContent('Success: Running');
       });
 
+      it('creates a cluster-only entry for a ksvc without a metadata entry', async () => {
+        sdkTestDoubles.setActiveNamespace('#ALL_NS#');
+        listFunctionsStub({
+          responses: [functionMetadata({ repoName: 'hello', name: 'hello', namespace: 'dev' })],
+        });
+        // The watch returns a ksvc in prod that shares the same function name
+        // but has no metadata entry (e.g. deployed via CLI while the page was open).
+        sdkTestDoubles.setWatchFixtures({
+          knSvcs: [
+            sdkTestDoubles.ksvcFixture('hello', 'True', 'dev'),
+            sdkTestDoubles.ksvcFixture('hello', 'True', 'prod'),
+          ],
+          deps: [
+            sdkTestDoubles.deploymentFixture('hello', 1, 1, 'dev'),
+            sdkTestDoubles.deploymentFixture('hello', 1, 1, 'prod'),
+          ],
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        // Both functions render: dev from metadata, prod as a cluster-only entry
+        expect(await screen.findAllByText('hello')).toHaveLength(2);
+        expect(screen.getAllByText('Success: Running')).toHaveLength(2);
+      });
+
+      it('cluster-only functions are not enriched with workflow data', async () => {
+        // Cluster-only functions have no GitHub repo, so there is no workflow
+        // to watch. The SSE stream keys by owner/repoName, which a cluster-only
+        // function doesn't have. Workflow enrichment skips these entries.
+        listFunctionsStub({
+          responses: [{ name: 'cluster-func', namespace: 'demo', source: 'cluster' as const }],
+        });
+        sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture('cluster-func'));
+        receiveWorkflowRunEventsStub({
+          snapshot: { 'someone/some-repo': { status: 'Building' } },
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Success: Running')).toBeInTheDocument();
+        expect(screen.queryByLabelText('Workflow run in progress')).not.toBeInTheDocument();
+      });
+
       it('shows empty route URL when ksvc has no status url', async () => {
         listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
         const ksvc = sdkTestDoubles.ksvcFixture(funcName, 'True');

@@ -40,10 +40,10 @@ export interface AuthUser {
 }
 
 export interface FunctionMetadata {
-  owner: string;
-  repoName: string;
-  repoURL: string;
-  defaultBranch: string;
+  owner?: string;
+  repoName?: string;
+  repoURL?: string;
+  defaultBranch?: string;
   source: FunctionSource;
   name?: string;
   namespace?: string;
