@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/nodejs-24:latest@sha256:36af0bcb31021be93b0aab49e3ebcbbe07326496a550cface3294634fe7e6433 AS nodebuilder
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/nodejs-24:latest@sha256:ecdcc047222dc57edbdd07879a54b97d7ff9232d740d608e188b41315b5462de AS nodebuilder
 USER root
 
 WORKDIR /usr/src/app
@@ -13,7 +13,7 @@ COPY locales/ locales/
 COPY config/ config/
 RUN if [ -f /cachi2/cachi2.env ]; then . /cachi2/cachi2.env; fi && node .yarn/releases/yarn-*.cjs build
 
-FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.26.7-1791479310@sha256:6f246e8913d082df463b62a74c72f0d2b410583e1b2ac48add39cd7ede59ce62 AS gobuilder
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.26.10-1792592174@sha256:d4d25f236c2b3cd27eb407e3b3478bef0b75d644ee6d11772217f537be926b11 AS gobuilder
 ARG TARGETOS TARGETARCH
 ENV GOOS=$TARGETOS GOARCH=$TARGETARCH
 ENV GOFIPS140=v1.0.0
@@ -28,7 +28,7 @@ COPY --chown=1001:0 backend/ backend/
 RUN if [ -f /cachi2/cachi2.env ]; then . /cachi2/cachi2.env; fi && \
     mkdir -p bin && CGO_ENABLED=0 go -C backend build -ldflags="-s -w" -o ../bin/plugin-backend .
 
-FROM registry.access.redhat.com/ubi9-micro:latest@sha256:7a0454cbd9bd847e8f6a63b6f0254a6efbeb6e0ed71a5d824a4f6cccbe626650
+FROM registry.access.redhat.com/ubi9-micro:latest@sha256:5be877a2a280ae36eb9ab80ca4efb28bbf77c57abbba38137cdc37a03b8465e6
 COPY --from=gobuilder /opt/app-root/src/bin/plugin-backend /usr/bin/plugin-backend
 COPY --from=gobuilder /etc/pki/tls/certs/ca-bundle.crt /etc/pki/tls/certs/ca-bundle.crt
 USER 1001

@@ -1004,6 +1004,32 @@ describe('FunctionsListPage', () => {
         expect(screen.getAllByText('my-func')).toHaveLength(2);
       });
 
+      it('renders a single row when a repo error leaves the func.yaml name intact', async () => {
+        // The backend reports a namespace error (SRVOCF-1092) on a function
+        // whose func.yaml parsed fine, so the entry keeps its name and still
+        // has to match its cluster counterpart instead of duplicating it.
+        listFunctionsStub({
+          responses: [
+            functionMetadata({ repoName: 'my-repo', name: funcName, error: 'namespace not found' }),
+          ],
+        });
+        sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        // Repo error stays primary, cluster status is not shown alongside it
+        expect(await screen.findByText('Error: Error')).toBeInTheDocument();
+        expect(screen.queryByText('Success: Running')).not.toBeInTheDocument();
+        expect(screen.getAllByText(funcName)).toHaveLength(1);
+
+        await userEvent.setup().hover(screen.getByText('Error: Error'));
+        expect(await screen.findByRole('tooltip')).toHaveTextContent('namespace not found');
+      });
+
       it('shows Error with tooltip containing the error message', async () => {
         sdkTestDoubles.setActiveNamespace('#ALL_NS#');
         listFunctionsStub({

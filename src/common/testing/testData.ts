@@ -5,11 +5,13 @@ export function functionMetadata({
   name = repoName,
   namespace = 'demo',
   runtime = 'go',
+  error,
 }: {
   repoName?: string;
   name?: string;
   namespace?: string;
   runtime?: string;
+  error?: string;
 } = {}): FunctionMetadata {
   return {
     owner: 'twoGiants',
@@ -20,5 +22,6 @@ export function functionMetadata({
     namespace,
     runtime,
     source: 'repo',
+    error,
   };
 }
