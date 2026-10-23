@@ -62,6 +62,8 @@ Shared test infrastructure lives in `src/common/testing/`:
 | `sdkTestDoubles.tsx` | Stubs for OCP SDK hooks: `useK8sWatchResourceStub`, `useActiveNamespaceStub`, fixture builders (`ksvcFixture`, `deploymentFixture`) |
 | `functionsClientStub.ts` | MSW handlers for the backend API (`listFunctionsStub`, `getFilesStub`, `putFilesStub`) |
 | `testData.ts` | Test data factories for shared test fixtures (`functionMetadata`) |
+| `timerFake.ts` | Disposable fake timer wrapper with `advance()` for controlled time progression |
+| `AsyncQueue.ts` | Async iterable queue for streaming test stubs (SSE event sequences) |
 | `mswServer.ts` | MSW server with default backend API handlers (auth user, function list) |
 | `authFake.ts` | Session storage helpers to simulate GitHub authentication (`authenticateGithubFake`, `logoutGithubFake`) |
 | `constants.ts` | Shared test constants (`BACKEND_API` base URL) |
