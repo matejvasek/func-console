@@ -61,7 +61,7 @@ Shared test infrastructure lives in `src/common/testing/`:
 | ------ | --------- |
 | `sdkTestDoubles.tsx` | Stubs for OCP SDK hooks: `useK8sWatchResourceStub`, `useActiveNamespaceStub`, fixture builders (`ksvcFixture`, `deploymentFixture`) |
 | `functionsClientStub.ts` | MSW handlers for the backend API (`listFunctionsStub`, `getFilesStub`, `putFilesStub`) |
-| `testData.ts` | Test data factories for shared test fixtures (`repoListItem`) |
+| `testData.ts` | Test data factories for shared test fixtures (`functionMetadata`) |
 | `mswServer.ts` | MSW server with default backend API handlers (auth user, function list) |
 | `authFake.ts` | Session storage helpers to simulate GitHub authentication (`authenticateGithubFake`, `logoutGithubFake`) |
 | `constants.ts` | Shared test constants (`BACKEND_API` base URL) |
@@ -72,7 +72,7 @@ Tests replace external dependencies at two boundaries using test doubles:
 
 **Backend API (MSW).** `functionsClient.ts` calls the Go backend over HTTP. MSW intercepts these requests at the network level, so tests exercise the real client code (URL construction, query params, error handling) without replacing it. Test doubles are set up per test via helpers in `src/common/testing/functionsClientStub.ts`.
 
-**OCP SDK (test doubles via `vi.mock`).** The OCP dynamic plugin SDK provides hooks like `useK8sWatchResource` and `useActiveNamespace` that only work inside the console shell. Tests replace them with self-written stubs from `src/common/testing/sdkTestDoubles.tsx`, injected through `vi.mock('@openshift-console/dynamic-plugin-sdk')`. The stubs accept raw K8s resource fixtures (Knative Services, Deployments) and let the real hooks (e.g., `useCluster`) derive status, replicas, and URL. This catches shape mismatches at test time instead of hiding them behind pre-computed return values.
+**OCP SDK (test doubles via `vi.mock`).** The OCP dynamic plugin SDK provides hooks like `useK8sWatchResource` and `useActiveNamespace` that only work inside the console shell. Tests replace them with self-written stubs from `src/common/testing/sdkTestDoubles.tsx`, injected through `vi.mock('@openshift-console/dynamic-plugin-sdk')`. The stubs accept raw K8s resource fixtures (Knative Services, Deployments) and let the real hooks derive cluster status, replicas, and URL. This catches shape mismatches at test time instead of hiding them behind pre-computed return values.
 
 `vi.mock` is also used for framework internals that have no external service and cannot run outside their host environment:
 
@@ -98,7 +98,7 @@ Tests replace external dependencies at two boundaries using test doubles:
    ```typescript
    it('shows NotDeployed status for repos without cluster deployment', async () => {
      // Arrange
-     listFunctionsStub({ responses: [repoListItem({ repoName: 'orphan-func', name: 'orphan-func', namespace: 'demo', runtime: 'node' })] });
+     listFunctionsStub({ responses: [functionMetadata({ repoName: 'orphan-func', name: 'orphan-func', namespace: 'demo', runtime: 'node' })] });
 
      // Act
      render(
@@ -117,10 +117,10 @@ Tests replace external dependencies at two boundaries using test doubles:
 7. **Hook tests use `renderHook`** — Test hooks directly with `renderHook` from `@testing-library/react`. Assert on `result.current` instead of rendering a consumer component and querying the DOM.
 
    ```typescript
-   const { result } = renderHook(() => useCluster([funcName], namespace));
+   const { result } = renderHook(() => usePagination(items, pageSize));
 
-   expect(result.current.loaded).toBe(true);
-   expect(result.current.functions.size).toBe(0);
+   expect(result.current.page).toBe(1);
+   expect(result.current.visibleItems).toHaveLength(pageSize);
    ```
 
 8. **`server.boundary()` for infinite delays** — When a test uses `delay('infinite')` to verify loading states, wrap the test in `server.boundary()`. This scopes MSW handlers to the test and prevents in-flight requests from leaking across test boundaries (`resetHandlers()` alone does not abort in-flight requests).
