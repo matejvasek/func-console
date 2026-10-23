@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { authenticateGithubFake, logoutGithubFake } from '../../common/testing/authFake';
+import { timerFake } from '../../common/testing/timerFake';
 import {
   getFilesStub,
   listFunctionsStub,
@@ -433,7 +434,7 @@ describe('FunctionEditPage', () => {
   });
 
   it('shows success message after save and hides it after 2 seconds', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+    using timer = timerFake();
     listFunctionsStub({ responses: [functionMetadata({ runtime: 'node' })] });
     getFilesStub({ responses: fileEntries() });
     putFilesStub();
@@ -454,15 +455,11 @@ describe('FunctionEditPage', () => {
       ).toBeInTheDocument();
     });
 
-    await act(async () => {
-      vi.advanceTimersByTime(3000);
-    });
+    await act(() => timer.advance(3000));
 
     expect(
       screen.queryByText('Pushed to GitHub. Build and deploy workflow run initiated.'),
     ).not.toBeInTheDocument();
-
-    vi.useRealTimers();
   });
 
   it('deletes a file from the tree when Delete File is clicked', async () => {
