@@ -1,10 +1,11 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes, useParams } from 'react-router';
 import { authenticateGithubFake, logoutGithubFake } from '../../common/testing/authFake';
 import { listFunctionsStub } from '../../common/testing/functionsClientStub';
+import { server } from '../../common/testing/mswServer';
 import { functionMetadata } from '../../common/testing/testData';
-import { FunctionMetadata } from '../../common/types';
+import { FUNCTION_NAME_LABEL, FunctionMetadata } from '../../common/types';
 import FunctionsListPage from './FunctionsListPage';
 
 // vi.mock is hoisted above imports, so regular imports aren't available in the factory.
@@ -16,35 +17,25 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('@openshift-console/dynamic-plugin-sdk', async () => {
-  const consoleFetchJSON = async (url: string, _method?: string, options?: RequestInit) => {
-    const res = await fetch(new URL(url, 'http://localhost').href, options);
-    const json = await res.json();
-    if (!res.ok) throw json;
-    return json;
-  };
-
-  return {
-    NamespaceBar: () => null,
-    DocumentTitle: ({ children }: { children: string }) => children,
-    ListPageHeader: ({ title, children }: { title: string; children?: React.ReactNode }) => (
-      <>
-        {title}
-        {children}
-      </>
-    ),
-    consoleFetchJSON,
-    SuccessStatus: ({ title }: { title: string }) => `Success: ${title}`,
-    ProgressStatus: ({ title }: { title: string }) => `Progress: ${title}`,
-    ErrorStatus: ({ title }: { title: string }) => `Error: ${title}`,
-    InfoStatus: ({ title }: { title: string }) => `Info: ${title}`,
-    StatusIconAndText: ({ title }: { title: string }) => `Warning: ${title}`,
-    useDeleteModal: () => () => {},
-    useK8sWatchResource: sdkTestDoubles.useK8sWatchResourceStub,
-    useActiveNamespace: sdkTestDoubles.useActiveNamespaceStub,
-    isAllNamespacesKey: sdkTestDoubles.isAllNamespaceKeyFake,
-  };
-});
+vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
+  NamespaceBar: () => null,
+  DocumentTitle: ({ children }: { children: string }) => children,
+  ListPageHeader: ({ title, children }: { title: string; children?: React.ReactNode }) => (
+    <>
+      {title}
+      {children}
+    </>
+  ),
+  consoleFetchJSON: sdkTestDoubles.consoleFetchJSONFake,
+  SuccessStatus: ({ title }: { title: string }) => <span>Success: {title}</span>,
+  ErrorStatus: ({ title }: { title: string }) => <span>Error: {title}</span>,
+  InfoStatus: ({ title }: { title: string }) => <span>Info: {title}</span>,
+  StatusIconAndText: ({ title }: { title: string }) => <span>Warning: {title}</span>,
+  useDeleteModal: sdkTestDoubles.useDeleteModalStub,
+  useK8sWatchResource: sdkTestDoubles.useK8sWatchResourceStub,
+  useActiveNamespace: sdkTestDoubles.useActiveNamespaceStub,
+  isAllNamespacesKey: sdkTestDoubles.isAllNamespaceKeyFake,
+}));
 
 describe('FunctionsListPage', () => {
   const funcName = 'my-func';
@@ -55,6 +46,7 @@ describe('FunctionsListPage', () => {
   });
 
   afterEach(() => {
+    server.resetHandlers();
     act(() => sdkTestDoubles.reset());
   });
 
@@ -62,286 +54,768 @@ describe('FunctionsListPage', () => {
     logoutGithubFake();
   });
 
-  it('renders a spinner while loading', () => {
-    listFunctionsStub();
-    sdkTestDoubles.setWatchFixtures({ knLoaded: false, depLoaded: false });
+  describe('Visible page elements and loading states', () => {
+    it('renders a spinner while loading', () => {
+      listFunctionsStub();
+      sdkTestDoubles.setWatchFixtures({ knLoaded: false, depLoaded: false });
 
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
+      render(
+        <MemoryRouter>
+          <FunctionsListPage />
+        </MemoryRouter>,
+      );
 
-    expect(screen.getByRole('progressbar')).toBeInTheDocument();
-  });
-
-  it('renders the empty state when loaded with no functions', async () => {
-    listFunctionsStub();
-
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByRole('heading', { name: 'No functions found' })).toBeInTheDocument();
-  });
-
-  it('renders table when functions are loaded', async () => {
-    listFunctionsStub({ responses: [functionMetadata({ repoName: funcName, name: funcName })] });
-    sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
-
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByText(funcName)).toBeInTheDocument();
-  });
-
-  it('shows cluster-only functions that have no discoverable repo', async () => {
-    const funcName = 'cluster-only';
-    listFunctionsStub({ responses: [clusterListItem(funcName)] });
-    sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
-
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByText(funcName)).toBeInTheDocument();
-  });
-
-  it('shows NotDeployed status for repos without cluster deployment', async () => {
-    listFunctionsStub({
-      responses: [
-        functionMetadata({ repoName: 'orphan-func', name: 'orphan-func', runtime: 'node' }),
-      ],
+      expect(screen.getByRole('progressbar')).toBeInTheDocument();
     });
 
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
+    it('renders the empty state when loaded with no functions', async () => {
+      listFunctionsStub();
 
-    expect(await screen.findByText('Info: NotDeployed')).toBeInTheDocument();
-  });
+      render(
+        <MemoryRouter>
+          <FunctionsListPage />
+        </MemoryRouter>,
+      );
 
-  it('shows error alert when listing functions fails', async () => {
-    listFunctionsStub({ errorResponse: { message: 'Bad credentials', status: 401 } });
-
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByText(/Bad credentials/)).toBeInTheDocument();
-  });
-
-  it('renders empty state when API fails', async () => {
-    listFunctionsStub({ errorResponse: { message: 'Requires authentication', status: 401 } });
-
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByRole('heading', { name: 'No functions found' })).toBeInTheDocument();
-  });
-
-  it('does not call backend API when not authenticated', async () => {
-    logoutGithubFake();
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
-
-    expect(
-      await screen.findByRole('heading', { name: 'No functions found', hidden: true }),
-    ).toBeInTheDocument();
-  });
-
-  it('renders UserAvatar in header', () => {
-    listFunctionsStub();
-
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByText('twoGiants')).toBeInTheDocument();
-  });
-
-  it('renders the setup guide button in the list description', async () => {
-    listFunctionsStub({ responses: [functionMetadata({ repoName: funcName, name: funcName })] });
-
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByRole('button', { name: 'View setup guide.' })).toBeInTheDocument();
-  });
-
-  it('shows repo and cluster-only functions together in a union list', async () => {
-    listFunctionsStub({
-      responses: [
-        functionMetadata({ repoName: 'repo-func', name: 'repo-func' }),
-        clusterListItem('cluster-func'),
-      ],
-    });
-    sdkTestDoubles.setWatchFixtures({
-      knSvcs: [
-        sdkTestDoubles.ksvcFixture('repo-func', 'True'),
-        sdkTestDoubles.ksvcFixture('cluster-func', 'True'),
-      ],
-      deps: [
-        sdkTestDoubles.deploymentFixture('repo-func', 1, 1),
-        sdkTestDoubles.deploymentFixture('cluster-func', 1, 1),
-      ],
+      expect(
+        await screen.findByRole('heading', { name: 'No functions found' }),
+      ).toBeInTheDocument();
     });
 
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
+    it('renders table when functions are loaded', async () => {
+      listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+      sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
 
-    expect(await screen.findByText('repo-func')).toBeInTheDocument();
-    expect(screen.getByText('cluster-func')).toBeInTheDocument();
-  });
+      render(
+        <MemoryRouter>
+          <FunctionsListPage />
+        </MemoryRouter>,
+      );
 
-  it('disables Edit button for cluster-only functions', async () => {
-    listFunctionsStub({ responses: [clusterListItem('cluster-func')] });
-    sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture('cluster-func'));
-
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByText('cluster-func')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Edit' })).toHaveAttribute('aria-disabled', 'true');
-  });
-
-  it('empty state receives hint and isCreateDisabled when not authenticated', async () => {
-    logoutGithubFake();
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
-
-    expect(
-      await screen.findByRole('heading', { name: 'No functions found', hidden: true }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Create function', hidden: true })).toBeDisabled();
-  });
-
-  it('enriches function with status, replicas, and URL from ClusterFunction', async () => {
-    listFunctionsStub({ responses: [functionMetadata({ repoName: funcName, name: funcName })] });
-    sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
-
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByText('Success: Running')).toBeInTheDocument();
-    expect(screen.getByText('1')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'my-func-demo' })).toHaveAttribute(
-      'href',
-      'https://my-func-demo.apps.example.com',
-    );
-  });
-
-  it('shows ScaledToZero status and 0 replicas from ClusterFunction', async () => {
-    listFunctionsStub({ responses: [functionMetadata({ repoName: funcName, name: funcName })] });
-    sdkTestDoubles.setWatchFixtures({
-      knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')],
-      deps: [sdkTestDoubles.deploymentFixture(funcName, 0, 0)],
+      expect(await screen.findByText(funcName)).toBeInTheDocument();
     });
 
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
+    it('renders UserAvatar in header', () => {
+      listFunctionsStub();
 
-    expect(await screen.findByText('Info: ScaledToZero')).toBeInTheDocument();
-    expect(screen.getByText('0')).toBeInTheDocument();
-  });
+      render(
+        <MemoryRouter>
+          <FunctionsListPage />
+        </MemoryRouter>,
+      );
 
-  it('shows Deploying status from ClusterFunction', async () => {
-    listFunctionsStub({ responses: [functionMetadata({ repoName: funcName, name: funcName })] });
-    sdkTestDoubles.setWatchFixtures({ knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')] });
-
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByText('Progress: Deploying')).toBeInTheDocument();
-  });
-
-  it('shows Error status from ClusterFunction', async () => {
-    listFunctionsStub({ responses: [functionMetadata({ repoName: funcName, name: funcName })] });
-    sdkTestDoubles.setWatchFixtures({
-      knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'False')],
-      deps: [sdkTestDoubles.deploymentFixture(funcName, 0, 0)],
+      expect(screen.getByText('twoGiants')).toBeInTheDocument();
     });
 
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
+    it('renders the setup guide button in the list description', async () => {
+      listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
 
-    expect(await screen.findByText('Error: Error')).toBeInTheDocument();
+      render(
+        <MemoryRouter>
+          <FunctionsListPage />
+        </MemoryRouter>,
+      );
+
+      expect(await screen.findByRole('button', { name: 'View setup guide.' })).toBeInTheDocument();
+    });
   });
 
-  it('shows the error message as a tooltip on the Error status for repo functions with a non-existent namespace', async () => {
-    const user = userEvent.setup();
-    const errMsg = 'namespace does not exist';
-    listFunctionsStub({
-      responses: [functionMetadata({ repoName: 'my-repo', name: funcName, error: errMsg })],
+  describe('Auth and general error', () => {
+    it('renders empty state when API fails', async () => {
+      listFunctionsStub({ errorResponse: { message: 'Requires authentication', status: 401 } });
+
+      render(
+        <MemoryRouter>
+          <FunctionsListPage />
+        </MemoryRouter>,
+      );
+
+      expect(
+        await screen.findByRole('heading', { name: 'No functions found' }),
+      ).toBeInTheDocument();
     });
 
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
+    it('does not call backend API when not authenticated', async () => {
+      logoutGithubFake();
+      render(
+        <MemoryRouter>
+          <FunctionsListPage />
+        </MemoryRouter>,
+      );
 
-    expect(await screen.findByText('Error: Error')).toBeInTheDocument();
-    await user.hover(screen.getByText('Error: Error'));
-    expect(await screen.findByText(errMsg)).toBeInTheDocument();
+      expect(
+        await screen.findByRole('heading', { name: 'No functions found', hidden: true }),
+      ).toBeInTheDocument();
+    });
+
+    it('empty state receives hint and isCreateDisabled when not authenticated', async () => {
+      logoutGithubFake();
+      render(
+        <MemoryRouter>
+          <FunctionsListPage />
+        </MemoryRouter>,
+      );
+
+      expect(
+        await screen.findByRole('heading', { name: 'No functions found', hidden: true }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Create function', hidden: true })).toBeDisabled();
+    });
+
+    it('shows error alert when listing functions fails', async () => {
+      listFunctionsStub({ errorResponse: { message: 'Bad credentials', status: 401 } });
+
+      render(
+        <MemoryRouter>
+          <FunctionsListPage />
+        </MemoryRouter>,
+      );
+
+      expect(await screen.findByText(/Bad credentials/)).toBeInTheDocument();
+    });
+
+    it('resets functions when user reconnects', async () => {
+      listFunctionsStub({ responses: [functionMetadata({ repoName: 'fn-a' })] });
+
+      render(
+        <MemoryRouter>
+          <FunctionsListPage />
+        </MemoryRouter>,
+      );
+
+      expect(await screen.findByText('fn-a')).toBeInTheDocument();
+
+      listFunctionsStub({ responses: [functionMetadata({ repoName: 'fn-b', name: 'fn-b' })] });
+
+      // Click avatar to open PAT modal
+      await userEvent.setup().click(screen.getByRole('button', { name: 'twoGiants' }));
+
+      // Enter PAT and submit
+      await userEvent.setup().type(screen.getByLabelText('Personal Access Token'), 'ghp_new');
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Connect' }));
+
+      await waitFor(() => {
+        expect(screen.getByText('fn-b')).toBeInTheDocument();
+        expect(screen.queryByText('fn-a')).not.toBeInTheDocument();
+      });
+    });
   });
 
-  it('uses func.yaml name instead of repo name for cluster matching', async () => {
-    listFunctionsStub({
-      responses: [functionMetadata({ repoName: 'my-repo', name: funcName, runtime: 'node' })],
-    });
-    sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
+  describe('Functions table', () => {
+    describe('Listing', () => {
+      it('shows repo and cluster-only functions together in a union list', async () => {
+        listFunctionsStub({
+          responses: [
+            functionMetadata({ repoName: 'repo-func' }),
+            clusterFunctionMetadata('cluster-func'),
+          ],
+        });
+        sdkTestDoubles.setWatchFixtures({
+          knSvcs: [
+            sdkTestDoubles.ksvcFixture('repo-func', 'True'),
+            sdkTestDoubles.ksvcFixture('cluster-func', 'True'),
+          ],
+          deps: [
+            sdkTestDoubles.deploymentFixture('repo-func', 1, 1),
+            sdkTestDoubles.deploymentFixture('cluster-func', 1, 1),
+          ],
+        });
 
-    expect(await screen.findByText(funcName)).toBeInTheDocument();
-    expect(screen.getByText('Success: Running')).toBeInTheDocument();
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('repo-func')).toBeInTheDocument();
+        expect(screen.getByText('cluster-func')).toBeInTheDocument();
+      });
+
+      it('shows cluster-only functions that have no discoverable repo', async () => {
+        const funcName = 'cluster-only';
+        listFunctionsStub({ responses: [clusterFunctionMetadata(funcName)] });
+        sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText(funcName)).toBeInTheDocument();
+      });
+
+      it('disables edit button for cluster-only functions', async () => {
+        listFunctionsStub({ responses: [clusterFunctionMetadata('cluster-func')] });
+        sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture('cluster-func'));
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('cluster-func')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Edit' })).toHaveAttribute(
+          'aria-disabled',
+          'true',
+        );
+      });
+
+      it('shows dash for URL and Replicas for repo functions which are not deployed yet', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Info: NotDeployed')).toBeInTheDocument();
+        const row = screen.getByText(funcName).closest('tr')!;
+        expect(row.querySelector('[data-label="URL"]')).toHaveTextContent('—');
+        expect(row.querySelector('[data-label="Replicas"]')).toHaveTextContent('—');
+      });
+
+      it('enriches function with status, replicas, and routeURL from cluster data', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Success: Running')).toBeInTheDocument();
+        expect(screen.getByText('1')).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'my-func-demo' })).toHaveAttribute(
+          'href',
+          'https://my-func-demo.apps.example.com',
+        );
+      });
+
+      // Repo name is 'my-repo' but func.yaml name is 'my-func'. The ksvc is
+      // labeled with the func.yaml name. Proves matching uses the function name,
+      // not the repo name.
+      it('uses func.yaml name instead of repo name for cluster matching', async () => {
+        listFunctionsStub({
+          responses: [
+            functionMetadata({
+              repoName: 'my-repo',
+              name: funcName,
+              namespace: 'demo',
+              runtime: 'node',
+            }),
+          ],
+        });
+        sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText(funcName)).toBeInTheDocument();
+        expect(screen.getByText('Success: Running')).toBeInTheDocument();
+      });
+
+      it('shows dash for runtime when runtime is empty', async () => {
+        listFunctionsStub({ responses: [clusterFunctionMetadata('cluster-func', 'demo', '')] });
+        sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture('cluster-func'));
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('cluster-func')).toBeInTheDocument();
+        const row = screen.getByText('cluster-func').closest('tr')!;
+        expect(row.querySelector('[data-label="Runtime"]')).toHaveTextContent('—');
+      });
+
+      it('hides namespace column in single-namespace view', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText(funcName)).toBeInTheDocument();
+        expect(screen.queryByText('Namespace')).not.toBeInTheDocument();
+      });
+    });
+
+    describe('Actions', () => {
+      it('navigates to edit page using repoName, not display name', async () => {
+        listFunctionsStub({
+          responses: [functionMetadata({ repoName: 'my-repo', name: 'my-display-name' })],
+        });
+        sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture('my-display-name'));
+
+        const EditPage = () => {
+          const { name } = useParams();
+          return <div>Editing: {name}</div>;
+        };
+
+        render(
+          <MemoryRouter>
+            <Routes>
+              <Route path="/" element={<FunctionsListPage />} />
+              <Route path="/faas/edit/:name" element={<EditPage />} />
+            </Routes>
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('my-display-name')).toBeInTheDocument();
+        await userEvent.setup().click(screen.getByRole('button', { name: 'Edit' }));
+        expect(screen.getByText('Editing: my-repo')).toBeInTheDocument();
+      });
+
+      it('edit button is disabled for cluster-only functions', async () => {
+        listFunctionsStub({ responses: [clusterFunctionMetadata('cluster-func')] });
+        sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture('cluster-func'));
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('cluster-func')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Edit' })).toHaveAttribute(
+          'aria-disabled',
+          'true',
+        );
+      });
+
+      it('explains why edit is disabled on hover for cluster-only functions', async () => {
+        listFunctionsStub({ responses: [clusterFunctionMetadata('cluster-func')] });
+        sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture('cluster-func'));
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('cluster-func')).toBeInTheDocument();
+        await userEvent.setup().hover(screen.getByRole('button', { name: 'Edit' }));
+        expect(await screen.findByText('No source repository to edit')).toBeInTheDocument();
+      });
+
+      it('disables delete button for functions without a cluster resource', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText(funcName)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
+      });
+
+      it('launches undeploy modal when delete button is clicked', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText(funcName)).toBeInTheDocument();
+        await userEvent.setup().click(screen.getByRole('button', { name: 'Delete' }));
+        expect(screen.getByRole('dialog')).toHaveTextContent('Undeploy');
+      });
+    });
+
+    describe('Status column', () => {
+      it('shows NotDeployed status for repos without cluster deployment', async () => {
+        listFunctionsStub({
+          responses: [
+            functionMetadata({
+              repoName: 'orphan-func',
+              name: 'orphan-func',
+              namespace: 'demo',
+              runtime: 'node',
+            }),
+          ],
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Info: NotDeployed')).toBeInTheDocument();
+      });
+
+      it('shows ScaledToZero status and 0 replicas for a deployment with 0 desired and ready replicas', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        sdkTestDoubles.setWatchFixtures({
+          knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')],
+          deps: [sdkTestDoubles.deploymentFixture(funcName, 0, 0)],
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Info: ScaledToZero')).toBeInTheDocument();
+        expect(screen.getByText('0')).toBeInTheDocument();
+      });
+
+      it('shows Deploying status when there is a ksvc but no deployment yet', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        sdkTestDoubles.setWatchFixtures({ knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')] });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Info: Deploying')).toBeInTheDocument();
+      });
+
+      it('shows Error status with error message tooltip when the ready condition is false', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        sdkTestDoubles.setWatchFixtures({
+          knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'False')],
+          deps: [sdkTestDoubles.deploymentFixture(funcName, 0, 0)],
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Error: Error')).toBeInTheDocument();
+        await userEvent.setup().hover(screen.getByText('Error: Error'));
+        expect(await screen.findByRole('tooltip')).toHaveTextContent(
+          'Deployment error. Reason: Unknown.',
+        );
+      });
+
+      it('shows Deploying when Ready condition is Unknown', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        sdkTestDoubles.setWatchFixtures({
+          knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'Unknown')],
+          deps: [sdkTestDoubles.deploymentFixture(funcName, 1, 0)],
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Info: Deploying')).toBeInTheDocument();
+      });
+
+      it('shows Deploying when no Ready condition exists', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        const ksvc = sdkTestDoubles.ksvcFixture(funcName, 'True');
+        ksvc.status!.conditions[0].type = 'ConfigurationsReady';
+        sdkTestDoubles.setWatchFixtures({
+          knSvcs: [ksvc],
+          deps: [sdkTestDoubles.deploymentFixture(funcName, 1, 1)],
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Info: Deploying')).toBeInTheDocument();
+      });
+
+      it('falls back to function name label when no latestReadyRevisionName', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        const fixture = sdkTestDoubles.funcFixture(funcName);
+        fixture.knSvcs![0].status!.latestReadyRevisionName = undefined;
+        fixture.deps![0].metadata!.labels = { [FUNCTION_NAME_LABEL]: funcName };
+        sdkTestDoubles.setWatchFixtures(fixture);
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Success: Running')).toBeInTheDocument();
+      });
+
+      it('picks latest revision deployment when multiple revisions exist', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        const ksvc = sdkTestDoubles.ksvcFixture(funcName, 'True');
+        ksvc.status!.latestReadyRevisionName = 'my-func-00002';
+        sdkTestDoubles.setWatchFixtures({
+          knSvcs: [ksvc],
+          deps: [
+            sdkTestDoubles.deploymentFixture(funcName, 0, 0, 'demo', 'my-func-00001'),
+            sdkTestDoubles.deploymentFixture(funcName, 2, 2, 'demo', 'my-func-00002'),
+          ],
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Success: Running')).toBeInTheDocument();
+        expect(screen.getByText('2')).toBeInTheDocument();
+      });
+
+      it('does not match deployments from a different namespace', async () => {
+        sdkTestDoubles.setActiveNamespace('#ALL_NS#');
+        listFunctionsStub({
+          responses: [
+            functionMetadata({ repoName: 'shared-func', name: 'shared-func', namespace: 'ns-a' }),
+            functionMetadata({ repoName: 'shared-func', name: 'shared-func', namespace: 'ns-b' }),
+          ],
+        });
+        const sharedRevision = 'shared-func-00001';
+        const ksvcA = sdkTestDoubles.ksvcFixture('shared-func', 'True', 'ns-a');
+        ksvcA.status!.latestReadyRevisionName = sharedRevision;
+        const ksvcB = sdkTestDoubles.ksvcFixture('shared-func', 'True', 'ns-b');
+        ksvcB.status!.latestReadyRevisionName = sharedRevision;
+        const depB = sdkTestDoubles.deploymentFixture('shared-func', 1, 1, 'ns-b', sharedRevision);
+        sdkTestDoubles.setWatchFixtures({ knSvcs: [ksvcA, ksvcB], deps: [depB] });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findAllByText('shared-func')).toHaveLength(2);
+        const rows = screen.getAllByText('shared-func').map((el) => el.closest('tr')!);
+        const rowA = rows.find((r) => r.textContent?.includes('ns-a'))!;
+        const rowB = rows.find((r) => r.textContent?.includes('ns-b'))!;
+        expect(rowA).toHaveTextContent('Info: Deploying');
+        expect(rowB).toHaveTextContent('Success: Running');
+      });
+
+      it('creates a cluster-only entry for a ksvc without a metadata entry', async () => {
+        sdkTestDoubles.setActiveNamespace('#ALL_NS#');
+        listFunctionsStub({
+          responses: [functionMetadata({ repoName: 'hello', name: 'hello', namespace: 'dev' })],
+        });
+        // The watch returns a ksvc in prod that shares the same function name
+        // but has no metadata entry (e.g. deployed via CLI while the page was open).
+        sdkTestDoubles.setWatchFixtures({
+          knSvcs: [
+            sdkTestDoubles.ksvcFixture('hello', 'True', 'dev'),
+            sdkTestDoubles.ksvcFixture('hello', 'True', 'prod'),
+          ],
+          deps: [
+            sdkTestDoubles.deploymentFixture('hello', 1, 1, 'dev'),
+            sdkTestDoubles.deploymentFixture('hello', 1, 1, 'prod'),
+          ],
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        // Both functions render: dev from metadata, prod as a cluster-only entry
+        expect(await screen.findAllByText('hello')).toHaveLength(2);
+        expect(screen.getAllByText('Success: Running')).toHaveLength(2);
+      });
+
+      it('shows empty route URL when ksvc has no status url', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        const ksvc = sdkTestDoubles.ksvcFixture(funcName, 'True');
+        ksvc.status = {};
+        sdkTestDoubles.setWatchFixtures({ knSvcs: [ksvc] });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText(funcName)).toBeInTheDocument();
+        const row = screen.getByText(funcName).closest('tr')!;
+        expect(row.querySelector('[data-label="URL"]')).toHaveTextContent('—');
+      });
+
+      it('shows Undeploying when ksvc has a deletionTimestamp', async () => {
+        const ksvc = sdkTestDoubles.ksvcFixture(funcName, 'True');
+        ksvc.metadata!.deletionTimestamp = '2026-10-10T12:00:00Z';
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        sdkTestDoubles.setWatchFixtures({
+          knSvcs: [ksvc],
+          deps: [sdkTestDoubles.deploymentFixture(funcName, 1, 1)],
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Info: Undeploying')).toBeInTheDocument();
+      });
+
+      it('surfaces K8s watch errors', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        sdkTestDoubles.setWatchFixtures({
+          knError: new Error('ksvc watch failed'),
+          depError: new Error('dep watch failed'),
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText(/ksvc watch failed/)).toBeInTheDocument();
+        expect(screen.getByText(/dep watch failed/)).toBeInTheDocument();
+      });
+
+      it('shows Error and falls back to repo name for broken func.yaml', async () => {
+        sdkTestDoubles.setActiveNamespace('#ALL_NS#');
+        listFunctionsStub({
+          responses: [
+            {
+              owner: 'twoGiants',
+              repoName: 'broken-repo',
+              repoURL: '',
+              defaultBranch: 'main',
+              source: 'repo' as const,
+              error: 'invalid func.yaml',
+            },
+          ],
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('broken-repo')).toBeInTheDocument();
+        expect(screen.getByText('Error: Error')).toBeInTheDocument();
+      });
+
+      it('renders both rows when a broken repo owner matches a healthy function namespace', async () => {
+        sdkTestDoubles.setActiveNamespace('#ALL_NS#');
+        listFunctionsStub({
+          responses: [
+            functionMetadata({ repoName: 'my-func', name: 'my-func', namespace: 'alice' }),
+            {
+              owner: 'alice',
+              repoName: 'my-func',
+              repoURL: '',
+              defaultBranch: 'main',
+              source: 'repo' as const,
+              error: 'invalid func.yaml',
+            },
+          ],
+        });
+        sdkTestDoubles.setWatchFixtures({
+          knSvcs: [sdkTestDoubles.ksvcFixture('my-func', 'True', 'alice')],
+          deps: [sdkTestDoubles.deploymentFixture('my-func', 1, 1, 'alice')],
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        // Both rows render: the healthy function shows Running, the broken one shows Error.
+        // Without the ~ key prefix, the broken entry would overwrite the healthy one.
+        expect(await screen.findByText('Success: Running')).toBeInTheDocument();
+        expect(screen.getByText('Error: Error')).toBeInTheDocument();
+        expect(screen.getAllByText('my-func')).toHaveLength(2);
+      });
+
+      it('renders a single row when a repo error leaves the func.yaml name intact', async () => {
+        // The backend reports a namespace error (SRVOCF-1092) on a function
+        // whose func.yaml parsed fine, so the entry keeps its name and still
+        // has to match its cluster counterpart instead of duplicating it.
+        listFunctionsStub({
+          responses: [
+            functionMetadata({ repoName: 'my-repo', name: funcName, error: 'namespace not found' }),
+          ],
+        });
+        sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        // Repo error stays primary, cluster status is not shown alongside it
+        expect(await screen.findByText('Error: Error')).toBeInTheDocument();
+        expect(screen.queryByText('Success: Running')).not.toBeInTheDocument();
+        expect(screen.getAllByText(funcName)).toHaveLength(1);
+
+        await userEvent.setup().hover(screen.getByText('Error: Error'));
+        expect(await screen.findByRole('tooltip')).toHaveTextContent('namespace not found');
+      });
+
+      it('shows Error with tooltip containing the error message', async () => {
+        sdkTestDoubles.setActiveNamespace('#ALL_NS#');
+        listFunctionsStub({
+          responses: [
+            {
+              owner: 'twoGiants',
+              repoName: 'broken-repo',
+              repoURL: '',
+              defaultBranch: 'main',
+              source: 'repo' as const,
+              error: 'invalid func.yaml',
+            },
+          ],
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Error: Error')).toBeInTheDocument();
+        await userEvent.setup().hover(screen.getByText('Error: Error'));
+        expect(await screen.findByRole('tooltip')).toHaveTextContent('invalid func.yaml');
+      });
+
+      it('shows the delete button as enabled when ksvc exists', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText(funcName)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled();
+      });
+    });
   });
 
   describe('Refresh button behaviour', () => {
@@ -349,10 +823,14 @@ describe('FunctionsListPage', () => {
       const salesFuncRepoItem = functionMetadata({
         repoName: 'sales-aggregator',
         name: 'sales-aggregator',
+        namespace: 'demo',
+        runtime: 'go',
       });
       const transcribeFuncRepoItem = functionMetadata({
         repoName: 'transcriber',
         name: 'transcriber',
+        namespace: 'demo',
+        runtime: 'go',
       });
 
       listFunctionsStub({
@@ -382,7 +860,7 @@ describe('FunctionsListPage', () => {
     });
 
     it('does not show spinner on refresh button during initial page load', async () => {
-      listFunctionsStub({ responses: [functionMetadata({ repoName: funcName, name: funcName })] });
+      listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
 
       render(
         <MemoryRouter>
@@ -397,7 +875,7 @@ describe('FunctionsListPage', () => {
 
     it('shows spinner on refresh button only while a button-triggered refresh is in flight', async () => {
       listFunctionsStub({
-        responses: [functionMetadata({ repoName: 'fn-a', name: 'fn-a' })],
+        responses: [functionMetadata({ repoName: 'fn-a' })],
       });
 
       render(
@@ -412,20 +890,94 @@ describe('FunctionsListPage', () => {
       // verify that the spinner is gone
       let continueWithRequest = () => {};
       listFunctionsStub({
-        responses: [functionMetadata({ repoName: 'fn-a', name: 'fn-a' })],
+        responses: [functionMetadata({ repoName: 'fn-a' })],
         wait: new Promise<void>((r) => {
           continueWithRequest = r;
         }),
       });
 
-      const refreshBtn = screen.getByRole('button', { name: 'Refresh' });
-
-      await userEvent.click(refreshBtn);
-      expect(refreshBtn.querySelector('[role="progressbar"]')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+      await waitFor(() => {
+        const btn = screen.getByRole('button', { name: 'Refresh' });
+        expect(btn.querySelector('[role="progressbar"]')).toBeInTheDocument();
+      });
 
       continueWithRequest();
       await waitFor(() => {
-        expect(refreshBtn.querySelector('[role="progressbar"]')).not.toBeInTheDocument();
+        const btn = screen.getByRole('button', { name: 'Refresh' });
+        expect(btn.querySelector('[role="progressbar"]')).not.toBeInTheDocument();
+      });
+    });
+
+    it('keeps the table visible during refresh instead of showing the page spinner', async () => {
+      listFunctionsStub({ responses: [functionMetadata({ repoName: 'fn-a' })] });
+
+      render(
+        <MemoryRouter>
+          <FunctionsListPage />
+        </MemoryRouter>,
+      );
+
+      expect(await screen.findByText('fn-a')).toBeInTheDocument();
+
+      let continueWithRequest = () => {};
+      listFunctionsStub({
+        responses: [functionMetadata({ repoName: 'fn-a' })],
+        wait: new Promise<void>((r) => {
+          continueWithRequest = r;
+        }),
+      });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+
+      await waitFor(() => {
+        // Table row stays visible during refresh
+        expect(screen.getByText('fn-a')).toBeInTheDocument();
+        // Page spinner does not appear
+        expect(screen.queryByRole('progressbar', { name: 'Loading' })).not.toBeInTheDocument();
+      });
+
+      continueWithRequest();
+    });
+
+    it('shows the button spinner on a second refresh after the first one completed', async () => {
+      listFunctionsStub({ responses: [functionMetadata({ repoName: 'fn-a' })] });
+
+      render(
+        <MemoryRouter>
+          <FunctionsListPage />
+        </MemoryRouter>,
+      );
+
+      expect(await screen.findByText('fn-a')).toBeInTheDocument();
+
+      // First refresh: completes immediately
+      listFunctionsStub({ responses: [functionMetadata({ repoName: 'fn-a' })] });
+      await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+      await waitFor(() => {
+        const btn = screen.getByRole('button', { name: 'Refresh' });
+        expect(btn.querySelector('[role="progressbar"]')).not.toBeInTheDocument();
+      });
+
+      // Second refresh: blocked
+      let continueWithRequest = () => {};
+      listFunctionsStub({
+        responses: [functionMetadata({ repoName: 'fn-a' })],
+        wait: new Promise<void>((r) => {
+          continueWithRequest = r;
+        }),
+      });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+      await waitFor(() => {
+        const btn = screen.getByRole('button', { name: 'Refresh' });
+        expect(btn.querySelector('[role="progressbar"]')).toBeInTheDocument();
+      });
+
+      continueWithRequest();
+      await waitFor(() => {
+        const btn = screen.getByRole('button', { name: 'Refresh' });
+        expect(btn.querySelector('[role="progressbar"]')).not.toBeInTheDocument();
       });
     });
   });
@@ -450,8 +1002,8 @@ describe('FunctionsListPage', () => {
 
       listFunctionsStub({
         responses: [
-          clusterListItem(salesFuncName, devNamespace),
-          clusterListItem(transcriberFuncName, prodNamespace),
+          clusterFunctionMetadata(salesFuncName, devNamespace),
+          clusterFunctionMetadata(transcriberFuncName, prodNamespace),
         ],
       });
     });
@@ -522,7 +1074,7 @@ describe('FunctionsListPage', () => {
 
       let continueWithRequest = () => {};
       listFunctionsStub({
-        responses: [clusterListItem(transcriberFuncName, prodNamespace)],
+        responses: [clusterFunctionMetadata(transcriberFuncName, prodNamespace)],
         wait: new Promise<void>((r) => {
           continueWithRequest = r;
         }),
@@ -567,9 +1119,15 @@ describe('FunctionsListPage', () => {
 });
 
 // -----------------------------------------------------------------------------
-// Test data factories ---------------------------------------------------------
+// Testing framework -----------------------------------------------------------
 // -----------------------------------------------------------------------------
-function clusterListItem(name: string, namespace = 'demo', runtime = 'node'): FunctionMetadata {
+
+// Test data factories ---------------------------------------------------------
+function clusterFunctionMetadata(
+  name: string,
+  namespace = 'demo',
+  runtime = 'node',
+): FunctionMetadata {
   return {
     owner: '',
     repoName: '',

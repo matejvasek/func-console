@@ -2,36 +2,22 @@ import {
   ErrorStatus,
   InfoStatus,
   K8sResourceCommon,
-  ProgressStatus,
-  StatusIconAndText,
   SuccessStatus,
   useDeleteModal,
 } from '@openshift-console/dynamic-plugin-sdk';
 import { ActionList, ActionListItem, Button, Tooltip } from '@patternfly/react-core';
-import { ExclamationTriangleIcon, PencilAltIcon, TrashIcon } from '@patternfly/react-icons';
+import { PencilAltIcon, TrashIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useTranslation } from 'react-i18next';
-import { FunctionSource, FunctionStatus } from '../../../common/types';
-
-export interface FunctionTableItem {
-  name: string;
-  repoName: string;
-  runtime: string;
-  status: FunctionStatus;
-  url: string;
-  replicas: number;
-  namespace: string;
-  source: FunctionSource;
-  mainResource?: K8sResourceCommon;
-  err?: string;
-}
+import { FunctionSource } from '../../../common/types';
+import { Function, FunctionStatus, functionKey } from '../types';
 
 export function FunctionTable({
   functions,
   onEdit,
   showNamespace,
 }: {
-  functions: FunctionTableItem[];
+  functions: Function[];
   onEdit: (name: string) => void;
   showNamespace: boolean;
 }) {
@@ -58,8 +44,8 @@ export function FunctionTable({
       </Thead>
       <Tbody>
         {functions.map((fn) => (
-          <Tr key={`${fn.namespace}/${fn.name}`}>
-            <Td dataLabel={t('Name')}>{fn.name}</Td>
+          <Tr key={functionKey(fn)}>
+            <Td dataLabel={t('Name')}>{fn.name || fn.repoName}</Td>
             {showNamespace && (
               <Td dataLabel={t('Namespace')}>
                 <TextOrDash value={fn.namespace} />
@@ -69,12 +55,12 @@ export function FunctionTable({
               <TextOrDash value={fn.runtime} />
             </Td>
             <Td dataLabel={t('Status')}>
-              <StatusCell status={fn.status} err={fn.err} />
+              <StatusCell functionStatus={fn.status} repoError={fn.error} />
             </Td>
             <Td dataLabel={t('URL')}>
-              <UrlCell url={fn.url} />
+              <UrlCell url={fn.routeURL} />
             </Td>
-            <Td dataLabel={t('Replicas')}>{fn.replicas}</Td>
+            <Td dataLabel={t('Replicas')}>{fn.replicas ?? '—'}</Td>
             <Td dataLabel={t('Actions')} isActionCell>
               <ActionList isIconList>
                 <ActionListItem>
@@ -96,30 +82,52 @@ function TextOrDash({ value }: { value?: string }) {
   return <>{value || '—'}</>;
 }
 
-function StatusCell({ status, err }: { status: FunctionStatus; err?: string }) {
-  switch (status) {
-    case 'Running':
-      return <SuccessStatus title={status} />;
-    case 'Deploying':
-    case 'CreatingRepo':
-    case 'Pushing':
-    case 'PushedToGitHub':
-      return <ProgressStatus title={status} />;
-    case 'Error':
-      return err ? (
-        <Tooltip content={err}>
-          <span className="pf-v6-u-display-inline-flex">
-            <ErrorStatus title={status} />
-          </span>
-        </Tooltip>
-      ) : (
-        <ErrorStatus title={status} />
-      );
-    case 'ScaledToZero':
-    case 'NotDeployed':
-      return <InfoStatus title={status} />;
-    case 'Unknown':
-      return <StatusIconAndText title={status} icon={<ExclamationTriangleIcon />} />;
+function StatusCell({
+  functionStatus,
+  repoError,
+}: {
+  functionStatus: FunctionStatus;
+  repoError?: string;
+}) {
+  const { t } = useTranslation('plugin__console-functions-plugin');
+
+  // Repo-level error (e.g. broken func.yaml) is the whole story for that row.
+  // Entries with error never have cluster data (no name to match against ksvc labels).
+  if (repoError) {
+    return (
+      <Tooltip content={repoError}>
+        <span className="pf-v6-u-display-inline-flex">
+          <ErrorStatus title={t('Error')} />
+        </span>
+      </Tooltip>
+    );
+  }
+
+  return <>{clusterStatus()}</>;
+
+  function clusterStatus(): React.ReactNode {
+    switch (functionStatus.cluster.status) {
+      case 'NotDeployed':
+        return <InfoStatus title={t('NotDeployed')} />;
+      case 'Running':
+        return <SuccessStatus title={t('Running')} />;
+      case 'ScaledToZero':
+        return <InfoStatus title={t('ScaledToZero')} />;
+      case 'Deploying':
+        return <InfoStatus title={t('Deploying')} />;
+      case 'Undeploying':
+        return <InfoStatus title={t('Undeploying')} />;
+      case 'Error': {
+        const status = <ErrorStatus title={t('Error')} />;
+        return functionStatus.cluster.error ? (
+          <Tooltip content={functionStatus.cluster.error.message}>
+            <span className="pf-v6-u-display-inline-flex">{status}</span>
+          </Tooltip>
+        ) : (
+          status
+        );
+      }
+    }
   }
 }
 
@@ -140,7 +148,7 @@ function EditActionButton({
   onEdit,
 }: {
   source: FunctionSource;
-  repoName: string;
+  repoName?: string;
   onEdit: (name: string) => void;
 }) {
   const { t } = useTranslation('plugin__console-functions-plugin');
@@ -151,16 +159,21 @@ function EditActionButton({
       variant="plain"
       aria-label={t('Edit')}
       icon={<PencilAltIcon />}
+      // must use isAriaDisabled instead of isDisabled or the tooltip won't
+      // show because for natively disabled buttons no mouse event on hover
+      // is dispatched
       isAriaDisabled={isDisabled}
       onClick={() => {
-        if (!isDisabled) onEdit(repoName);
+        if (!isDisabled && repoName) onEdit(repoName);
       }}
     />
   );
 
-  if (!isDisabled) return button;
-
-  return <Tooltip content={t('No source repository to edit')}>{button}</Tooltip>;
+  return isDisabled ? (
+    <Tooltip content={t('No source repository to edit')}>{button}</Tooltip>
+  ) : (
+    button
+  );
 }
 
 function DeleteActionButton({ mainResource }: { mainResource?: K8sResourceCommon }) {
