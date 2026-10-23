@@ -25,7 +25,6 @@ import { getFiles, listFunctions, putFiles } from '../../common/clients/function
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthProvider } from '../../common/context/AuthProvider';
 import { FileEntry, FunctionListItem } from '../../common/types';
-import { handlerMap } from '../../common/utils/utils';
 import { EditToolbar } from './components/EditToolbar';
 import { FileTreeView } from './components/FileTreeView';
 
@@ -288,6 +287,12 @@ async function resolveRepoContent(
 }
 
 function determineHandler(loadedFiles: FileEntry[], runtime: string): string {
+  const handlerMap: Record<string, string> = {
+    node: 'index.js',
+    python: 'function/func.py',
+    go: 'handle.go',
+    quarkus: 'src/main/java/functions/Function.java',
+  };
   const handlerPath = handlerMap[runtime];
   if (handlerPath && loadedFiles.find((f) => f.path === handlerPath)) return handlerPath;
   return '';
