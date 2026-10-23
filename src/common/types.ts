@@ -30,16 +30,16 @@ export interface AuthUser {
 
 export type FunctionSource = 'repo' | 'cluster';
 
-export interface FunctionListItem {
-  owner: string;
-  repoName: string;
-  repoURL: string;
-  defaultBranch: string;
-  name: string;
-  namespace: string;
-  runtime: string;
+export interface FunctionMetadata {
+  owner?: string;
+  repoName?: string;
+  repoURL?: string;
+  defaultBranch?: string;
   source: FunctionSource;
-  err?: string;
+  name?: string;
+  namespace?: string;
+  runtime?: string;
+  error?: string;
 }
 
 export interface CreateFunctionRequest {

@@ -31,7 +31,7 @@ import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
 import {
   ClusterFunction,
   FUNCTION_NAME_LABEL,
-  FunctionListItem,
+  FunctionMetadata,
   FunctionStatus,
   REVISION_LABEL,
 } from '../../common/types';
@@ -341,17 +341,17 @@ async function loadFunctionTableItems(namespace: string): Promise<FunctionTableI
   return items.map((item) => newItem(item));
 }
 
-function newItem(item: FunctionListItem): FunctionTableItem {
+function newItem(item: FunctionMetadata): FunctionTableItem {
   return {
-    name: item.name || item.repoName,
-    repoName: item.repoName,
-    namespace: item.namespace,
-    runtime: item.runtime,
-    status: item.err ? 'Error' : 'NotDeployed',
+    name: item.name || item.repoName || '',
+    repoName: item.repoName || '',
+    namespace: item.namespace || '',
+    runtime: item.runtime || '',
+    status: item.error ? 'Error' : 'NotDeployed',
     url: '',
     replicas: 0,
     source: item.source,
-    err: item.err,
+    err: item.error,
   };
 }
 
