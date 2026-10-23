@@ -5,8 +5,13 @@ import {
   SuccessStatus,
   useDeleteModal,
 } from '@openshift-console/dynamic-plugin-sdk';
-import { ActionList, ActionListItem, Button, Tooltip } from '@patternfly/react-core';
-import { PencilAltIcon, TrashIcon } from '@patternfly/react-icons';
+import { ActionList, ActionListItem, Button, Flex, Icon, Tooltip } from '@patternfly/react-core';
+import {
+  ExclamationTriangleIcon,
+  PencilAltIcon,
+  RhUiSyncIcon,
+  TrashIcon,
+} from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useTranslation } from 'react-i18next';
 import { FunctionSource } from '../../../common/types';
@@ -91,19 +96,78 @@ function StatusCell({
 }) {
   const { t } = useTranslation('plugin__console-functions-plugin');
 
-  // Repo-level error (e.g. broken func.yaml) is the whole story for that row.
+  // Repo-level error (e.g. broken func.yaml): error is primary, workflow is secondary.
   // Entries with error never have cluster data (no name to match against ksvc labels).
   if (repoError) {
-    return (
+    const repoErrorStatus = (
       <Tooltip content={repoError}>
         <span className="pf-v6-u-display-inline-flex">
           <ErrorStatus title={t('Error')} />
         </span>
       </Tooltip>
     );
+
+    const workflow = workflowStatus();
+    return workflow ? (
+      <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapSm' }}>
+        {repoErrorStatus}
+        {workflow}
+      </Flex>
+    ) : (
+      repoErrorStatus
+    );
   }
 
-  return <>{clusterStatus()}</>;
+  const cluster = clusterStatus();
+  const workflow = workflowStatus();
+  return (
+    <>
+      {!cluster && !workflow && <TextOrDash />}
+      {!cluster && workflow}
+      {cluster && !workflow && cluster}
+      {cluster && workflow && (
+        <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapSm' }}>
+          {cluster}
+          {workflow}
+        </Flex>
+      )}
+    </>
+  );
+
+  function workflowStatus(): React.ReactNode {
+    switch (functionStatus.workflow.status) {
+      case 'None':
+      case 'Succeeded':
+        return null;
+      case 'InProgress':
+        return inProgressSpinner();
+      case 'Failed': {
+        const icon = (
+          <Icon status="danger">
+            <ExclamationTriangleIcon />
+          </Icon>
+        );
+        const content = functionStatus.workflow.url ? (
+          <RunLink url={functionStatus.workflow.url} ariaLabel={t('Latest workflow run failed')}>
+            {icon}
+          </RunLink>
+        ) : (
+          icon
+        );
+        return <Tooltip content={t('Latest workflow run failed')}>{content}</Tooltip>;
+      }
+    }
+  }
+
+  function inProgressSpinner() {
+    return (
+      <Tooltip content={t('Workflow run in progress')}>
+        <Icon role="img" aria-label={t('Workflow run in progress')}>
+          <RhUiSyncIcon className="co-spin" />
+        </Icon>
+      </Tooltip>
+    );
+  }
 
   function clusterStatus(): React.ReactNode {
     switch (functionStatus.cluster.status) {
@@ -129,6 +193,22 @@ function StatusCell({
       }
     }
   }
+}
+
+function RunLink({
+  url,
+  ariaLabel,
+  children,
+}: {
+  url: string;
+  ariaLabel?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" aria-label={ariaLabel}>
+      {children}
+    </a>
+  );
 }
 
 function UrlCell({ url }: { url?: string }) {

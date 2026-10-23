@@ -38,6 +38,7 @@
   "GitHub Settings": "GitHub Settings",
   "Key": "Key",
   "Language": "Language",
+  "Latest workflow run failed": "Latest workflow run failed",
   "Leave": "Leave",
   "Loading": "Loading",
   "Name": "Name",
@@ -77,5 +78,6 @@
   "URL": "URL",
   "Value": "Value",
   "View setup guide.": "View setup guide.",
+  "Workflow run in progress": "Workflow run in progress",
   "You have unsaved changes. Leave anyway?": "You have unsaved changes. Leave anyway?"
 }

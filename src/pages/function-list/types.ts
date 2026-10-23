@@ -1,6 +1,6 @@
 import { K8sResourceCommon } from '@openshift-console/dynamic-plugin-sdk';
 import { ClusterError } from '../../common/errors';
-import { FunctionSource } from '../../common/types';
+import { FunctionSource, WorkflowRun } from '../../common/types';
 
 export interface Function {
   readonly owner?: string;
@@ -18,6 +18,7 @@ export interface Function {
 
 export interface FunctionStatus {
   cluster: ClusterStatus;
+  workflow: WorkflowRun;
 }
 
 export interface ClusterStatus {
