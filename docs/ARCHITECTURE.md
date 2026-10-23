@@ -25,8 +25,8 @@ Arrows mean "imports / depends on."
 | Layer | Maps to | Depends on |
 |-------|---------|------------|
 | **Types** | `common/types.ts` | nothing |
-| **Clients** | `common/clients/` (plain async functions and hooks that wrap SDK calls) | Types, Utils |
-| **Hooks** | `common/clients/use*.ts`, `common/hooks/`, `pages/<name>/hooks/` | Clients, Types, Utils |
+| **Clients** | `common/clients/` (plain async functions) | Types, Utils |
+| **Hooks** | Inlined in page/component files. Extract to `pages/<name>/hooks/` or `common/hooks/` only when reused. | Clients, Types, Utils |
 | **Components** | `common/components/` (shared), `pages/<name>/components/` (page-specific) | Hooks, Types, Utils |
 | **Pages** | `pages/<name>/` | Components, Hooks, Utils |
 | **Utils** | `common/utils/` | nothing (cross-cutting) |
@@ -50,7 +50,7 @@ Arrows mean "imports / depends on."
 
 ### Pages
 
-- **Smart for page-specific data** -- pages use hooks (their co-located page hook, `useCluster`) to fetch, prepare, and transform all data needed for downstream components.
+- **Smart for page-specific data** -- pages use clients in their page hooks to fetch, prepare, and transform all data needed for downstream components. If multiple pages need the same data, extract a shared hook into `common/hooks/` or `common/clients/`.
 
 ### Components
 
@@ -60,14 +60,13 @@ Arrows mean "imports / depends on."
 
 ### Clients
 
-`common/clients/` contains thin wrappers around external APIs. Two forms:
+`common/clients/` contains thin wrappers around external APIs:
 
-- **Plain async functions** (e.g., `functionsClient.ts`) -- stateless fetch wrappers that hooks call.
-- **Hooks** (e.g., `useCluster.ts`) -- when the client wraps a React-aware SDK call such as `useK8sWatchResource`, it stays as a hook.
+- **Plain async functions** (e.g., `functionsClient.ts`) -- stateless fetch wrappers that page hooks call.
 
 ### Hooks
 
-- **Extract logic into hooks** — if a page or component has any logic (state management, data transformation, side effects), extract it into a custom hook. If the hook is only used by one component, keep it in the same file, do not export it. If the hook is reused by multiple components within one page, put it in `src/pages/<name>/hooks/`. If reused across pages, put it in `src/common/hooks/`. If there is no logic, no hook is needed.
+- **Extract logic into hooks** — if a page or component has non-trivial logic (state management, data transformation, side effects), extract it into a custom hook. One-liner logic stays inlined in the component, no hook needed. If the hook is only used by one component, keep it in the same file, do not export it. If the hook is reused by multiple components within one page, put it in `src/pages/<name>/hooks/`. If reused across pages, put it in `src/common/hooks/`. Keep the translation hook (`useTranslation`) at the top of the page component, not inside custom hooks.
 
 ### Utility Functions
 

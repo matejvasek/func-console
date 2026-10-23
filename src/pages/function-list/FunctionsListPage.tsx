@@ -1,9 +1,12 @@
 import {
   DocumentTitle,
   isAllNamespacesKey,
+  K8sResourceKind,
   ListPageHeader,
   NamespaceBar,
   useActiveNamespace,
+  useK8sWatchResource,
+  WatchK8sResource,
 } from '@openshift-console/dynamic-plugin-sdk';
 import {
   Alert,
@@ -25,8 +28,13 @@ import { FunctionTable, FunctionTableItem } from './components/FunctionTable';
 import { SetupGuide } from './components/SetupGuide';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
-import { ClusterFunction, FunctionListItem } from '../../common/types';
-import { useCluster } from '../../common/clients/useCluster';
+import {
+  ClusterFunction,
+  FUNCTION_NAME_LABEL,
+  FunctionListItem,
+  FunctionStatus,
+  REVISION_LABEL,
+} from '../../common/types';
 import { listFunctions } from '../../common/clients/functionsClient';
 import { errorMessage } from '../../common/utils/utils';
 
@@ -204,12 +212,21 @@ function useFunctionListPage(): {
 
   const functionNames = useMemo(() => functionItems.map((item) => item.name), [functionItems]);
 
-  const { functions: clusterFunctions, loaded: clusterLoaded } = useCluster(
-    functionNames,
+  const [ksvcConfig, depConfig] = useMemo(() => {
     // if namespace === #ALL_NS# then we pass 'undefined' to watcher which equals
     // to 'get resources from all namespaces'
-    isAllNamespacesKey(namespace) ? undefined : namespace,
-  );
+    const ns = isAllNamespacesKey(namespace) ? undefined : namespace;
+    return [newKsvcWatchConfig(functionNames, ns), newDeploymentWatchConfig(functionNames, ns)];
+  }, [functionNames, namespace]);
+
+  const [knSvcs, knLoaded] = useK8sWatchResource<K8sResourceKind[]>(ksvcConfig);
+  const [deps, depLoaded] = useK8sWatchResource<K8sResourceKind[]>(depConfig);
+
+  const clusterFunctions = useMemo(() => {
+    const safeKnSvcs = knLoaded ? (knSvcs ?? []) : [];
+    const safeDeps = depLoaded ? (deps ?? []) : [];
+    return listKnativeClusterFunctions(safeKnSvcs, safeDeps);
+  }, [knSvcs, knLoaded, deps, depLoaded]);
 
   const functions = useMemo(
     () =>
@@ -222,7 +239,7 @@ function useFunctionListPage(): {
   );
 
   const reposLoaded = !isAuthenticated || (namespaceLoaded && prevNamespace === namespace);
-  const loaded = reposLoaded && clusterLoaded;
+  const loaded = reposLoaded && knLoaded && depLoaded;
 
   const onEdit = (name: string) => navigate(`/faas/edit/${name}`);
 
@@ -236,6 +253,87 @@ function useFunctionListPage(): {
     error,
     showNamespace: isAllNamespacesKey(namespace),
   };
+}
+
+function newKsvcWatchConfig(functionNames: string[], namespace?: string): WatchK8sResource | null {
+  return functionNames.length > 0
+    ? {
+        groupVersionKind: { group: 'serving.knative.dev', version: 'v1', kind: 'Service' },
+        isList: true,
+        namespace,
+        selector: {
+          matchExpressions: [{ key: FUNCTION_NAME_LABEL, operator: 'In', values: functionNames }],
+        },
+      }
+    : null;
+}
+
+function newDeploymentWatchConfig(
+  functionNames: string[],
+  namespace?: string,
+): WatchK8sResource | null {
+  return functionNames.length > 0
+    ? {
+        groupVersionKind: { group: 'apps', version: 'v1', kind: 'Deployment' },
+        isList: true,
+        namespace,
+        selector: {
+          matchExpressions: [{ key: FUNCTION_NAME_LABEL, operator: 'In', values: functionNames }],
+        },
+      }
+    : null;
+}
+
+function listKnativeClusterFunctions(
+  knSvcs: K8sResourceKind[],
+  deployments: K8sResourceKind[],
+): ReadonlyMap<string, ClusterFunction> {
+  const entries = knSvcs.map((ksvc): [string, ClusterFunction] => {
+    const name = ksvc.metadata?.labels?.[FUNCTION_NAME_LABEL] ?? ksvc.metadata?.name ?? '';
+    const namespace = ksvc.metadata?.namespace ?? '';
+    const latestRevision = ksvc.status?.latestReadyRevisionName;
+
+    const nsDeployments = deployments.filter((d) => d.metadata?.namespace === namespace);
+    const deployment = latestRevision
+      ? nsDeployments.find((d) => d.metadata?.labels?.[REVISION_LABEL] === latestRevision)
+      : nsDeployments.find((d) => d.metadata?.labels?.[FUNCTION_NAME_LABEL] === name);
+
+    return [
+      `${namespace}/${name}`,
+      {
+        name,
+        namespace,
+        status: deriveKnativeStatus(ksvc, deployment),
+        url: ksvc.status?.url ?? '',
+        replicas: deployment?.status?.readyReplicas ?? 0,
+        mainResource: ksvc,
+      },
+    ];
+  });
+
+  return new Map(entries);
+}
+
+function deriveKnativeStatus(
+  ksvc: K8sResourceKind,
+  deployment: K8sResourceKind | undefined,
+): FunctionStatus {
+  if (!deployment) return 'Deploying';
+
+  const conditions = ksvc.status?.conditions ?? [];
+  const ready = conditions.find((c: { type: string }) => c.type === 'Ready');
+  if (!ready) return 'Deploying';
+
+  if (ready.status === 'True') {
+    const desired = deployment.spec?.replicas ?? 0;
+    const readyReplicas = deployment.status?.readyReplicas ?? 0;
+    if (desired === 0 && readyReplicas === 0) return 'ScaledToZero';
+    return 'Running';
+  }
+
+  if (ready.status === 'False') return 'Error';
+
+  return 'Deploying';
 }
 
 async function loadFunctionTableItems(namespace: string): Promise<FunctionTableItem[]> {
