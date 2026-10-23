@@ -24,11 +24,11 @@ Arrows mean "imports / depends on."
 
 | Layer | Maps to | Depends on |
 |-------|---------|------------|
-| **Types** | `common/types.ts` | nothing |
+| **Types** | `common/types.ts`, `pages/<name>/types.ts` | nothing |
 | **Clients** | `common/clients/` (plain async functions) | Types, Utils |
 | **Hooks** | Inlined in page/component files. Extract to `pages/<name>/hooks/` or `common/hooks/` only when reused. | Clients, Types, Utils |
 | **Components** | `common/components/` (shared), `pages/<name>/components/` (page-specific) | Hooks, Types, Utils |
-| **Pages** | `pages/<name>/` | Components, Hooks, Utils |
+| **Pages** | `pages/<name>/` | Components, Hooks, Utils, Types |
 | **Utils** | `common/utils/` | nothing (cross-cutting) |
 
 ### Dependency Rules
@@ -44,7 +44,9 @@ Arrows mean "imports / depends on."
 - `src/pages/<name>/` contains the page component, its test, and a `components/` subdir
 - `src/pages/<name>/components/` contains components used only by that page
 - `src/common/` contains everything shared across pages (components, clients, utils, context)
-- **Ownership rule:** if a component is imported by only one page (test imports don't count), it lives in `pages/<name>/components/`. If imported by multiple pages, it lives in `common/components/`.
+- `src/common/types.ts` contains shared wire/DTO types (backend response shapes) and pure functions that derive from those types. Used across pages. No React, no side effects, no imports from components or hooks.
+- `src/pages/<name>/types.ts` contains types and pure functions that derive from those types. Used only within that page's directory. No React, no side effects, no imports from components or hooks.
+- **Ownership rule:** pages are divided into sections which are extracted into components in `pages/<name>/components/`. Components that have sub-components keep them in the same file unless they can be reused, in which case they are extracted to their own file. Components shared across multiple pages live in `common/components/`.
 
 ## React
 

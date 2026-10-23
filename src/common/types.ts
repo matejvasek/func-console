@@ -15,33 +15,13 @@ export interface FileEntry {
   deleted?: boolean;
 }
 
-export type EnvVarSource = 'value' | 'secret' | 'configMap';
-
 export interface EnvVar {
   name: string;
-  source: EnvVarSource;
+  source: 'value' | 'secret' | 'configMap';
   value: string;
   resourceName: string;
   resourceKey: string;
 }
-
-export interface PlainEnvVar {
-  name: string;
-  value: string;
-}
-
-export interface ResourceEnvVar {
-  name: string;
-  resourceName: string;
-  resourceKey: string;
-}
-
-export interface K8sKeyedResource {
-  name: string;
-  keys: string[];
-}
-
-export type FunctionRuntime = 'node' | 'python' | 'go' | 'quarkus';
 
 export interface AuthUser {
   name: string;
