@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw';
 import { BACKEND_API } from '../testing/constants';
 import { server } from '../testing/mswServer';
-import { FileEntry, FunctionListItem } from '../types';
+import { FileEntry, FunctionMetadata } from '../types';
 
 // -----------------------------------------------------------------------------
 // Test Doubles ----------------------------------------------------------------
@@ -13,7 +13,7 @@ export function listFunctionsStub(
     errorResponse,
     wait,
   }: {
-    responses?: FunctionListItem[];
+    responses?: FunctionMetadata[];
     errorResponse?: { message: string; status: number };
     wait?: Promise<void>;
   } = {
