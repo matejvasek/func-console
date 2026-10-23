@@ -2,10 +2,16 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useParams } from 'react-router';
 import { authenticateGithubFake, logoutGithubFake } from '../../common/testing/authFake';
-import { listFunctionsStub } from '../../common/testing/functionsClientStub';
+import {
+  listFunctionsStub,
+  receiveWorkflowRunEventsStub,
+  WorkflowRunStreamEvent,
+} from '../../common/testing/functionsClientStub';
 import { server } from '../../common/testing/mswServer';
 import { functionMetadata } from '../../common/testing/testData';
+import { timerFake } from '../../common/testing/timerFake';
 import { FUNCTION_NAME_LABEL, FunctionMetadata } from '../../common/types';
+import { AsyncQueue } from '../../common/testing/AsyncQueue';
 import FunctionsListPage from './FunctionsListPage';
 
 // vi.mock is hoisted above imports, so regular imports aren't available in the factory.
@@ -27,6 +33,7 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
     </>
   ),
   consoleFetchJSON: sdkTestDoubles.consoleFetchJSONFake,
+  consoleFetch: sdkTestDoubles.consoleFetchFake,
   SuccessStatus: ({ title }: { title: string }) => <span>Success: {title}</span>,
   ErrorStatus: ({ title }: { title: string }) => <span>Error: {title}</span>,
   InfoStatus: ({ title }: { title: string }) => <span>Info: {title}</span>,
@@ -348,6 +355,30 @@ describe('FunctionsListPage', () => {
         expect(await screen.findByText(funcName)).toBeInTheDocument();
         expect(screen.queryByText('Namespace')).not.toBeInTheDocument();
       });
+
+      it('shows tooltip on secondary workflow-run-failure indicator', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
+        receiveWorkflowRunEventsStub({
+          snapshot: {
+            [`twoGiants/${funcName}`]: {
+              status: 'Failed',
+              url: 'https://github.com/twoGiants/my-func/actions/runs/1',
+            },
+          },
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Success: Running')).toBeInTheDocument();
+        const indicator = screen.getByRole('link', { name: 'Latest workflow run failed' });
+        await userEvent.setup().hover(indicator);
+        expect(await screen.findByRole('tooltip')).toHaveTextContent('Latest workflow run failed');
+      });
     });
 
     describe('Actions', () => {
@@ -640,6 +671,28 @@ describe('FunctionsListPage', () => {
         expect(screen.getAllByText('Success: Running')).toHaveLength(2);
       });
 
+      it('cluster-only functions are not enriched with workflow data', async () => {
+        // Cluster-only functions have no GitHub repo, so there is no workflow
+        // to watch. The SSE stream keys by owner/repoName, which a cluster-only
+        // function doesn't have. Workflow enrichment skips these entries.
+        listFunctionsStub({
+          responses: [{ name: 'cluster-func', namespace: 'demo', source: 'cluster' as const }],
+        });
+        sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture('cluster-func'));
+        receiveWorkflowRunEventsStub({
+          snapshot: { 'someone/some-repo': { status: 'Building' } },
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Success: Running')).toBeInTheDocument();
+        expect(screen.queryByLabelText('Workflow run in progress')).not.toBeInTheDocument();
+      });
+
       it('shows empty route URL when ksvc has no status url', async () => {
         listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
         const ksvc = sdkTestDoubles.ksvcFixture(funcName, 'True');
@@ -690,6 +743,207 @@ describe('FunctionsListPage', () => {
 
         expect(await screen.findByText(/ksvc watch failed/)).toBeInTheDocument();
         expect(screen.getByText(/dep watch failed/)).toBeInTheDocument();
+      });
+
+      it('shows NotDeployed with build-in-progress indicator when the function is building', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        receiveWorkflowRunEventsStub({
+          snapshot: { [`twoGiants/${funcName}`]: { status: 'Building' } },
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Info: NotDeployed')).toBeInTheDocument();
+        expect(screen.getByLabelText('Workflow run in progress')).toBeInTheDocument();
+      });
+
+      it('keeps Running with a build-in-progress indicator when the cluster is Running', async () => {
+        // Non-destructive: a serving function keeps its green Running status while a
+        // new revision builds; the build is surfaced only as a secondary spinner.
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
+        receiveWorkflowRunEventsStub({
+          snapshot: { [`twoGiants/${funcName}`]: { status: 'Building' } },
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Success: Running')).toBeInTheDocument();
+        expect(screen.getByLabelText('Workflow run in progress')).toBeInTheDocument();
+      });
+
+      it('keeps Running with a build-failed indicator when the cluster is Running', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
+        receiveWorkflowRunEventsStub({
+          snapshot: {
+            [`twoGiants/${funcName}`]: {
+              status: 'Failed',
+              url: 'https://github.com/twoGiants/my-func/actions/runs/1',
+            },
+          },
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Success: Running')).toBeInTheDocument();
+        expect(screen.queryByText('Error: BuildFailed')).not.toBeInTheDocument();
+        // The failed rebuild is surfaced as a secondary indicator linking to the run.
+        expect(
+          await screen.findByRole('link', { name: 'Latest workflow run failed' }),
+        ).toHaveAttribute('href', 'https://github.com/twoGiants/my-func/actions/runs/1');
+      });
+
+      it('keeps ScaledToZero with a workflow-run-in-progress indicator when the cluster is scaled to zero', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        sdkTestDoubles.setWatchFixtures({
+          knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')],
+          deps: [sdkTestDoubles.deploymentFixture(funcName, 0, 0)],
+        });
+        receiveWorkflowRunEventsStub({
+          snapshot: { [`twoGiants/${funcName}`]: { status: 'Building' } },
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Info: ScaledToZero')).toBeInTheDocument();
+        expect(screen.getByLabelText('Workflow run in progress')).toBeInTheDocument();
+      });
+
+      it('keeps ScaledToZero with a build-failed indicator when the cluster is scaled to zero', async () => {
+        // A scaled-to-zero function is deployed and available (idle, cold-starts on
+        // demand), so a failed rebuild must not overwrite it with BuildFailed.
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        sdkTestDoubles.setWatchFixtures({
+          knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')],
+          deps: [sdkTestDoubles.deploymentFixture(funcName, 0, 0)],
+        });
+        receiveWorkflowRunEventsStub({
+          snapshot: {
+            [`twoGiants/${funcName}`]: {
+              status: 'Failed',
+              url: 'https://github.com/twoGiants/my-func/actions/runs/1',
+            },
+          },
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Info: ScaledToZero')).toBeInTheDocument();
+        expect(screen.queryByText('Error: BuildFailed')).not.toBeInTheDocument();
+        expect(
+          await screen.findByRole('link', { name: 'Latest workflow run failed' }),
+        ).toHaveAttribute('href', 'https://github.com/twoGiants/my-func/actions/runs/1');
+      });
+
+      it('keeps Deploying with a build-in-progress indicator while a new revision rolls out', async () => {
+        // A live function reports Deploying for a moment when the build applies a new
+        // revision. Overwriting that with Building flickered the row through a status
+        // it had already passed on every redeploy.
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        sdkTestDoubles.setWatchFixtures({ knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')] });
+        receiveWorkflowRunEventsStub({
+          snapshot: { [`twoGiants/${funcName}`]: { status: 'Building' } },
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Info: Deploying')).toBeInTheDocument();
+        expect(screen.getByLabelText('Workflow run in progress')).toBeInTheDocument();
+      });
+
+      it('keeps a cluster Error with a build-failed indicator when the Latest workflow run failed', async () => {
+        // Ready=False means a deployed revision is broken, which matters more than
+        // the failed rebuild, so the build drops to a secondary indicator.
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        sdkTestDoubles.setWatchFixtures({
+          knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'False')],
+          deps: [sdkTestDoubles.deploymentFixture(funcName, 1, 0)],
+        });
+        receiveWorkflowRunEventsStub({
+          snapshot: {
+            [`twoGiants/${funcName}`]: {
+              status: 'Failed',
+              url: 'https://github.com/twoGiants/my-func/actions/runs/1',
+            },
+          },
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Error: Error')).toBeInTheDocument();
+        expect(screen.queryByText('Error: BuildFailed')).not.toBeInTheDocument();
+        expect(
+          await screen.findByRole('link', { name: 'Latest workflow run failed' }),
+        ).toHaveAttribute('href', 'https://github.com/twoGiants/my-func/actions/runs/1');
+      });
+
+      it('shows Error primary with build-failed secondary for a repo-level error with a failed build', async () => {
+        sdkTestDoubles.setActiveNamespace('#ALL_NS#');
+        listFunctionsStub({
+          responses: [
+            {
+              owner: 'twoGiants',
+              repoName: funcName,
+              repoURL: '',
+              defaultBranch: 'main',
+              source: 'repo' as const,
+              error: 'cannot read func.yaml',
+            },
+          ],
+        });
+        receiveWorkflowRunEventsStub({
+          snapshot: {
+            [`twoGiants/${funcName}`]: {
+              status: 'Failed',
+              url: 'https://github.com/twoGiants/my-func/actions/runs/1',
+            },
+          },
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        // Repo error is primary
+        expect(await screen.findByText('Error: Error')).toBeInTheDocument();
+        // Build failure is secondary indicator
+        expect(screen.getByRole('link', { name: 'Latest workflow run failed' })).toHaveAttribute(
+          'href',
+          'https://github.com/twoGiants/my-func/actions/runs/1',
+        );
+        // Name falls back to repoName
+        expect(screen.getByText(funcName)).toBeInTheDocument();
       });
 
       it('shows Error and falls back to repo name for broken func.yaml', async () => {
@@ -800,6 +1054,277 @@ describe('FunctionsListPage', () => {
         expect(await screen.findByText('Error: Error')).toBeInTheDocument();
         await userEvent.setup().hover(screen.getByText('Error: Error'));
         expect(await screen.findByRole('tooltip')).toHaveTextContent('invalid func.yaml');
+      });
+
+      it('shows Error primary with build-in-progress secondary for broken func.yaml with active build', async () => {
+        sdkTestDoubles.setActiveNamespace('#ALL_NS#');
+        listFunctionsStub({
+          responses: [
+            {
+              owner: 'twoGiants',
+              repoName: 'broken-repo',
+              repoURL: '',
+              defaultBranch: 'main',
+              source: 'repo' as const,
+              error: 'invalid func.yaml',
+            },
+          ],
+        });
+        receiveWorkflowRunEventsStub({
+          snapshot: { 'twoGiants/broken-repo': { status: 'Building' } },
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Error: Error')).toBeInTheDocument();
+        expect(screen.getByLabelText('Workflow run in progress')).toBeInTheDocument();
+      });
+
+      it('shows NotDeployed with a build-failed indicator linking to the run', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        receiveWorkflowRunEventsStub({
+          snapshot: {
+            [`twoGiants/${funcName}`]: {
+              status: 'Failed',
+              url: 'https://github.com/twoGiants/my-func/actions/runs/1',
+            },
+          },
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Info: NotDeployed')).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Latest workflow run failed' })).toHaveAttribute(
+          'href',
+          'https://github.com/twoGiants/my-func/actions/runs/1',
+        );
+      });
+
+      it('displays build watcher error alert with message when stream fails', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: 'my-repo' })] });
+        receiveWorkflowRunEventsStub({
+          errorResponse: { message: 'Service Unavailable', status: 503 },
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+          expect(screen.getByText('Error')).toBeInTheDocument();
+          expect(screen.getByText('Server error (503)')).toBeInTheDocument();
+        });
+      });
+
+      it('clears build watcher error alert when stream recovers', async () => {
+        using timer = timerFake();
+        listFunctionsStub({ responses: [functionMetadata({ repoName: 'my-repo' })] });
+        // Initial endpoint response is an error
+        receiveWorkflowRunEventsStub({
+          errorResponse: { message: 'Service Unavailable', status: 503 },
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        // Verify error alert is displayed
+        await waitFor(() => {
+          expect(screen.getByText('Error')).toBeInTheDocument();
+          expect(screen.getByText('Server error (503)')).toBeInTheDocument();
+        });
+
+        // Update MSW to return successful stream (reconnection will retry after 3000ms)
+        receiveWorkflowRunEventsStub({
+          snapshot: { 'twoGiants/my-repo': { status: 'Succeeded' } },
+        });
+
+        // Advance past reconnect delay (3000ms)
+        await act(() => timer.advance(3500));
+
+        // Error should clear after reconnection
+        await waitFor(
+          () => {
+            expect(screen.queryByText('Server error (503)')).not.toBeInTheDocument();
+          },
+          { timeout: 500 },
+        );
+      });
+
+      it('transitions NotDeployed -> Building -> Succeeded back to NotDeployed', async () => {
+        using stream = new AsyncQueue<WorkflowRunStreamEvent>();
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        receiveWorkflowRunEventsStub({ stream });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        // Initial state: NotDeployed with no build activity
+        expect(await screen.findByText('Info: NotDeployed')).toBeInTheDocument();
+        expect(screen.queryByLabelText('Workflow run in progress')).not.toBeInTheDocument();
+
+        // Emit Building status
+        stream.enqueue({
+          type: 'build-status',
+          runs: { [`twoGiants/${funcName}`]: { status: 'Building' } },
+        });
+
+        // NotDeployed stays primary, spinner appears as secondary
+        await waitFor(() => {
+          expect(screen.getByText('Info: NotDeployed')).toBeInTheDocument();
+          expect(screen.getByLabelText('Workflow run in progress')).toBeInTheDocument();
+        });
+
+        // Emit Succeeded status
+        stream.enqueue({
+          type: 'build-status',
+          runs: { [`twoGiants/${funcName}`]: { status: 'Succeeded' } },
+        });
+
+        // Succeeded: spinner gone, still NotDeployed. Deploying comes from
+        // the K8s watch when the ksvc appears.
+        await waitFor(() => {
+          expect(screen.queryByLabelText('Workflow run in progress')).not.toBeInTheDocument();
+          expect(screen.getByText('Info: NotDeployed')).toBeInTheDocument();
+        });
+      });
+
+      it('updates multiple functions with different status transitions', async () => {
+        using stream = new AsyncQueue<WorkflowRunStreamEvent>();
+        const func1 = 'func-alpha';
+        const func2 = 'func-beta';
+        listFunctionsStub({
+          responses: [
+            functionMetadata({ repoName: 'repo-alpha', name: func1 }),
+            functionMetadata({ repoName: 'repo-beta', name: func2 }),
+          ],
+        });
+        receiveWorkflowRunEventsStub({ stream });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        // Both functions render initially
+        expect(await screen.findByText(func1)).toBeInTheDocument();
+        expect(screen.getByText(func2)).toBeInTheDocument();
+
+        // Snapshot: func-alpha Building
+        stream.enqueue({
+          type: 'build-status',
+          runs: { [`twoGiants/repo-alpha`]: { status: 'Building' } },
+        });
+        await waitFor(() => {
+          const row1 = screen.getByText(func1).closest('tr');
+          const row2 = screen.getByText(func2).closest('tr');
+          expect(
+            row1?.querySelector('[aria-label="Workflow run in progress"]'),
+          ).toBeInTheDocument();
+          expect(
+            row2?.querySelector('[aria-label="Workflow run in progress"]'),
+          ).not.toBeInTheDocument();
+        });
+
+        // Snapshot: func-alpha Succeeded, func-beta Building
+        stream.enqueue({
+          type: 'build-status',
+          runs: {
+            [`twoGiants/repo-alpha`]: { status: 'Succeeded' },
+            [`twoGiants/repo-beta`]: { status: 'Building' },
+          },
+        });
+        await waitFor(() => {
+          const row1 = screen.getByText(func1).closest('tr');
+          const row2 = screen.getByText(func2).closest('tr');
+          expect(
+            row1?.querySelector('[aria-label="Workflow run in progress"]'),
+          ).not.toBeInTheDocument();
+          expect(
+            row2?.querySelector('[aria-label="Workflow run in progress"]'),
+          ).toBeInTheDocument();
+        });
+
+        // Snapshot: both Succeeded
+        stream.enqueue({
+          type: 'build-status',
+          runs: {
+            [`twoGiants/repo-alpha`]: { status: 'Succeeded' },
+            [`twoGiants/repo-beta`]: { status: 'Succeeded' },
+          },
+        });
+        await waitFor(() => {
+          const row1 = screen.getByText(func1).closest('tr');
+          const row2 = screen.getByText(func2).closest('tr');
+          expect(
+            row1?.querySelector('[aria-label="Workflow run in progress"]'),
+          ).not.toBeInTheDocument();
+          expect(
+            row2?.querySelector('[aria-label="Workflow run in progress"]'),
+          ).not.toBeInTheDocument();
+        });
+      });
+
+      it('preserves functions while workflow error is present', async () => {
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
+        receiveWorkflowRunEventsStub({
+          errorResponse: { message: 'Service Unavailable', status: 503 },
+        });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText('Success: Running')).toBeInTheDocument();
+        expect(screen.getByText(/Server error/)).toBeInTheDocument();
+      });
+
+      it('preserves workflow status across stream reconnect (no flicker)', async () => {
+        using stream = new AsyncQueue<WorkflowRunStreamEvent>();
+        listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+        receiveWorkflowRunEventsStub({ stream });
+
+        render(
+          <MemoryRouter>
+            <FunctionsListPage />
+          </MemoryRouter>,
+        );
+
+        expect(await screen.findByText(funcName)).toBeInTheDocument();
+
+        stream.enqueue({
+          type: 'build-status',
+          runs: { [`twoGiants/${funcName}`]: { status: 'Building' } },
+        });
+        await waitFor(() => {
+          expect(screen.getByLabelText('Workflow run in progress')).toBeInTheDocument();
+        });
+
+        // Auth error closes the stream
+        stream.enqueue({ type: 'app-error', message: 'auth expired', code: 401 });
+        await waitFor(() => expect(screen.getByText(/Authentication expired/)).toBeInTheDocument());
+
+        // Building indicator should still be visible (not cleared on error)
+        expect(screen.getByLabelText('Workflow run in progress')).toBeInTheDocument();
       });
 
       it('shows the delete button as enabled when ksvc exists', async () => {

@@ -25,9 +25,17 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
-import { listFunctions as getFunctionMetadataList } from '../../common/clients/functionsClient';
+import {
+  listFunctions as getFunctionMetadataList,
+  receiveWorkflowRunEvents,
+} from '../../common/clients/functionsClient';
 import { ClusterError } from '../../common/errors';
-import { FUNCTION_NAME_LABEL, FunctionMetadata, REVISION_LABEL } from '../../common/types';
+import {
+  FUNCTION_NAME_LABEL,
+  FunctionMetadata,
+  REVISION_LABEL,
+  WorkflowRunRecord,
+} from '../../common/types';
 import { ClusterStatus, Function, functionKey } from './types';
 import { errorMessage } from '../../common/utils/utils';
 import { FunctionsEmptyState } from './components/EmptyState';
@@ -239,7 +247,7 @@ function useFunctions(
         namespace: item.namespace,
         runtime: item.runtime,
         source: item.source,
-        status: { cluster: { status: 'NotDeployed' } },
+        status: { cluster: { status: 'NotDeployed' }, workflow: { status: 'None' } },
         error: item.error,
       });
     });
@@ -263,19 +271,46 @@ function useFunctions(
   const [knSvcs, knLoaded, knError] = useK8sWatchResource<K8sResourceKind[]>(ksvcConfig);
   const [deps, depLoaded, depError] = useK8sWatchResource<K8sResourceKind[]>(depConfig);
 
-  // Compose the final function list from both sources.
-  const functions = useMemo(() => {
+  const functionsWithClusterData = useMemo(() => {
     const safeKnSvcs = knLoaded ? (knSvcs ?? []) : [];
     const safeDeps = depLoaded ? (deps ?? []) : [];
     return withClusterData(initialFunctions, safeKnSvcs, safeDeps);
   }, [initialFunctions, knSvcs, knLoaded, deps, depLoaded]);
 
+  // Source 3: workflow status via SSE. Enriches functions with GitHub Actions
+  // build status (Building, Succeeded, Failed) streamed from the backend.
+  // Keyed by owner/repoName, so it works for both healthy and broken entries.
+  const [workflowRuns, setWorkflowRuns] = useState<WorkflowRunRecord>({});
+  const [receiveError, setReceiveError] = useState<string>();
+
+  useEffect(() => {
+    if (connectionId === undefined) return;
+
+    const close = receiveWorkflowRunEvents(
+      (runs) => {
+        setWorkflowRuns(runs);
+        setReceiveError(undefined);
+      },
+      (errMessage) => {
+        setReceiveError(errMessage);
+      },
+    );
+
+    return () => close();
+  }, [connectionId, refreshKey]);
+
+  // Compose the final function list from all three sources.
+  const functions = useMemo(
+    () => withWorkflowRunData(functionsWithClusterData, workflowRuns),
+    [functionsWithClusterData, workflowRuns],
+  );
+
   const errors: string[] = useMemo(
     () =>
-      [listError, knError?.message, depError?.message].filter(
+      [listError, knError?.message, depError?.message, receiveError].filter(
         (errMsg): errMsg is string => !!errMsg,
       ),
-    [listError, knError, depError],
+    [listError, knError, depError, receiveError],
   );
 
   return { functions: Array.from(functions.values()), loaded: listLoaded, refreshing, errors };
@@ -337,7 +372,10 @@ function withClusterData(
       ? {
           ...fn,
           ...common,
-          status: { cluster: deriveClusterStatus(ksvc, deployment) },
+          status: {
+            cluster: deriveClusterStatus(ksvc, deployment),
+            workflow: fn.status.workflow,
+          },
         }
       : // A ksvc with a matching function name appeared in the watch without a
         // metadata entry (e.g. deployed to another namespace via CLI while the
@@ -347,7 +385,10 @@ function withClusterData(
           name,
           namespace,
           source: 'cluster' as const,
-          status: { cluster: deriveClusterStatus(ksvc, deployment) },
+          status: {
+            cluster: deriveClusterStatus(ksvc, deployment),
+            workflow: { status: 'None' as const },
+          },
         };
     result.set(key, value);
   });
@@ -386,4 +427,22 @@ function withClusterData(
 
     return { status: 'Deploying' };
   }
+}
+
+function withWorkflowRunData(
+  functions: Map<string, Function>,
+  workflowRuns: WorkflowRunRecord,
+): Map<string, Function> {
+  const result = new Map(functions);
+  result.forEach((fn, key) => {
+    // cluster-only functions have no workflow run
+    if (!fn.owner || !fn.repoName) return;
+    const workflowRun = workflowRuns[`${fn.owner}/${fn.repoName}`];
+    if (workflowRun)
+      result.set(key, {
+        ...fn,
+        status: { cluster: fn.status.cluster, workflow: workflowRun },
+      });
+  });
+  return result;
 }

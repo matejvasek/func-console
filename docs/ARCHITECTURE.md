@@ -64,7 +64,7 @@ Arrows mean "imports / depends on."
 
 `common/clients/` contains thin wrappers around external APIs:
 
-- **Plain async functions** (e.g., `functionsClient.ts`) -- stateless fetch wrappers that page hooks call.
+- **Plain async functions** (e.g., `functionsClient.ts`) -- stateless fetch wrappers and SSE stream consumers that page hooks call.
 
 ### Hooks
 

@@ -263,3 +263,8 @@ export const consoleFetchJSONFake = async (
   return json;
 };
 // END: consoleFetchJSONFake --------------------------------------------------
+
+// START: consoleFetchFake ------------------------------------------------
+export const consoleFetchFake = async (url: string, options?: RequestInit) =>
+  fetch(new URL(url, 'http://localhost').href, options);
+// END: consoleFetchFake --------------------------------------------------
