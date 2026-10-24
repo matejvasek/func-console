@@ -26,10 +26,10 @@ export interface ClusterStatus {
   error?: ClusterError;
 }
 
-/** Returns a unique key for a function. Entries with a name are keyed by
- * namespace/name, entries without one (func.yaml unreadable or unparseable)
- * by owner/repoName. The ~ prefix on the latter prevents collisions when a
- * K8s namespace happens to match a GitHub owner name (e.g. both produce
+/** Returns a unique key for a function. Entries with a name and namespace are
+ * keyed by namespace/name, entries without one (func.yaml unreadable or
+ * unparseable) by owner/repoName. The ~ prefix on the latter prevents collisions
+ * when a K8s namespace happens to match a GitHub owner name (e.g. both produce
  * "alice/my-func"). Keying on the name rather than on error means an entry
  * that has an error but still parsed, such as a function whose namespace is
  * missing from the cluster, keeps matching its cluster counterpart. */

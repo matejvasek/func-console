@@ -24,7 +24,13 @@ import { MinusCircleIcon, PlusCircleIcon } from '@patternfly/react-icons';
 import { useContext, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../../../common/context/AuthProvider';
-import { K8sKeyedResource, PlainEnvVar, ResourceEnvVar } from '../types';
+import {
+  CreateFunctionFormData,
+  FunctionRuntime,
+  K8sKeyedResource,
+  PlainEnvVar,
+  ResourceEnvVar,
+} from '../types';
 
 const OCP_INTERNAL_REGISTRY = 'image-registry.openshift-image-registry.svc:5000/';
 const runtimeOptions = [
@@ -35,20 +41,6 @@ const runtimeOptions = [
 ];
 
 type EnvVarField = 'plainEnvVars' | 'secretEnvVars' | 'configMapEnvVars';
-type FunctionRuntime = 'node' | 'python' | 'go' | 'quarkus';
-
-export interface CreateFunctionFormData {
-  owner: string;
-  repo: string;
-  branch: string;
-  name: string;
-  runtime: FunctionRuntime;
-  registry: string;
-  namespace: string;
-  plainEnvVars: PlainEnvVar[];
-  secretEnvVars: ResourceEnvVar[];
-  configMapEnvVars: ResourceEnvVar[];
-}
 
 interface CreateFunctionFormProps {
   secrets: K8sKeyedResource[];

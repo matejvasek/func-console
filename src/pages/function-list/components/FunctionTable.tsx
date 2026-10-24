@@ -95,7 +95,6 @@ function StatusCell({
   repoError?: string;
 }) {
   const { t } = useTranslation('plugin__console-functions-plugin');
-
   // Repo-level error (e.g. broken func.yaml): error is primary, workflow is secondary.
   // Entries with error never have cluster data (no name to match against ksvc labels).
   if (repoError) {
@@ -106,7 +105,6 @@ function StatusCell({
         </span>
       </Tooltip>
     );
-
     const workflow = workflowStatus();
     return workflow ? (
       <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapSm' }}>
@@ -117,58 +115,54 @@ function StatusCell({
       repoErrorStatus
     );
   }
-
   const cluster = clusterStatus();
   const workflow = workflowStatus();
-  return (
-    <>
-      {!cluster && !workflow && <TextOrDash />}
-      {!cluster && workflow}
-      {cluster && !workflow && cluster}
-      {cluster && workflow && (
-        <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapSm' }}>
-          {cluster}
-          {workflow}
-        </Flex>
-      )}
-    </>
+  return workflow ? (
+    <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapSm' }}>
+      {cluster}
+      {workflow}
+    </Flex>
+  ) : (
+    cluster
   );
-
   function workflowStatus(): React.ReactNode {
     switch (functionStatus.workflow.status) {
       case 'None':
       case 'Succeeded':
         return null;
       case 'InProgress':
-        return inProgressSpinner();
+        return (
+          <Tooltip content={t('Workflow run in progress')}>
+            <Icon role="img" aria-label={t('Workflow run in progress')}>
+              <RhUiSyncIcon className="co-spin" />
+            </Icon>
+          </Tooltip>
+        );
       case 'Failed': {
         const icon = (
           <Icon status="danger">
             <ExclamationTriangleIcon />
           </Icon>
         );
-        const content = functionStatus.workflow.url ? (
-          <RunLink url={functionStatus.workflow.url} ariaLabel={t('Latest workflow run failed')}>
-            {icon}
-          </RunLink>
-        ) : (
-          icon
+        return (
+          <Tooltip content={t('Latest workflow run failed')}>
+            {functionStatus.workflow.url ? (
+              <a
+                href={functionStatus.workflow.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={t('Latest workflow run failed')}
+              >
+                {icon}
+              </a>
+            ) : (
+              icon
+            )}
+          </Tooltip>
         );
-        return <Tooltip content={t('Latest workflow run failed')}>{content}</Tooltip>;
       }
     }
   }
-
-  function inProgressSpinner() {
-    return (
-      <Tooltip content={t('Workflow run in progress')}>
-        <Icon role="img" aria-label={t('Workflow run in progress')}>
-          <RhUiSyncIcon className="co-spin" />
-        </Icon>
-      </Tooltip>
-    );
-  }
-
   function clusterStatus(): React.ReactNode {
     switch (functionStatus.cluster.status) {
       case 'NotDeployed':
@@ -193,22 +187,6 @@ function StatusCell({
       }
     }
   }
-}
-
-function RunLink({
-  url,
-  ariaLabel,
-  children,
-}: {
-  url: string;
-  ariaLabel?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <a href={url} target="_blank" rel="noopener noreferrer" aria-label={ariaLabel}>
-      {children}
-    </a>
-  );
 }
 
 function UrlCell({ url }: { url?: string }) {

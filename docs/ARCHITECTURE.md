@@ -52,7 +52,7 @@ Arrows mean "imports / depends on."
 
 ### Pages
 
-- **Smart for page-specific data** -- pages use clients in their page hooks to fetch, prepare, and transform all data needed for downstream components. If multiple pages need the same data, extract a shared hook into `common/hooks/` or `common/clients/`.
+- **Smart for page-specific data** -- pages use clients in their page hooks to fetch, prepare, and transform all data needed for downstream components. If multiple pages need the same data, extract a shared hook into `common/hooks/`.
 
 ### Components
 

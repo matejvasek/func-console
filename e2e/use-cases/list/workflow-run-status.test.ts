@@ -1,6 +1,11 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToFunctionsList } from '../../helpers/navigation';
-import { deleteRepoOnFakeGithub, seedRepo, setWorkflowRun } from '../../helpers/fakegithub';
+import {
+  deleteRepoOnFakeGithub,
+  resetFakeGithub,
+  seedRepo,
+  setWorkflowRun,
+} from '../../helpers/fakegithub';
 import {
   simulateGitHubActionsDeploy,
   deleteFunction,
@@ -36,6 +41,10 @@ test.describe('Workflow run status', () => {
 
   test.afterEach(async () => {
     await deleteRepoOnFakeGithub(E2E_USER, FUNC_NAME);
+  });
+
+  test.afterAll(async () => {
+    await resetFakeGithub();
   });
 
   test('shows a workflow failure indicator when the deploy workflow fails', async ({ page }) => {
@@ -149,12 +158,14 @@ test.describe('Workflow run status', () => {
   // the case where they meet on a function whose func.yaml parsed cleanly, so
   // the entry keeps its name and still has to pick up its workflow run.
   test.describe('with the namespace missing from the cluster', () => {
-    // Point func.yaml at a namespace that is never created instead of deleting
-    // the shared one. Deleting it would have to wait for the finalizers of
-    // everything earlier specs deployed there, which blows past the helper's
-    // own 120s budget in a full run, and it would leave the rest of the suite
-    // to rebuild the baseline.
-    test.beforeEach(async ({ page }) => {
+    test('shows the namespace error as primary with the build indicator beside it', async ({
+      page,
+    }) => {
+      // Point func.yaml at a namespace that is never created instead of deleting
+      // the shared one. Deleting it would have to wait for the finalizers of
+      // everything earlier specs deployed there, which blows past the helper's
+      // own 120s budget in a full run, and it would leave the rest of the suite
+      // to rebuild the baseline.
       await seedRepo(
         E2E_USER,
         FUNC_NAME,
@@ -170,11 +181,7 @@ test.describe('Workflow run status', () => {
       );
       // Cheap guard: a no-op unless a previous run somehow left it behind.
       await deleteNamespace(page, MISSING_NAMESPACE);
-    });
 
-    test('shows the namespace error as primary with the build indicator beside it', async ({
-      page,
-    }) => {
       await test.step('trigger a workflow run', async () => {
         await setWorkflowRun(E2E_USER, FUNC_NAME, BRANCH, {
           headSha: 'sha-in-progress',
@@ -182,7 +189,7 @@ test.describe('Workflow run status', () => {
         });
       });
 
-      await test.step('verify Error primary with spinner secondary in one row', async () => {
+      await test.step('verify the function shows an error with a progress indicator', async () => {
         await navigateToFunctionsList(page);
         const grid = page.getByRole('grid', { name: 'Functions' });
         await expect(grid).toBeVisible({ timeout: 30_000 });
@@ -205,7 +212,7 @@ test.describe('Workflow run status', () => {
         );
       });
 
-      await test.step('verify the error survives a workflow state change over SSE', async () => {
+      await test.step('verify the error persists after the workflow fails', async () => {
         await setWorkflowRun(E2E_USER, FUNC_NAME, BRANCH, {
           headSha: 'sha-failed',
           status: 'completed',

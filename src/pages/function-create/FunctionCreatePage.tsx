@@ -11,7 +11,8 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
-import { CreateFunctionForm, CreateFunctionFormData } from './components/CreateFunctionForm';
+import { CreateFunctionForm } from './components/CreateFunctionForm';
+import { CreateFunctionFormData } from './types';
 
 import { createFunction } from '../../common/clients/functionsClient';
 import { EnvVar } from '../../common/types';

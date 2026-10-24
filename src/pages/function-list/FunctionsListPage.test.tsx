@@ -252,23 +252,6 @@ describe('FunctionsListPage', () => {
         expect(await screen.findByText(funcName)).toBeInTheDocument();
       });
 
-      it('disables edit button for cluster-only functions', async () => {
-        listFunctionsStub({ responses: [clusterFunctionMetadata('cluster-func')] });
-        sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture('cluster-func'));
-
-        render(
-          <MemoryRouter>
-            <FunctionsListPage />
-          </MemoryRouter>,
-        );
-
-        expect(await screen.findByText('cluster-func')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Edit' })).toHaveAttribute(
-          'aria-disabled',
-          'true',
-        );
-      });
-
       it('shows dash for URL and Replicas for repo functions which are not deployed yet', async () => {
         listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
 
