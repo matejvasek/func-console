@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,7 +13,9 @@ import (
 
 	"github.com/openshift/faas-console-plugin/backend/config"
 	"github.com/openshift/faas-console-plugin/backend/functions"
+	"github.com/openshift/faas-console-plugin/backend/identity"
 	"github.com/openshift/faas-console-plugin/backend/scm"
+	"github.com/openshift/faas-console-plugin/backend/scm/credentials"
 	"github.com/openshift/faas-console-plugin/backend/ticker"
 )
 
@@ -66,7 +69,7 @@ type ErrorDTO struct {
 // ends the stream, while anything raised once the loop is running leaves it
 // open and lets the client decide whether to reconnect. Otherwise the stream
 // runs until the client disconnects or the request context is cancelled.
-func (h *Handlers) WorkflowRunWatch(opts ...WatchOption) http.HandlerFunc {
+func WorkflowRunWatch(opts ...WatchOption) http.HandlerFunc {
 	cfg := watchConfig{
 		newSCMClient: func(pat string) scm.Client {
 			return config.SCMRegistry.Client(scm.DefaultPlatform, pat)
@@ -74,26 +77,17 @@ func (h *Handlers) WorkflowRunWatch(opts ...WatchOption) http.HandlerFunc {
 		heartbeatFactory: func() ticker.Ticker {
 			return ticker.New(defaultHeartbeat)
 		},
+		credProvider: emptyCredProv{},
 	}
 	for _, opt := range opts {
 		opt(&cfg)
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		ocpToken, ok := extractOCPToken(r)
-		if !ok {
-			writeError(w, http.StatusUnauthorized, "authentication required")
-			return
-		}
-		credential, err := h.scmCredentials.GetCredential(r.Context(), ocpToken)
-		if err != nil {
-			writeAuthError(w, err)
-			return
-		}
-		handleWorkflowRunWatch(w, r, credential.Token, cfg.newSCMClient, cfg.heartbeatFactory)
+		handleWorkflowRunWatch(w, r, cfg)
 	}
 }
 
-func handleWorkflowRunWatch(w http.ResponseWriter, r *http.Request, pat string, newSCMClient scm.ClientFactory, heartbeatFactory ticker.Factory) {
+func handleWorkflowRunWatch(w http.ResponseWriter, r *http.Request, wc watchConfig) {
 	// SSE requires explicit flushing to stream events in real-time. Go's net/http
 	// server always implements http.Flusher, but middleware that wraps ResponseWriter
 	// without forwarding the interface can break this. If flushing is unavailable,
@@ -113,7 +107,27 @@ func handleWorkflowRunWatch(w http.ResponseWriter, r *http.Request, pat string, 
 
 	ew := eventWriter{out: w}
 
-	client := newSCMClient(pat)
+	ocpToken, ok := extractOCPToken(r)
+	if !ok {
+		ew.writeHTTPError(http.StatusUnauthorized, "authentication required")
+		return
+	}
+	cred, err := wc.credProvider.GetCredential(r.Context(), ocpToken)
+	if err != nil {
+		// TODO refactor this switch
+		switch {
+		case errors.Is(err, identity.ErrUnauthenticated),
+			errors.Is(err, credentials.ErrNoCredential):
+			slog.Warn("rejecting request without a usable credential", "err", err)
+			ew.writeHTTPError(http.StatusUnauthorized, "authentication required")
+		default:
+			slog.Error("could not resolve the caller's credential", "err", err)
+			ew.writeHTTPError(http.StatusServiceUnavailable, "credential store unavailable")
+		}
+		return
+	}
+
+	client := wc.newSCMClient(cred.Token)
 	ctx := r.Context()
 
 	watch, err := client.WatchWorkflowRuns(ctx, functions.WorkflowFilename)
@@ -128,7 +142,7 @@ func handleWorkflowRunWatch(w http.ResponseWriter, r *http.Request, pat string, 
 	}
 	defer watch.Stop()
 
-	beat := heartbeatFactory()
+	beat := wc.heartbeatFactory()
 	defer beat.Stop()
 
 	for {
@@ -165,12 +179,30 @@ func handleWorkflowRunWatch(w http.ResponseWriter, r *http.Request, pat string, 
 type watchConfig struct {
 	newSCMClient     scm.ClientFactory
 	heartbeatFactory ticker.Factory
+	credProvider     CredentialProvider
+}
+
+type CredentialProvider interface {
+	// GetCredential return SCM token for give OCP token
+	GetCredential(ctx context.Context, ocpToken string) (credentials.Credential, error)
+}
+
+type emptyCredProv struct{}
+
+func (e emptyCredProv) GetCredential(ctx context.Context, ocpToken string) (credentials.Credential, error) {
+	return credentials.Credential{}, credentials.ErrNoCredential
 }
 
 type WatchOption func(*watchConfig)
 
 func WithSCMFactory(f scm.ClientFactory) WatchOption {
 	return func(c *watchConfig) { c.newSCMClient = f }
+}
+
+func WithCredentialsProvider(credProvider CredentialProvider) WatchOption {
+	return func(w *watchConfig) {
+		w.credProvider = credProvider
+	}
 }
 
 func WithHeartbeatTickerFactory(f ticker.Factory) WatchOption {
