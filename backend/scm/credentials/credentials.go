@@ -33,6 +33,58 @@ const (
 
 var ErrNoCredential = errors.New("no stored credential for user")
 
+type Provider interface {
+	SaveCredential(ctx context.Context, ocpToken string, cred Credential) error
+	GetCredential(ctx context.Context, ocpToken string) (Credential, error)
+	DeleteCredential(ctx context.Context, ocpToken string) error
+}
+
+type ProviderStub struct {
+	SaveCredentialsFn  func(ctx context.Context, ocpToken string, cred Credential) error
+	GetCredentialFn    func(ctx context.Context, ocpToken string) (Credential, error)
+	DeleteCredentialFn func(ctx context.Context, ocpToken string) error
+}
+
+func (p ProviderStub) SaveCredential(ctx context.Context, ocpToken string, cred Credential) error {
+	if p.SaveCredentialsFn != nil {
+		return p.SaveCredentialsFn(ctx, ocpToken, cred)
+	}
+	return errors.New("not implemented")
+}
+
+func (p ProviderStub) GetCredential(ctx context.Context, ocpToken string) (Credential, error) {
+	if p.GetCredentialFn != nil {
+		return p.GetCredentialFn(ctx, ocpToken)
+	}
+	return Credential{}, errors.New("not implemented")
+}
+
+func (p ProviderStub) DeleteCredential(ctx context.Context, ocpToken string) error {
+	if p.DeleteCredentialFn != nil {
+		return p.DeleteCredentialFn(ctx, ocpToken)
+	}
+	return errors.New("not implemented")
+}
+
+type MapProvider map[string]Credential
+
+func (m MapProvider) SaveCredential(ctx context.Context, ocpToken string, cred Credential) error {
+	m[ocpToken] = cred
+	return nil
+}
+
+func (m MapProvider) GetCredential(ctx context.Context, ocpToken string) (Credential, error) {
+	if c, ok := m[ocpToken]; ok {
+		return c, nil
+	}
+	return Credential{}, ErrNoCredential
+}
+
+func (m MapProvider) DeleteCredential(ctx context.Context, ocpToken string) error {
+	delete(m, ocpToken)
+	return nil
+}
+
 type Credential struct {
 	Owner     string // SCM username
 	AvatarURL string

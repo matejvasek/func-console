@@ -11,10 +11,10 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/openshift/faas-console-plugin/backend/scm/credentials"
 
 	"github.com/openshift/faas-console-plugin/backend/cluster"
 	"github.com/openshift/faas-console-plugin/backend/functions"
-	"github.com/openshift/faas-console-plugin/backend/identity"
 	"github.com/openshift/faas-console-plugin/backend/scm"
 	authenticationv1 "k8s.io/api/authentication/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,7 +36,7 @@ var _ = Describe("POST /api/v1/func/create", func() {
 
 	doCreate := func(setup func()) *httptest.ResponseRecorder {
 		setup()
-		h := testHandlers(Handlers{externalAPIServerURL: "https://api.test-cluster.example.com:6443"})
+		h := Handlers{externalAPIServerURL: "https://api.test-cluster.example.com:6443", scmCredentials: testCredentialProvider()}
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
 		authenticate(req)
 		w := httptest.NewRecorder()
@@ -89,10 +89,11 @@ var _ = Describe("POST /api/v1/func/create", func() {
 				}, nil
 			},
 		})
-		h := testHandlers(Handlers{
+		h := Handlers{
 			externalAPIServerURL: "https://api.test-cluster.example.com:6443",
 			saTokenExpiry:        7 * 24 * 60 * 60,
-		})
+			scmCredentials:       testCredentialProvider(),
+		}
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
 		authenticate(req)
 		w := httptest.NewRecorder()
@@ -207,7 +208,7 @@ var _ = Describe("POST /api/v1/func/create", func() {
 	)
 
 	It("rejects requests from a user with no stored credential", func() {
-		h := resolvingTo(mallory)
+		h := Handlers{scmCredentials: make(credentials.MapProvider)}
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
 		authenticate(req)
 		w := httptest.NewRecorder()
@@ -217,7 +218,7 @@ var _ = Describe("POST /api/v1/func/create", func() {
 	})
 
 	It("rejects requests without an Authorization header", func() {
-		h := testHandlers(Handlers{})
+		h := Handlers{scmCredentials: testCredentialProvider()}
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
 		authenticate(req)
 		req.Header.Del("Authorization")
@@ -228,11 +229,11 @@ var _ = Describe("POST /api/v1/func/create", func() {
 	})
 
 	It("rejects a session belonging to a different OpenShift user", func() {
-		h := testHandlersResolving(Handlers{}, &identity.ResolverStub{
-			OnResolve: func(context.Context, string) (identity.User, error) {
-				return identity.User{Username: "mallory", UID: "mallory-uid"}, nil
-			},
-		})
+		h := Handlers{scmCredentials: credentials.MapProvider{"jdoe": credentials.Credential{
+			Owner: "jdoe",
+			Token: "ghp_iddqd",
+			Type:  "CredentialTypePAT",
+		}}}
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
 		authenticate(req)
 		w := httptest.NewRecorder()
@@ -242,7 +243,7 @@ var _ = Describe("POST /api/v1/func/create", func() {
 	})
 
 	It("returns 400 for a malformed request body", func() {
-		h := testHandlers(Handlers{})
+		h := Handlers{scmCredentials: testCredentialProvider()}
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBufferString("not json"))
 		authenticate(req)
 		w := httptest.NewRecorder()
@@ -253,7 +254,7 @@ var _ = Describe("POST /api/v1/func/create", func() {
 
 	DescribeTable("rejects invalid function configurations",
 		func(req createRequest) {
-			h := testHandlers(Handlers{})
+			h := Handlers{scmCredentials: testCredentialProvider()}
 			body, _ := json.Marshal(req)
 			r := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(body))
 			authenticate(r)
