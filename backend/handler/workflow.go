@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/openshift/faas-console-plugin/backend/config"
-	"github.com/openshift/faas-console-plugin/backend/functions"
 	"github.com/openshift/faas-console-plugin/backend/identity"
 	"github.com/openshift/faas-console-plugin/backend/scm"
 	"github.com/openshift/faas-console-plugin/backend/scm/credentials"
@@ -83,6 +82,7 @@ func WorkflowRunWatch(opts ...WatchOption) http.HandlerFunc {
 	for _, opt := range opts {
 		opt(&cfg)
 	}
+	cfg.watchSharer = newWorkflowWatchSharer(cfg.newSCMClient)
 	return func(w http.ResponseWriter, r *http.Request) {
 		handleWorkflowRunWatch(w, r, cfg)
 	}
@@ -124,10 +124,9 @@ func handleWorkflowRunWatch(w http.ResponseWriter, r *http.Request, wc watchConf
 		return
 	}
 
-	client := wc.newSCMClient(credential.Token)
 	ctx := r.Context()
 
-	watch, err := client.WatchWorkflowRuns(ctx, functions.WorkflowFilename)
+	watch, err := wc.watchSharer.GetWatch(ctx, scmToken(credential.Token))
 	if err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
 			ew.writeHTTPError(http.StatusForbidden, "invalid SCM token")
@@ -152,6 +151,7 @@ func handleWorkflowRunWatch(w http.ResponseWriter, r *http.Request, wc watchConf
 			}
 			flusher.Flush()
 		case event, ok := <-watch.ResultChan():
+			slog.Info("handler got event")
 			if !ok {
 				return
 			}
@@ -177,6 +177,7 @@ type watchConfig struct {
 	newSCMClient     scm.ClientFactory
 	heartbeatFactory ticker.Factory
 	credProvider     CredentialProvider
+	watchSharer      *workflowWatchSharer
 }
 
 type CredentialProvider interface {
