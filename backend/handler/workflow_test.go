@@ -12,6 +12,8 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"testing"
+	"testing/synctest"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -20,7 +22,7 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/identity"
 	"github.com/openshift/faas-console-plugin/backend/scm"
 	"github.com/openshift/faas-console-plugin/backend/scm/credentials"
-	"github.com/openshift/faas-console-plugin/backend/ticker"
+	"github.com/openshift/faas-console-plugin/backend/testutil"
 )
 
 var _ = Describe("WorkflowRunWatch", func() {
@@ -152,26 +154,6 @@ var _ = Describe("WorkflowRunWatch", func() {
 		})
 	})
 
-	It("emits a heartbeat comment on demand", func() {
-		w := scm.WorkflowWatchStub{C: make(chan scm.WorkflowRunsEvent)}
-		scmClient := &scm.ClientStub{
-			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
-				return &w, nil
-			},
-		}
-
-		beat, factory := ticker.CreateFakeTickerFactory()
-		respBody := startWatchStream(scmClient, factory)
-
-		go func() {
-			beat()
-			w.Stop()
-		}()
-		bs, err := io.ReadAll(respBody)
-		Expect(err).To(BeNil())
-		Expect(bs).To(Equal([]byte{':', '\n', '\n'}))
-	})
-
 	It("emits an SSE frame per snapshot, keyed by owner/repo in workflow run vocabulary", func() {
 		ch := make(chan scm.WorkflowRunsEvent, 4)
 		scmClient := &scm.ClientStub{
@@ -180,7 +162,7 @@ var _ = Describe("WorkflowRunWatch", func() {
 			},
 		}
 
-		respBody := startWatchStream(scmClient, ticker.SilentTickerFactory())
+		respBody := startWatchStream(scmClient)
 
 		ch <- scm.WorkflowRunsEvent{
 			Runs: map[string]scm.WorkflowRun{
@@ -224,7 +206,7 @@ var _ = Describe("WorkflowRunWatch", func() {
 			},
 		}
 
-		respBody := startWatchStream(scmClient, ticker.SilentTickerFactory())
+		respBody := startWatchStream(scmClient)
 
 		ch <- scm.WorkflowRunsEvent{
 			Runs: map[string]scm.WorkflowRun{"alice/fn": {}},
@@ -248,7 +230,7 @@ var _ = Describe("WorkflowRunWatch", func() {
 			},
 		}
 
-		respBody := startWatchStream(scmClient, ticker.SilentTickerFactory())
+		respBody := startWatchStream(scmClient)
 
 		ch <- scm.WorkflowRunsEvent{
 			Runs: map[string]scm.WorkflowRun{"alice/fn": {Status: scm.InProgress}},
@@ -277,7 +259,7 @@ var _ = Describe("WorkflowRunWatch", func() {
 			},
 		}
 
-		respBody := startWatchStream(scmClient, ticker.SilentTickerFactory())
+		respBody := startWatchStream(scmClient)
 
 		// Emit an error from the watch
 		watchErr := errors.New("github API rate limited")
@@ -319,9 +301,8 @@ var _ = Describe("WorkflowRunWatch", func() {
 			},
 		}
 
-		beat, factory := ticker.CreateFakeTickerFactory()
 		mux := http.NewServeMux()
-		mux.HandleFunc("GET /watch", workflowRunWatchWithSCMClient(scmClient, handler.WithHeartbeatTickerFactory(factory)))
+		mux.HandleFunc("GET /watch", workflowRunWatchWithSCMClient(scmClient))
 		ts := httptest.NewServer(mux)
 		DeferCleanup(ts.Close)
 
@@ -333,11 +314,6 @@ var _ = Describe("WorkflowRunWatch", func() {
 		resp, err := ts.Client().Do(req)
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() { resp.Body.Close() })
-
-		reader := bufio.NewReader(resp.Body)
-		go beat()
-		_, err = reader.ReadString('\n')
-		Expect(err).NotTo(HaveOccurred())
 
 		cancel()
 
@@ -359,7 +335,7 @@ var _ = Describe("WorkflowRunWatch", func() {
 		ch <- scm.WorkflowRunsEvent{
 			Err: fmt.Errorf("auth issue: %w", scm.ErrUnauthorized),
 		}
-		respBody := startWatchStream(scmClient, ticker.SilentTickerFactory())
+		respBody := startWatchStream(scmClient)
 		events := readWorkflowEventStream(respBody)
 		evt := receiveWTO(events)
 		Expect(evt).To(Equal(workflowEvent{
@@ -401,13 +377,36 @@ data: {"status": "InProgress"}}
 	})
 })
 
+func TestBeat(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		w := scm.WorkflowWatchStub{C: make(chan scm.WorkflowRunsEvent)}
+		scmClient := &scm.ClientStub{
+			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
+				return &w, nil
+			},
+		}
+		respBody := startWatchStream2(t, scmClient)
+		go func() {
+			time.Sleep(handler.DefaultHeartbeat + time.Second)
+			w.Stop()
+		}()
+		bs, err := io.ReadAll(respBody)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(bs) != ":\n\n" {
+			t.Errorf("unexpected response: %q", string(bs))
+		}
+	})
+}
+
 // workflowRunWatchWithSCMClient returns the handler wired to stub instead of the SCM
 // registry it defaults to, ignoring the token the way the stubs ignore
 // authentication. Any opts are applied after, so a spec can name its heartbeat.
-func workflowRunWatchWithSCMClient(scmClient scm.Client, opts ...handler.WatchOption) http.HandlerFunc {
+func workflowRunWatchWithSCMClient(scmClient scm.Client) http.HandlerFunc {
 	withStub := handler.WithSCMFactory(func(string) scm.Client { return scmClient })
 	withCP := handler.WithCredentialsProvider(workflowCredentialProvider())
-	return handler.WorkflowRunWatch(append([]handler.WatchOption{withStub, withCP}, opts...)...)
+	return handler.WorkflowRunWatch(withStub, withCP)
 }
 
 func receiveWTO(ch <-chan workflowEvent) workflowEvent {
@@ -590,9 +589,9 @@ func readSSELine(r *bufio.Reader) ([]byte, error) {
 	}
 }
 
-func startWatchStream(scmClient scm.Client, factory ticker.Factory) io.Reader {
+func startWatchStream(scmClient scm.Client) io.Reader {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /watch", workflowRunWatchWithSCMClient(scmClient, handler.WithHeartbeatTickerFactory(factory)))
+	mux.HandleFunc("GET /watch", workflowRunWatchWithSCMClient(scmClient))
 	ts := httptest.NewServer(mux)
 	DeferCleanup(ts.Close)
 
@@ -603,6 +602,45 @@ func startWatchStream(scmClient scm.Client, factory ticker.Factory) io.Reader {
 	Expect(err).NotTo(HaveOccurred())
 	DeferCleanup(func() { resp.Body.Close() })
 	Expect(resp.Header.Get("Content-Type")).To(Equal("text/event-stream"))
+	return resp.Body
+}
+
+func startWatchStream2(t *testing.T, scmClient scm.Client) io.Reader {
+	listener := testutil.NewMemListener()
+	h := workflowRunWatchWithSCMClient(scmClient)
+	s := http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			h.ServeHTTP(w, r)
+		}),
+	}
+	go func() {
+		_ = s.Serve(listener)
+	}()
+	t.Cleanup(func() {
+		_ = s.Close()
+	})
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://dummy/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authenticate(req)
+
+	c := http.Client{
+		Transport: &http.Transport{
+			DialContext:       listener.DialContext,
+			DisableKeepAlives: true,
+		},
+	}
+
+	resp, err := c.Do(req) //nolint:bodyclose // DeferCleanup handles response body closure
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { resp.Body.Close() })
+	if resp.Header.Get("Content-Type") != "text/event-stream" {
+		t.Fatal("bad content-type")
+	}
 	return resp.Body
 }
 

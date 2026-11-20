@@ -19,7 +19,7 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/ticker"
 )
 
-const defaultHeartbeat = 15 * time.Second
+const DefaultHeartbeat = 15 * time.Second
 
 const (
 	appErrorEvent          = "app-error"
@@ -137,7 +137,7 @@ func handleWorkflowRunWatch(w http.ResponseWriter, r *http.Request, wc watchConf
 	}
 	defer watch.Stop()
 
-	beat := wc.newTicker(defaultHeartbeat)
+	beat := wc.newTicker(DefaultHeartbeat)
 	defer beat.Stop()
 
 	for {
